@@ -1113,3 +1113,143 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
     assert fato == ("Engenharia",)
     assert msg == ("mensagem preservada",)
     assert ver == ("001_initial_schema",)
+
+
+# ==============================================================================
+# 9. FAN-OUT PARALELO DE SUBAGENTES (asyncio.gather + Semaphore + isolamento)
+# ==============================================================================
+
+
+def _executar_async_real_teste(coro):
+    """Executa coroutine com event loop asyncio real (portavel em Linux CI e sandbox Windows)."""
+    import asyncio
+    import sys
+    import threading
+
+    if sys.platform != "win32":
+        return asyncio.run(coro)
+
+    class _LoopTesteWindows(asyncio.ProactorEventLoop):
+        def _make_self_pipe(self):
+            self._ssock = None
+            self._csock = None
+
+        def _close_self_pipe(self):
+            self._ssock = None
+            self._csock = None
+
+        def _write_to_self(self, data=b""):
+            return None
+
+        def _loop_self_reading(self, f=None):
+            return None
+
+    resultado: list = []
+    erro: list[BaseException] = []
+
+    def _runner():
+        loop = _LoopTesteWindows()
+        try:
+            asyncio.set_event_loop(loop)
+            resultado.append(loop.run_until_complete(coro))
+        except BaseException as exc:
+            erro.append(exc)
+        finally:
+            asyncio.set_event_loop(None)
+            loop.close()
+
+    t = threading.Thread(target=_runner, daemon=True)
+    t.start()
+    t.join(timeout=15.0)
+    if erro:
+        raise erro[0]
+    assert resultado, "Timeout ao aguardar execucao do loop asyncio de teste"
+    return resultado[0]
+
+
+def test_fanout_paralelo_concorrencia_e_isolamento_de_falhas(monkeypatch, tmp_path):
+    import asyncio
+    import time
+    from types import SimpleNamespace
+
+    assert "consultar_especialistas_em_paralelo" in agentes.orquestrador._function_toolset.tools
+
+    eventos_sse: list[dict] = []
+
+    async def _fake_estudos(instrucao, **kwargs):
+        await asyncio.sleep(0.20)
+        return SimpleNamespace(output=f"Estudos OK: {instrucao}")
+
+    async def _fake_google(instrucao, **kwargs):
+        await asyncio.sleep(0.20)
+        return SimpleNamespace(output=f"Google OK: {instrucao}")
+
+    async def _fake_investimentos(instrucao, **kwargs):
+        await asyncio.sleep(0.20)
+        raise RuntimeError("API BCB temporariamente fora")
+
+    monkeypatch.setattr(agentes.agente_estudos, "run", _fake_estudos)
+    monkeypatch.setattr(agentes.agente_google, "run", _fake_google)
+    monkeypatch.setattr(agentes.agente_investimentos, "run", _fake_investimentos)
+
+    ctx = agentes.ContextoMissao(
+        pasta_raiz=tmp_path,
+        modelo="gemini-3.5-flash-lite",
+        on_evento=lambda ev: eventos_sse.append(ev),
+    )
+    tarefas = [
+        {"agente": "estudos", "instrucao": "checar provas A1"},
+        {"agente": "google", "instrucao": "listar agenda de hoje"},
+        {"agente": "investimentos", "instrucao": "consultar carteira"},
+    ]
+
+    t0 = time.perf_counter()
+    relatorio = _executar_async_real_teste(
+        agentes.executar_especialistas_em_paralelo(tarefas, ctx, max_concorrencia=4, timeout_por_agente=5.0)
+    )
+    duracao = time.perf_counter() - t0
+
+    # 1) Prova execucao concorrente: soma sequencial seria >= 0.60s; paralelo termina perto de ~0.20s
+    assert duracao < 0.48, f"Execucao pareceu sequencial ({duracao:.3f}s >= 0.48s)"
+
+    # 2) Prova isolamento de falhas: 2 sucessos + 1 erro parcial isolado no relatorio consolidado
+    assert "2/3 concluido(s) com sucesso" in relatorio
+    assert "Estudos OK: checar provas A1" in relatorio
+    assert "Google OK: listar agenda de hoje" in relatorio
+    assert "ERRO PARCIAL (ERRO)" in relatorio
+    assert "API BCB temporariamente fora" in relatorio
+
+    # 3) Eventos SSE de progresso emitidos para os 3 subagentes
+    destinos_deleg = {e["para"] for e in eventos_sse if e["tipo"] == "delegacao"}
+    assert {"Agente Estudos", "Agente Google", "Agente Investimentos"}.issubset(destinos_deleg)
+
+
+def test_fanout_paralelo_timeout_individual_nao_trava_demais(monkeypatch, tmp_path):
+    import asyncio
+    from types import SimpleNamespace
+
+    async def _fake_rapido(instrucao, **kwargs):
+        await asyncio.sleep(0.02)
+        return SimpleNamespace(output="Pesquisa concluida rapido")
+
+    async def _fake_lento(instrucao, **kwargs):
+        await asyncio.sleep(2.0)
+        return SimpleNamespace(output="Nunca chega")
+
+    monkeypatch.setattr(agentes.agente_pesquisador, "run", _fake_rapido)
+    monkeypatch.setattr(agentes.agente_sistema, "run", _fake_lento)
+
+    ctx = agentes.ContextoMissao(pasta_raiz=tmp_path, modelo="gemini-3.5-flash-lite")
+    relatorio = _executar_async_real_teste(
+        agentes.executar_especialistas_em_paralelo(
+            [
+                {"agente": "pesquisador", "instrucao": "buscar docs"},
+                {"agente": "sistema", "instrucao": "comando lento"},
+            ],
+            ctx,
+            timeout_por_agente=0.08,
+        )
+    )
+    assert "1/2 concluido(s) com sucesso" in relatorio
+    assert "Pesquisa concluida rapido" in relatorio
+    assert "ERRO PARCIAL (TIMEOUT)" in relatorio

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import sqlite3
+import time
 from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -22,7 +23,11 @@ from ferramentas_estudos import listar_provas
 from ferramentas_google import TOKEN_PATH, buscar_emails, listar_proximos_eventos
 from ferramentas_investimentos import ver_carteira
 from ferramentas_obsidian import escrever_nota_vault
+from logging_config import obter_logger
 from ulife_v2 import consultar_dados_ulife, sincronizar_ulife
+
+_log = obter_logger("rotinas")
+TIMEOUT_FONTE_BRIEFING_SEGUNDOS = 30.0
 
 DB_PATH = Path(__file__).resolve().parent / "memoria.db"
 FUSO_NOME = "America/Sao_Paulo"
@@ -234,6 +239,27 @@ async def _executar_briefing_diario(
             return "Gmail nao conectado (token.json ausente — ignorado)."
         return buscar_emails("is:unread", 8)
 
+    async def _coletar_com_timeout(nome_fonte: str, fn, *args) -> str:
+        t_f = time.perf_counter()
+        try:
+            async with asyncio.timeout(TIMEOUT_FONTE_BRIEFING_SEGUNDOS):
+                res_f = await asyncio.to_thread(fn, *args)
+            _log.info(
+                "briefing_fonte_ok",
+                fonte=nome_fonte,
+                latencia_ms=max(1, int((time.perf_counter() - t_f) * 1000)),
+            )
+            return str(res_f)
+        except Exception as exc:
+            _log.warning(
+                "briefing_fonte_erro",
+                fonte=nome_fonte,
+                latencia_ms=max(1, int((time.perf_counter() - t_f) * 1000)),
+                erro=str(exc),
+            )
+            raise
+
+    t_coleta = time.perf_counter()
     (
         res_agenda,
         res_emails,
@@ -241,12 +267,16 @@ async def _executar_briefing_diario(
         res_provas,
         res_carteira,
     ) = await asyncio.gather(
-        asyncio.to_thread(_coletar_agenda),
-        asyncio.to_thread(_coletar_gmail),
-        asyncio.to_thread(consultar_dados_ulife, "tudo"),
-        asyncio.to_thread(listar_provas),
-        asyncio.to_thread(ver_carteira),
+        _coletar_com_timeout("google_agenda", _coletar_agenda),
+        _coletar_com_timeout("gmail", _coletar_gmail),
+        _coletar_com_timeout("ulife", consultar_dados_ulife, "tudo"),
+        _coletar_com_timeout("provas", listar_provas),
+        _coletar_com_timeout("carteira", ver_carteira),
         return_exceptions=True,
+    )
+    _log.info(
+        "briefing_coleta_paralela_concluida",
+        latencia_ms=max(1, int((time.perf_counter() - t_coleta) * 1000)),
     )
 
     agenda_txt = (
