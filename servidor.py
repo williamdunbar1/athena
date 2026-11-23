@@ -58,6 +58,13 @@ from agentes import (
     sanitizar_resposta_ollama_offline,
     verificar_ollama_disponivel,
 )
+from athena_lab import (
+    aprovar_proposta_lab,
+    listar_propostas_lab,
+    obter_status_lab,
+    rejeitar_proposta_lab,
+    rodar_ciclo_rd,
+)
 from compactador import (
     agendar_extracao_memorias,
     limpar_resumos_conversa,
@@ -985,6 +992,55 @@ def resetar_cache_semantico():
     """Limpa todas as entradas e contadores do Cache Semantico local."""
     removidos = limpar_cache_semantico()
     return {"ok": True, "removidos": removidos, "stats": estatisticas_cache_semantico()}
+
+
+class PedidoLabExecutar(BaseModel):
+    foco: str = "eficiencia e tokens"
+
+
+_TAREFA_LAB_ATUAL: asyncio.Task | None = None
+
+
+@app.get("/api/lab/propostas")
+def api_lab_propostas():
+    """Lista todas as propostas do Athena Lab e o status do ciclo R&D atual."""
+    return {
+        "ok": True,
+        "status": obter_status_lab(),
+        "propostas": listar_propostas_lab(),
+    }
+
+
+@app.post("/api/lab/executar")
+async def api_lab_executar(pedido: PedidoLabExecutar | None = Body(default=None)):
+    """Dispara um ciclo R&D do Athena Lab em segundo plano sem travar a interface."""
+    global _TAREFA_LAB_ATUAL
+    if _TAREFA_LAB_ATUAL is not None and not _TAREFA_LAB_ATUAL.done():
+        return {
+            "ok": False,
+            "erro": "Ja existe um ciclo do Athena Lab em andamento.",
+            "status": obter_status_lab(),
+        }
+    foco = (pedido.foco if pedido is not None else "eficiencia e tokens").strip() or "eficiencia e tokens"
+    _TAREFA_LAB_ATUAL = asyncio.create_task(rodar_ciclo_rd(foco))
+    return {
+        "ok": True,
+        "iniciado": True,
+        "foco": foco,
+        "status": obter_status_lab(),
+    }
+
+
+@app.post("/api/lab/aprovar/{proposta_id}")
+async def api_lab_aprovar(proposta_id: str):
+    """Aprova e aplica localmente (merge limpo, sem git push) uma proposta validada do Athena Lab."""
+    return await asyncio.to_thread(aprovar_proposta_lab, proposta_id)
+
+
+@app.post("/api/lab/rejeitar/{proposta_id}")
+async def api_lab_rejeitar(proposta_id: str):
+    """Rejeita uma proposta do Athena Lab e remove sua branch/worktree temporario."""
+    return await asyncio.to_thread(rejeitar_proposta_lab, proposta_id)
 
 
 class PedidoVozFalar(BaseModel):

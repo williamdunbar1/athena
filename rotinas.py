@@ -8,6 +8,7 @@ e salva o Briefing Diario automaticamente no Obsidian em `04-Diario/YYYY-MM-DD.m
 from __future__ import annotations
 
 import asyncio
+import os
 import sqlite3
 import time
 from contextlib import contextmanager, suppress
@@ -33,6 +34,17 @@ DB_PATH = Path(__file__).resolve().parent / "memoria.db"
 FUSO_NOME = "America/Sao_Paulo"
 ROTINA_BRIEFING_ID = "briefing_diario"
 ROTINA_ULIFE_ID = "sincronizar_ulife"
+ROTINA_LAB_ID = "athena_lab_semanal"
+
+
+def _lab_auto_schedule_ativo() -> bool:
+    return (os.getenv("ATHENA_LAB_AUTO_SCHEDULE", "false") or "false").strip().lower() in (
+        "1",
+        "true",
+        "sim",
+        "yes",
+        "on",
+    )
 
 DIAS_SEMANA_PT = (
     "segunda-feira",
@@ -91,6 +103,13 @@ def _conn():
             VALUES (?, ?, ?, ?, ?, '', '')
             """,
             (ROTINA_ULIFE_ID, "Sincronização Silenciosa do Ulife", 7, 55, 1),
+        )
+        c.execute(
+            """
+            INSERT OR IGNORE INTO rotinas (id, nome, hora, minuto, ativa, ultima_execucao, ultimo_resultado)
+            VALUES (?, ?, ?, ?, ?, '', '')
+            """,
+            (ROTINA_LAB_ID, "Athena Lab — Ciclo Semanal R&D (Opcional)", 9, 0, 1 if _lab_auto_schedule_ativo() else 0),
         )
         yield c
         c.commit()
@@ -152,11 +171,20 @@ def _sincronizar_job_scheduler(rotina: dict) -> None:
             _SCHEDULER.remove_job(rid)
         return
 
-    trigger = CronTrigger(
-        hour=rotina["hora"],
-        minute=rotina["minuto"],
-        timezone=_obter_fuso(),
-    )
+    if rid == ROTINA_LAB_ID and not _lab_auto_schedule_ativo():
+        if existente is not None:
+            _SCHEDULER.remove_job(rid)
+        return
+
+    trigger_kwargs: dict = {
+        "hour": rotina["hora"],
+        "minute": rotina["minuto"],
+        "timezone": _obter_fuso(),
+    }
+    if rid == ROTINA_LAB_ID:
+        trigger_kwargs["day_of_week"] = "sun"
+
+    trigger = CronTrigger(**trigger_kwargs)
     _SCHEDULER.add_job(
         _disparar_rotina_agendada,
         trigger=trigger,
@@ -386,6 +414,15 @@ async def executar_rotina_agora(
                 )
             elif rotina_id == ROTINA_ULIFE_ID:
                 briefing_md, info_obsidian = await _executar_sincronizacao_ulife()
+            elif rotina_id == ROTINA_LAB_ID:
+                from athena_lab import rodar_ciclo_rd
+
+                res_lab = await rodar_ciclo_rd()
+                prop = res_lab.get("proposta") if isinstance(res_lab, dict) else None
+                tit = prop.get("titulo", "-") if isinstance(prop, dict) else "-"
+                st_lab = res_lab.get("status") or ("erro" if not res_lab.get("ok") else "concluido")
+                briefing_md = f"### Athena Lab ({st_lab})\n- **Proposta:** {tit}\n- **Detalhe:** {res_lab.get('motivo') or res_lab.get('erro') or 'Pronta para revisao humana na aba Athena Lab.'}"
+                info_obsidian = ""
             else:
                 return {"ok": False, "erro": f"Executor nao implementado para rotina '{rotina_id}'."}
 

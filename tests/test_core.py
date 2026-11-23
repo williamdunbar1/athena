@@ -1085,9 +1085,9 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
 
     db_teste = tmp_path / "memoria_teste.db"
 
-    # 1) Primeira execucao em banco novo: cria schema completo (ate a migration 002) e registra revisao
+    # 1) Primeira execucao em banco novo: cria schema completo (ate a migration 003) e registra revisao
     revisao_1 = memoria.executar_migrations(db_teste)
-    assert revisao_1 == "002_resumos_conversa"
+    assert revisao_1 == "003_lab_propostas"
     assert db_teste.is_file()
 
     with sqlite3.connect(db_teste) as c:
@@ -1102,6 +1102,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
             "telemetria",
             "webauthn_credenciais",
             "resumos_conversa",
+            "lab_propostas",
         }.issubset(tabelas)
         # Insere dados para comprovar que rodar novamente nao apaga nem recria nada
         c.execute(
@@ -1116,7 +1117,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
 
     # 2) Segunda execucao (idempotencia): mantem revisao e 100% dos dados intactos
     revisao_2 = memoria.executar_migrations(db_teste)
-    assert revisao_2 == "002_resumos_conversa"
+    assert revisao_2 == "003_lab_propostas"
 
     with sqlite3.connect(db_teste) as c:
         fato = c.execute("SELECT valor FROM fatos WHERE chave = 'curso'").fetchone()
@@ -1124,7 +1125,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
         ver = c.execute("SELECT version_num FROM alembic_version").fetchone()
     assert fato == ("Engenharia",)
     assert msg == ("mensagem preservada",)
-    assert ver == ("002_resumos_conversa",)
+    assert ver == ("003_lab_propostas",)
 
 
 # ==============================================================================
@@ -1277,7 +1278,7 @@ def test_compactador_mantem_recentes_e_usa_fallback_deterministico(monkeypatch, 
     import memoria
 
     db_teste = tmp_path / "compactacao_teste.db"
-    assert memoria.executar_migrations(db_teste) == "002_resumos_conversa"
+    assert memoria.executar_migrations(db_teste) == "003_lab_propostas"
 
     # 1) Conversa curta (<= 16 msgs): retorna sem compactar
     msgs_curtas = [{"role": "user" if i % 2 == 0 else "bot", "conteudo": f"Msg curta {i}"} for i in range(10)]
@@ -2459,3 +2460,165 @@ def test_otimizador_midia_pdf_digital_vs_escaneado(monkeypatch):
     assert res_scan["mime_type"] == "application/pdf"
     assert res_scan["dados"] == bytes_scan
     assert res_scan["paginas"] == 2
+
+
+# ==============================================================================
+# 21. ATHENA LAB (R&D AUTO-EVOLUCAO CONTROLADA: MIGRATION 003, BLOQUEIO, CRITICO)
+# ==============================================================================
+
+
+def test_athena_lab_migration_003_e_bloqueio_arquivos_sensiveis(tmp_path):
+    import athena_lab as lab
+    import memoria
+
+    # 1) Migration 003_lab_propostas cria tabela `lab_propostas` com todas as colunas esperadas
+    db_teste = tmp_path / "lab_migration.db"
+    assert memoria.executar_migrations(db_teste) == "003_lab_propostas"
+    with sqlite3.connect(db_teste) as c:
+        cols = {r[1] for r in c.execute("PRAGMA table_info(lab_propostas)").fetchall()}
+    assert {
+        "id",
+        "titulo",
+        "categoria",
+        "resumo",
+        "ganho_estimado",
+        "debate_json",
+        "branch",
+        "diff_texto",
+        "checks_json",
+        "status",
+        "criado_em",
+    }.issubset(cols)
+
+    # 2) Bloqueio estrito de arquivos sensiveis e path traversal antes mesmo de abrir worktree
+    for sensivel in (
+        ".env",
+        ".env.local",
+        ".gitignore",
+        ".gitleaks.toml",
+        "credentials.json",
+        "token.json",
+        "../.env",
+        "sub/../../token.json",
+        ".git/config",
+        "memoria.db",
+    ):
+        assert lab.eh_arquivo_sensivel(sensivel) is True
+        with pytest.raises(ValueError, match="bloqueada por seguranca"):
+            lab.validar_em_worktree(
+                "lab/bloqueio-teste",
+                [{"caminho": sensivel, "modo": "criar", "novo_conteudo": "X"}],
+                repo_dir=tmp_path,
+            )
+
+    assert lab.eh_arquivo_sensivel("eficiencia.py") is False
+    assert lab.eh_arquivo_sensivel("tests/test_core.py") is False
+
+
+def test_athena_lab_descarta_quando_critico_reprova_e_salva_quando_aprovado(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    import athena_lab as lab
+    import memoria
+
+    db_teste = tmp_path / "lab_ciclo.db"
+    memoria.executar_migrations(db_teste)
+
+    async def _inline_to_thread(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr(lab.asyncio, "to_thread", _inline_to_thread)
+
+    proposta_fake = lab.PropostaScout(
+        titulo="Cache extra de regex compilada",
+        categoria="velocidade",
+        problema="Recompilacao repetida em modulo auxiliar",
+        solucao="Pre-compilar regex no topo do modulo",
+        ganho_estimado="-10% latencia local",
+        arquivos_alvo=["eficiencia.py"],
+    )
+    plano_fake = lab.PlanoArquiteto(
+        resumo_tecnico="Pre-compilar expressao regular em eficiencia.py",
+        riscos=["Baixo"],
+        alteracoes=[
+            lab.AlteracaoArquivo(
+                caminho="eficiencia.py",
+                modo="substituir",
+                alvo="A",
+                novo_conteudo="B",
+            )
+        ],
+        testes_sugeridos=["test_eficiencia"],
+    )
+
+    async def _fake_scout(_prompt, **_kw):
+        return SimpleNamespace(output=proposta_fake)
+
+    async def _fake_arquiteto(_prompt, **_kw):
+        return SimpleNamespace(output=plano_fake)
+
+    monkeypatch.setattr(lab.agente_scout, "run", _fake_scout)
+    monkeypatch.setattr(lab.agente_arquiteto, "run", _fake_arquiteto)
+
+    # 1) Agente Critico reprova (aprovado=False / nota < 7) -> descartada automaticamente sem abrir worktree
+    chamou_worktree = {"n": 0}
+
+    def _proibido_worktree(*_args, **_kwargs):
+        chamou_worktree["n"] += 1
+        raise AssertionError("Worktree nao deveria ser aberto quando Critico reprova!")
+
+    async def _fake_critico_reprova(_prompt, **_kw):
+        return SimpleNamespace(
+            output=lab.VereditoCritico(
+                aprovado=False,
+                nota=5,
+                criticas=["Ganho marginal demais para justificar mudanca"],
+                justificativa="Custo de manutencao supera ganho estimado.",
+            )
+        )
+
+    monkeypatch.setattr(lab.agente_critico, "run", _fake_critico_reprova)
+    monkeypatch.setattr(lab, "validar_em_worktree", _proibido_worktree)
+
+    res_desc = _executar_async_real_teste(lab.rodar_ciclo_rd("velocidade", db_path=db_teste, repo_dir=tmp_path))
+    assert res_desc["ok"] is True
+    assert res_desc["status"] == "descartada"
+    assert res_desc["proposta"]["status"] == "descartada"
+    assert chamou_worktree["n"] == 0
+
+    # 2) Agente Critico aprova (nota 9) + worktree verde -> salva como `pendente` para aprovacao humana
+    async def _fake_critico_aprova(_prompt, **_kw):
+        return SimpleNamespace(
+            output=lab.VereditoCritico(
+                aprovado=True,
+                nota=9,
+                criticas=[],
+                justificativa="Alteracao cirurgica, segura e compativel com Linux CI.",
+            )
+        )
+
+    def _fake_worktree_ok(branch_nome, _alts, **_kw):
+        chamou_worktree["n"] += 1
+        return {
+            "ok": True,
+            "branch": branch_nome,
+            "worktree": str(tmp_path / "wt"),
+            "diff": "diff --git a/eficiencia.py b/eficiencia.py\n-A\n+B",
+            "checks": {
+                "ruff": {"ok": True, "saida": "All checks passed!"},
+                "pyright": {"ok": True, "saida": "0 errors"},
+                "pytest": {"ok": True, "saida": "64 passed"},
+            },
+        }
+
+    monkeypatch.setattr(lab.agente_critico, "run", _fake_critico_aprova)
+    monkeypatch.setattr(lab, "validar_em_worktree", _fake_worktree_ok)
+
+    res_pend = _executar_async_real_teste(lab.rodar_ciclo_rd("velocidade", db_path=db_teste, repo_dir=tmp_path))
+    assert res_pend["ok"] is True
+    assert res_pend["status"] == "pendente"
+    assert chamou_worktree["n"] == 1
+    assert res_pend["proposta"]["status"] == "pendente"
+    assert res_pend["proposta"]["checks"]["pytest"]["ok"] is True
+    assert "diff --git" in res_pend["proposta"]["diff_texto"]
+    assert len(lab.listar_propostas_lab(db_path=db_teste)) == 2

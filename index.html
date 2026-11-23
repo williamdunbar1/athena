@@ -2178,6 +2178,145 @@
       max-width: none;
     }
   }
+
+  /* ===== ATHENA LAB (R&D) ===== */
+  .lab-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+  .lab-toolbar input {
+    flex: 1 1 260px;
+    background: var(--bg-panel-2, #181a1f);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 10px 13px;
+    font-size: 13px;
+    outline: none;
+  }
+  .lab-toolbar input:focus {
+    border-color: var(--accent);
+  }
+  .lab-status-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    border: 1px solid rgba(250, 204, 21, 0.35);
+    background: rgba(250, 204, 21, 0.08);
+    color: var(--text);
+    font-size: 12.5px;
+    margin-bottom: 14px;
+  }
+  .lab-status-banner.hidden { display: none; }
+  .lab-card {
+    background: var(--bg-panel-2, #181a1f);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+  }
+  .lab-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .lab-card-title {
+    font-weight: 700;
+    font-size: 14.5px;
+    color: var(--text);
+  }
+  .lab-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0;
+  }
+  .lab-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--muted);
+  }
+  .lab-badge.ok {
+    color: #4ade80;
+    border-color: rgba(74, 222, 128, 0.35);
+    background: rgba(74, 222, 128, 0.1);
+  }
+  .lab-badge.fail {
+    color: #f87171;
+    border-color: rgba(248, 113, 113, 0.35);
+    background: rgba(248, 113, 113, 0.1);
+  }
+  .lab-badge.accent {
+    color: var(--accent-hover, #fde047);
+    border-color: rgba(250, 204, 21, 0.35);
+    background: rgba(250, 204, 21, 0.1);
+  }
+  .lab-debate {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 8px;
+    margin: 10px 0;
+  }
+  .lab-debate-step {
+    background: rgba(0, 0, 0, 0.22);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .lab-debate-step strong {
+    display: block;
+    color: var(--accent-hover, #fde047);
+    margin-bottom: 4px;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .lab-diff-details {
+    margin: 10px 0;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #0d0f12;
+  }
+  .lab-diff-details summary {
+    cursor: pointer;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    user-select: none;
+  }
+  .lab-diff-pre {
+    margin: 0;
+    padding: 10px 12px;
+    overflow-x: auto;
+    max-height: 320px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.4;
+    color: #e5e7eb;
+    border-top: 1px solid var(--border);
+    white-space: pre;
+  }
+  .lab-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
 </style>
 </head>
 <body>
@@ -2213,6 +2352,10 @@
         <button type="button" class="nav-item" data-aba="rotinas" onclick="abrirAba('rotinas', this)" title="Rotinas">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           <span class="nav-label">Rotinas</span>
+        </button>
+        <button type="button" class="nav-item" data-aba="lab" onclick="abrirAba('lab', this)" title="Athena Lab (R&D)">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9.5V3"/><path d="M8.5 14h7"/></svg>
+          <span class="nav-label">Athena Lab</span>
         </button>
       </nav>
 
@@ -2667,6 +2810,51 @@
               </div>
             </div>
           </div>
+
+          <!-- ABA ATHENA LAB (R&D) -->
+          <div id="view-lab" class="view">
+            <div class="view-scroll">
+              <div class="panel">
+                <h3>
+                  <span style="display:inline-flex;align-items:center;gap:8px;">
+                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9.5V3"/><path d="M8.5 14h7"/></svg>
+                    <span>Athena Lab (R&amp;D — Auto-Evolução Controlada)</span>
+                  </span>
+                  <button type="button" class="ghost mini" onclick="carregarAthenaLab()">
+                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span>Atualizar</span>
+                  </button>
+                </h3>
+                <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">
+                  Pipeline multi-agente (<strong>Scout → Arquiteto → Crítico Adversarial</strong>) com validação isolada em
+                  <code>git worktree</code> (<code>ruff</code> + <code>pyright</code> + <code>pytest</code>). Nenhuma alteração toca sua branch principal sem aprovação explícita.
+                </p>
+                <div class="lab-toolbar">
+                  <input id="lab-foco-input" type="text" placeholder="Foco opcional (ex.: reduzir tokens, melhorar RAG, segurança)..." />
+                  <button type="button" id="btn-lab-executar" class="btn-primary" onclick="dispararCicloLab()">
+                    <span>Rodar Ciclo R&amp;D</span>
+                  </button>
+                </div>
+                <div id="lab-status-banner" class="lab-status-banner hidden">
+                  <span class="thinking-dot"></span>
+                  <span id="lab-status-texto">Executando ciclo R&amp;D em segundo plano...</span>
+                </div>
+              </div>
+
+              <div class="panel">
+                <h3>
+                  <span>Propostas Validadas Aguardando Aprovação</span>
+                  <span id="lab-pendentes-count" class="lab-badge accent">0 pendente(s)</span>
+                </h3>
+                <div id="box-lab-pendentes" class="empty-note">Nenhuma proposta pendente ainda.</div>
+              </div>
+
+              <div class="panel">
+                <h3><span>Histórico do Athena Lab</span></h3>
+                <div id="box-lab-historico" class="empty-note">Sem execuções registradas.</div>
+              </div>
+            </div>
+          </div>
         </main>
       </div>
     </div>
@@ -2918,6 +3106,7 @@ function abrirAba(nome, btn) {
   if (nome === "estudos") carregarEstudos();
   if (nome === "faxina") carregarFaxina();
   if (nome === "rotinas") carregarRotinas();
+  if (nome === "lab") carregarAthenaLab();
 }
 
 /* ===== MODELO CHIP POPOVER ===== */
@@ -5539,6 +5728,184 @@ async function carregarSkills() {
     renderSkills(r.skills || []);
   } catch (_) {
     renderSkills([]);
+  }
+}
+
+/* ===== ATHENA LAB (R&D) ===== */
+let _labPollTimer = null;
+
+function _renderCheckBadge(nome, info) {
+  const ok = Boolean(info && info.ok);
+  const cls = ok ? "ok" : "fail";
+  const sym = ok ? "✓" : "✗";
+  return `<span class="lab-badge ${cls}">${escHtml(nome)} ${sym}</span>`;
+}
+
+function _renderCardPropostaLab(p, ehPendente) {
+  const debate = p.debate || {};
+  const scout = debate.scout || {};
+  const arq = debate.arquiteto || {};
+  const crit = debate.critico || {};
+  const checks = p.checks || {};
+
+  const badgesChecks = ["ruff", "pyright", "pytest"]
+    .filter(k => checks[k] !== undefined)
+    .map(k => _renderCheckBadge(k, checks[k]))
+    .join("");
+
+  const notaCrit = crit.nota !== undefined ? `<span class="lab-badge accent">Crítico: ${escHtml(crit.nota)}/10</span>` : "";
+  const badgeStatus = `<span class="lab-badge ${p.status === "aprovada" ? "ok" : (p.status === "pendente" ? "accent" : "fail")}">${escHtml(p.status)}</span>`;
+
+  const blocoDiff = p.diff_texto
+    ? `<details class="lab-diff-details"><summary>Ver git diff (${escHtml(p.branch || "patch")})</summary><pre class="lab-diff-pre">${escHtml(p.diff_texto)}</pre></details>`
+    : "";
+
+  const botoes = ehPendente
+    ? `<div class="lab-actions">
+        <button type="button" class="btn-primary mini" onclick="aprovarPropostaLab('${escHtml(p.id)}', this)">Aprovar e Aplicar</button>
+        <button type="button" class="ghost mini danger" onclick="rejeitarPropostaLab('${escHtml(p.id)}', this)">Rejeitar</button>
+      </div>`
+    : "";
+
+  return `
+    <div class="lab-card">
+      <div class="lab-card-head">
+        <div>
+          <div class="lab-card-title">${escHtml(p.titulo || "Proposta sem título")}</div>
+          <div style="font-size:12px;color:var(--muted);margin-top:3px;">${escHtml(p.ganho_estimado || p.resumo || "")}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${p.categoria ? `<span class="lab-badge">${escHtml(p.categoria)}</span>` : ""}
+          ${notaCrit}
+          ${badgeStatus}
+        </div>
+      </div>
+      <div class="lab-meta-row">
+        ${badgesChecks}
+        ${p.criado_em ? `<span class="lab-badge">${escHtml(p.criado_em)}</span>` : ""}
+      </div>
+      <div class="lab-debate">
+        <div class="lab-debate-step">
+          <strong>1. Scout</strong>
+          ${escHtml(scout.problema || p.resumo || "-")}
+        </div>
+        <div class="lab-debate-step">
+          <strong>2. Arquiteto</strong>
+          ${escHtml(arq.resumo_tecnico || scout.solucao || "-")}
+        </div>
+        <div class="lab-debate-step">
+          <strong>3. Crítico</strong>
+          ${escHtml(crit.justificativa || "-")}
+        </div>
+      </div>
+      ${blocoDiff}
+      ${botoes}
+    </div>
+  `;
+}
+
+async function carregarAthenaLab() {
+  const boxPend = document.getElementById("box-lab-pendentes");
+  const boxHist = document.getElementById("box-lab-historico");
+  const badgeCount = document.getElementById("lab-pendentes-count");
+  const banner = document.getElementById("lab-status-banner");
+  const bannerTxt = document.getElementById("lab-status-texto");
+  const btnRun = document.getElementById("btn-lab-executar");
+
+  try {
+    const r = await fetch("/api/lab/propostas").then(x => x.json());
+    const st = r.status || {};
+    const lista = Array.isArray(r.propostas) ? r.propostas : [];
+
+    if (banner && bannerTxt) {
+      if (st.ativo) {
+        banner.classList.remove("hidden");
+        bannerTxt.textContent = `${st.etapa || "Executando..."} (foco: ${st.foco || "geral"})`;
+        if (btnRun) btnRun.disabled = true;
+        clearTimeout(_labPollTimer);
+        _labPollTimer = setTimeout(() => {
+          const viewLab = document.getElementById("view-lab");
+          if (viewLab && viewLab.classList.contains("active")) carregarAthenaLab();
+        }, 3500);
+      } else {
+        banner.classList.add("hidden");
+        if (btnRun) btnRun.disabled = false;
+        clearTimeout(_labPollTimer);
+      }
+    }
+
+    const pendentes = lista.filter(p => p.status === "pendente");
+    const historico = lista.filter(p => p.status !== "pendente");
+    if (badgeCount) badgeCount.textContent = `${pendentes.length} pendente(s)`;
+
+    if (boxPend) {
+      boxPend.innerHTML = pendentes.length
+        ? pendentes.map(p => _renderCardPropostaLab(p, true)).join("")
+        : '<div class="empty-note">Nenhuma proposta aguardando aprovação. Clique em "Rodar Ciclo R&amp;D" para pesquisar e validar uma melhoria.</div>';
+    }
+    if (boxHist) {
+      boxHist.innerHTML = historico.length
+        ? historico.map(p => _renderCardPropostaLab(p, false)).join("")
+        : '<div class="empty-note">Nenhuma proposta no histórico ainda.</div>';
+    }
+  } catch (e) {
+    if (boxPend) boxPend.innerHTML = '<div class="empty-note">Falha ao carregar propostas do Athena Lab.</div>';
+  }
+}
+
+async function dispararCicloLab() {
+  const inp = document.getElementById("lab-foco-input");
+  const btn = document.getElementById("btn-lab-executar");
+  const foco = (inp ? inp.value.trim() : "") || "eficiencia e tokens";
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch("/api/lab/executar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ foco }),
+    }).then(x => x.json());
+    if (r.ok) {
+      mostrarToast("Ciclo R&D do Athena Lab iniciado em segundo plano!");
+      await carregarAthenaLab();
+    } else {
+      mostrarToast(r.erro || "Não foi possível iniciar o ciclo R&D.", true);
+      if (btn) btn.disabled = false;
+    }
+  } catch (_) {
+    mostrarToast("Erro de comunicação ao disparar Athena Lab.", true);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function aprovarPropostaLab(propostaId, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`/api/lab/aprovar/${encodeURIComponent(propostaId)}`, { method: "POST" }).then(x => x.json());
+    if (r.ok) {
+      mostrarToast(r.mensagem || "Proposta aplicada localmente com sucesso!");
+    } else {
+      mostrarToast(r.erro || "Falha ao aprovar proposta.", true);
+    }
+    await carregarAthenaLab();
+  } catch (_) {
+    mostrarToast("Erro de rede ao aprovar proposta.", true);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function rejeitarPropostaLab(propostaId, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`/api/lab/rejeitar/${encodeURIComponent(propostaId)}`, { method: "POST" }).then(x => x.json());
+    if (r.ok) {
+      mostrarToast(r.mensagem || "Proposta rejeitada.");
+    } else {
+      mostrarToast(r.erro || "Falha ao rejeitar proposta.", true);
+    }
+    await carregarAthenaLab();
+  } catch (_) {
+    mostrarToast("Erro de rede ao rejeitar proposta.", true);
+    if (btn) btn.disabled = false;
   }
 }
 
