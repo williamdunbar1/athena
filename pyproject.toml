@@ -1,0 +1,76 @@
+[project]
+name = "ecossistema-agentes"
+version = "0.1.0"
+description = "Athena — Ecossistema multi-agente local com Pydantic AI, FastAPI, Qdrant RAG hibrido, MCP e Logfire"
+readme = "README.md"
+authors = [
+    { name = "williamdunbar1", email = "williamjmd16@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "apscheduler>=3.11.3",
+    "fastapi>=0.165.0",
+    "fastmcp>=4.2.4",
+    "google-api-python-client>=2.202.0",
+    "google-auth-httplib2>=0.4.4",
+    "google-auth-oauthlib>=1.5.0",
+    "httpx>=0.28.1",
+    "logfire[fastapi,httpx]>=6.0.0",
+    "pillow>=13.0.0",
+    "playwright>=1.65.2",
+    "pydantic-ai-slim[duckduckgo,google,mcp,web-fetch]>=2.71.0",
+    "pypdf>=7.1.1",
+    "python-dotenv>=1.0.0",
+    "python-multipart>=0.0.34",
+    "qdrant-client[fastembed]>=1.20.0",
+    "send2trash>=2.2.0",
+    "uvicorn>=0.54.0",
+    "webauthn>=3.0.1",
+    "yfinance>=1.8.0",
+]
+
+[dependency-groups]
+dev = [
+    "pydantic-evals>=2.71.0",
+    "pyright>=1.1.390",
+    "pytest>=8.3.0",
+    "ruff>=0.9.0",
+]
+
+[project.scripts]
+ecossistema-agentes = "ecossistema_agentes:main"
+
+[build-system]
+requires = ["uv_build>=0.13.9,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+exclude = [".venv", "qdrant_db", "sandbox_files", ".logfire", "__pycache__", ".pytest_cache"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Body", "fastapi.Depends", "fastapi.File", "fastapi.Form", "fastapi.Query"]
+
+[tool.ruff.lint.per-file-ignores]
+"evals/athena_evals.py" = ["E402"]
+"tests/conftest.py" = ["E402"]
+"tests/test_core.py" = ["E402"]
+
+[tool.pyright]
+typeCheckingMode = "basic"
+pythonVersion = "3.12"
+venvPath = "."
+venv = ".venv"
+exclude = [".venv", "qdrant_db", "sandbox_files", ".logfire", "__pycache__", ".pytest_cache"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+norecursedirs = ["evals", ".venv", "qdrant_db", "sandbox_files", ".logfire"]
+addopts = "-q"

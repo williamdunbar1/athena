@@ -1,0 +1,5231 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#111214" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Athena" />
+<title>Athena</title>
+<link rel="manifest" href="/manifest.json" />
+<link rel="icon" type="image/png" href="/athena-icon?v=2" />
+<link rel="apple-touch-icon" href="/athena-icon?v=2" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  :root {
+    --bg: #111214;
+    --bg-elev: #181a1f;
+    --surface: #1f2228;
+    --surface-2: #262a32;
+    --bubble-user: #252932;
+    --border: #2c3038;
+    --border-hover: #3c424f;
+    --accent: #eab308;
+    --accent-hover: #facc15;
+    --accent-soft: rgba(234, 179, 8, 0.14);
+    --text: #e5e7eb;
+    --text-strong: #f8fafc;
+    --muted: #9ca3af;
+    --muted-2: #6b7280;
+    --pos: #34d399;
+    --neg: #f87171;
+    --font-ui: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+    --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+    --font-mono: 'Cascadia Code', Consolas, 'Courier New', monospace;
+    --ease: cubic-bezier(0.2, 0, 0, 1);
+    --dur-fast: 180ms;
+    --dur-med: 220ms;
+    --sidebar-w: 240px;
+    --sidebar-collapsed-w: 68px;
+    --topbar-h: 56px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --ctrl-h: 38px;
+    --composer-btn: 38px;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    height: 100dvh;
+    width: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Scrollbars discretas */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2c3038; border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: #434956; }
+
+  /* Icones SVG lineares */
+  .ico {
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    flex-shrink: 0;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .ico-sm { width: 16px; height: 16px; }
+  .ico-accent { color: var(--accent); }
+
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  .ico.spinning { animation: spin 0.85s linear infinite; }
+
+  /* Botoes padronizados */
+  button {
+    font-family: var(--font-ui);
+    background: var(--accent);
+    color: #111214;
+    border: 1px solid transparent;
+    height: var(--ctrl-h);
+    padding: 0 14px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    white-space: nowrap;
+    transition: background var(--dur-fast) var(--ease),
+                border-color var(--dur-fast) var(--ease),
+                color var(--dur-fast) var(--ease),
+                transform var(--dur-fast) var(--ease),
+                opacity var(--dur-fast) var(--ease);
+  }
+  button:hover { background: var(--accent-hover); }
+  button:active:not(:disabled) { transform: scale(0.98); }
+  button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+  button.ghost {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  button.ghost:hover {
+    background: var(--surface-2);
+    border-color: var(--border-hover);
+    color: var(--text-strong);
+  }
+  button.ghost.active-toggle {
+    background: var(--accent-soft);
+    border-color: rgba(234, 179, 8, 0.5);
+    color: var(--accent-hover);
+  }
+
+  button.mini {
+    height: 32px;
+    padding: 0 10px;
+    font-size: 12px;
+    border-radius: 7px;
+  }
+
+  button.btn-aprovar { background: #16a34a; color: #ffffff; }
+  button.btn-aprovar:hover { background: #15803d; }
+
+  button.btn-recusar { background: #dc2626; color: #ffffff; }
+  button.btn-recusar:hover { background: #b91c1c; }
+
+  /* ===== SHELL PRINCIPAL (Sidebar Esquerda + Area Principal) ===== */
+  .app-shell {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    position: relative;
+    background: var(--bg);
+  }
+
+  /* Barra Lateral Esquerda (estilo Gemini) */
+  .sidebar {
+    width: var(--sidebar-w);
+    flex-shrink: 0;
+    height: 100%;
+    background: var(--bg-elev);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 10px 10px 12px;
+    gap: 8px;
+    z-index: 25;
+    overflow: hidden;
+    transition: width var(--dur-med) var(--ease), transform var(--dur-med) var(--ease);
+  }
+
+  .sidebar.collapsed {
+    width: var(--sidebar-collapsed-w);
+  }
+
+  .sidebar-top {
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+
+  .menu-btn {
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    border-radius: 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .menu-btn:hover {
+    background: var(--surface);
+    color: var(--text-strong);
+    border-color: var(--border);
+  }
+
+  .sidebar-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 6px;
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .nav-item {
+    width: 100%;
+    height: 42px;
+    padding: 0 13px;
+    border-radius: 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: 13.5px;
+    font-weight: 600;
+    justify-content: flex-start;
+    gap: 12px;
+    overflow: hidden;
+    transition: background var(--dur-fast) var(--ease),
+                color var(--dur-fast) var(--ease),
+                border-color var(--dur-fast) var(--ease),
+                padding var(--dur-med) var(--ease);
+  }
+
+  .nav-item:hover {
+    background: var(--surface);
+    color: var(--text-strong);
+  }
+
+  .nav-item.active {
+    background: var(--accent-soft);
+    border-color: rgba(234, 179, 8, 0.35);
+    color: var(--accent-hover);
+  }
+
+  .nav-item.active .ico {
+    color: var(--accent-hover);
+  }
+
+  .nav-label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 1;
+    transition: opacity 150ms var(--ease);
+  }
+
+  .sidebar.collapsed .nav-item {
+    padding: 0;
+    justify-content: center;
+  }
+
+  .sidebar.collapsed .nav-label {
+    opacity: 0;
+    width: 0;
+    display: none;
+  }
+
+  .sidebar-footer {
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .nav-util {
+    height: 38px;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--muted);
+  }
+
+  .nav-util:hover .ico {
+    color: var(--accent-hover);
+  }
+
+  .nav-util.danger:hover {
+    color: #fca5a5;
+    background: rgba(220, 38, 38, 0.12);
+  }
+  .nav-util.danger:hover .ico {
+    color: #f87171;
+  }
+
+  /* Area principal a direita da sidebar */
+  .app-main {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Cabecalho fino e minimalista (56px) */
+  .topbar {
+    height: var(--topbar-h);
+    min-height: var(--topbar-h);
+    padding: 0 18px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    z-index: 20;
+    flex-shrink: 0;
+  }
+
+  .topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .mobile-menu-btn {
+    display: none;
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--font-ui);
+    font-size: 16.5px;
+    font-weight: 700;
+    color: var(--text-strong);
+    letter-spacing: -0.02em;
+    white-space: nowrap;
+  }
+
+  .brand-icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    object-fit: cover;
+    border: 1px solid rgba(234, 179, 8, 0.55);
+    box-shadow: 0 0 12px rgba(234, 179, 8, 0.18);
+    flex-shrink: 0;
+  }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .topbar-right .chat-only.hidden {
+    display: none;
+  }
+
+  .btn-agentes {
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 10px;
+    font-size: 12.5px;
+  }
+
+  /* Container das Views */
+  .workspace {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .view {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: none;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .view.active {
+    display: flex;
+  }
+
+  /* Backdrop para drawers mobile */
+  .drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.62);
+    backdrop-filter: blur(2px);
+    z-index: 40;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-med) var(--ease);
+  }
+  .drawer-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* ===== ABA 1: CHAT (Estilo Gemini) ===== */
+  #view-chat {
+    flex-direction: row;
+  }
+
+  .chat-stage {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    position: relative;
+  }
+
+  .drop-overlay {
+    position: absolute;
+    inset: 14px;
+    z-index: 35;
+    border: 2px dashed var(--accent);
+    border-radius: 20px;
+    background: rgba(17, 18, 20, 0.86);
+    backdrop-filter: blur(4px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-align: center;
+    padding: 24px;
+    opacity: 0;
+    pointer-events: none;
+    transform: scale(0.99);
+    transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  }
+  .chat-stage.drag-over .drop-overlay {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .drop-overlay-ico {
+    width: 52px;
+    height: 52px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    border: 1px solid rgba(234, 179, 8, 0.45);
+    color: var(--accent-hover);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .drop-overlay-title {
+    font-family: var(--font-ui);
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-strong);
+  }
+  .drop-overlay-sub {
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .chat-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 28px 22px 18px;
+  }
+
+  .chat-column {
+    max-width: 800px;
+    width: 100%;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    min-height: 100%;
+  }
+
+  .chat-empty {
+    margin: auto 0;
+    text-align: center;
+    padding: 36px 16px 56px;
+  }
+
+  .chat-empty-avatar {
+    width: 58px;
+    height: 58px;
+    border-radius: 999px;
+    object-fit: cover;
+    border: 2px solid rgba(234, 179, 8, 0.55);
+    box-shadow: 0 0 28px rgba(234, 179, 8, 0.2);
+    margin: 0 auto 18px;
+    display: block;
+  }
+
+  .chat-empty h2 {
+    margin: 0 0 10px;
+    font-family: var(--font-ui);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-strong);
+    letter-spacing: -0.025em;
+  }
+
+  .chat-empty h2 span { color: var(--accent); }
+
+  .chat-empty p {
+    margin: 0 auto 26px;
+    max-width: 540px;
+    color: var(--muted);
+    font-size: 14.5px;
+    line-height: 1.65;
+  }
+
+  .suggestions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+  }
+
+  .sug-chip {
+    background: var(--bg-elev);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    height: 36px;
+    padding: 0 15px;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .sug-chip:hover {
+    background: var(--surface);
+    border-color: var(--accent);
+    color: var(--accent-hover);
+  }
+
+  /* Mensagens + animacao suave de entrada */
+  @keyframes msgEnter {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg-row {
+    display: flex;
+    width: 100%;
+  }
+  .msg-row.animate-in {
+    animation: msgEnter 210ms var(--ease) both;
+  }
+
+  .msg-row.user { justify-content: flex-end; }
+  .msg-row.bot {
+    justify-content: flex-start;
+    gap: 14px;
+    align-items: flex-start;
+  }
+
+  .bot-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 999px;
+    object-fit: cover;
+    border: 1px solid rgba(234, 179, 8, 0.5);
+    background: var(--surface);
+    flex-shrink: 0;
+    margin-top: 3px;
+    display: block;
+  }
+
+  .msg-bot-wrap {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .msg {
+    font-size: 15.5px;
+    line-height: 1.65;
+    word-break: break-word;
+  }
+
+  .msg.user {
+    background: var(--bubble-user);
+    border: 1px solid var(--border);
+    color: var(--text-strong);
+    padding: 12px 16px;
+    border-radius: 18px 18px 4px 18px;
+    max-width: 78%;
+    white-space: pre-wrap;
+    line-height: 1.55;
+  }
+
+  .msg.bot {
+    background: transparent;
+    border: 0;
+    padding: 0;
+    color: var(--text);
+  }
+
+  .msg.bot > :first-child { margin-top: 0; }
+  .msg.bot > :last-child { margin-bottom: 0; }
+
+  .msg.bot h1, .msg.bot h2, .msg.bot h3, .msg.bot h4 {
+    font-family: var(--font-ui);
+    color: var(--text-strong);
+    margin: 22px 0 10px;
+    line-height: 1.35;
+    letter-spacing: -0.015em;
+  }
+  .msg.bot h1 { font-size: 21px; font-weight: 700; }
+  .msg.bot h2 { font-size: 18px; font-weight: 700; }
+  .msg.bot h3 { font-size: 15.5px; font-weight: 600; color: var(--accent-hover); }
+
+  .msg.bot p { margin: 11px 0; }
+  .msg.bot ul, .msg.bot ol { margin: 11px 0; padding-left: 22px; }
+  .msg.bot li { margin: 5px 0; }
+  .msg.bot strong { color: var(--text-strong); font-weight: 600; }
+
+  .msg.bot a {
+    color: var(--accent-hover);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .msg.bot a:hover { color: #fef08a; }
+
+  .msg.bot img {
+    display: block;
+    max-width: 100%;
+    max-height: 460px;
+    width: auto;
+    height: auto;
+    margin: 12px 0;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--bg-elev);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.35);
+    cursor: zoom-in;
+  }
+
+  .msg.bot blockquote {
+    margin: 14px 0;
+    padding: 10px 15px;
+    border-left: 3px solid var(--accent);
+    background: var(--bg-elev);
+    border-radius: 0 10px 10px 0;
+    color: var(--muted);
+  }
+
+  .msg.bot hr {
+    border: 0;
+    border-top: 1px solid var(--border);
+    margin: 18px 0;
+  }
+
+  .msg.bot code {
+    background: var(--surface);
+    color: var(--accent-hover);
+    padding: 2px 6px;
+    border-radius: 5px;
+    font-family: var(--font-mono);
+    font-size: 13.5px;
+  }
+
+  .msg.bot pre {
+    background: var(--bg-elev);
+    padding: 14px 16px;
+    border-radius: var(--radius-md);
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    margin: 14px 0;
+  }
+  .msg.bot pre code {
+    background: none;
+    color: var(--text);
+    padding: 0;
+    font-size: 13px;
+  }
+
+  .msg.bot table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 14px;
+    background: var(--bg-elev);
+    border-radius: 10px;
+    overflow: hidden;
+    display: block;
+    overflow-x: auto;
+  }
+  .msg.bot th, .msg.bot td {
+    border: 1px solid var(--border);
+    padding: 9px 12px;
+    text-align: left;
+  }
+  .msg.bot th {
+    background: var(--surface);
+    color: var(--accent-hover);
+    font-family: var(--font-ui);
+    font-weight: 600;
+  }
+
+  .msg-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+  }
+
+  .btn-ouvir {
+    height: 28px;
+    padding: 0 10px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid transparent;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .btn-ouvir:hover {
+    background: var(--surface);
+    border-color: var(--border);
+    color: var(--text-strong);
+  }
+  .btn-ouvir.speaking {
+    background: var(--accent-soft);
+    border-color: rgba(234, 179, 8, 0.5);
+    color: var(--accent-hover);
+  }
+
+  .msg-model-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-family: var(--font-ui);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--muted);
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 9px;
+    white-space: nowrap;
+  }
+  .msg-model-tag.is-auto {
+    color: var(--accent-hover);
+    border-color: rgba(234, 179, 8, 0.35);
+    background: var(--accent-soft);
+  }
+
+  .msg-meta-stats {
+    font-size: 12px;
+    color: #9ca3af;
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+  }
+
+  /* Card inline de permissao nativa do Windows 11 */
+  .win-perm-card {
+    margin-top: 12px;
+    background: var(--bg-elev);
+    border: 1px solid rgba(234, 179, 8, 0.36);
+    border-left: 3px solid var(--accent);
+    border-radius: 12px;
+    padding: 13px 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 560px;
+  }
+  .win-perm-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .win-perm-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-ui);
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--text-strong);
+  }
+  .win-perm-title .ico { color: var(--accent-hover); flex-shrink: 0; }
+  .win-perm-risco {
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(234, 179, 8, 0.14);
+    color: var(--accent-hover);
+    border: 1px solid rgba(234, 179, 8, 0.32);
+  }
+  .win-perm-risco.medio {
+    background: rgba(245, 158, 11, 0.18);
+    color: #fbbf24;
+    border-color: rgba(245, 158, 11, 0.45);
+  }
+  .win-perm-risco.alto {
+    background: rgba(239, 68, 68, 0.18);
+    color: #fca5a5;
+    border-color: rgba(248, 113, 113, 0.45);
+  }
+  .win-perm-target {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 7px 10px;
+    word-break: break-all;
+  }
+  .win-perm-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 2px;
+  }
+  .btn-win-permitir {
+    height: 32px;
+    padding: 0 13px;
+    background: var(--accent);
+    color: #111214;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 700;
+  }
+  .btn-win-permitir:hover { background: var(--accent-hover); }
+  .btn-win-sempre {
+    height: 32px;
+    padding: 0 12px;
+    background: var(--surface);
+    color: var(--accent-hover);
+    border: 1px solid rgba(234, 179, 8, 0.45);
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .btn-win-sempre:hover { background: var(--accent-soft); }
+  .btn-win-recusar {
+    height: 32px;
+    padding: 0 12px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 600;
+  }
+  .btn-win-recusar:hover {
+    background: rgba(239, 68, 68, 0.14);
+    color: #fca5a5;
+    border-color: rgba(248, 113, 113, 0.45);
+  }
+  .win-perm-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 999px;
+  }
+  .win-perm-status.is-exec {
+    background: rgba(22, 163, 74, 0.16);
+    color: #6ee7b7;
+    border: 1px solid rgba(52, 211, 153, 0.35);
+  }
+  .win-perm-status.is-rec {
+    background: rgba(220, 38, 38, 0.15);
+    color: #fca5a5;
+    border: 1px solid rgba(248, 113, 113, 0.35);
+  }
+  .win-perm-erro {
+    font-size: 12px;
+    color: #fca5a5;
+    margin-top: 2px;
+  }
+
+  .user-attach-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .user-attach-thumb {
+    display: block;
+    max-width: 200px;
+    max-height: 160px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    object-fit: cover;
+  }
+
+  .thinking {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    color: var(--muted);
+    font-size: 14.5px;
+    font-style: italic;
+  }
+
+  .thinking-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--accent);
+    animation: pulse 1.2s infinite ease-in-out;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.35; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1.12); }
+  }
+
+  /* Barra de digitacao flutuante estilo Gemini */
+  .composer-wrap {
+    padding: 8px 22px max(16px, env(safe-area-inset-bottom));
+    background: linear-gradient(180deg, rgba(17, 18, 20, 0) 0%, var(--bg) 32%);
+    flex-shrink: 0;
+  }
+
+  .composer {
+    max-width: 800px;
+    width: 100%;
+    margin: 0 auto;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    padding: 12px 14px 10px 16px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+    transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+    position: relative;
+  }
+
+  .composer:focus-within {
+    border-color: rgba(234, 179, 8, 0.75);
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.42), 0 0 0 1px rgba(234, 179, 8, 0.2);
+  }
+
+  .composer textarea {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--text-strong);
+    font-family: var(--font-body);
+    font-size: 15.5px;
+    line-height: 1.55;
+    resize: none;
+    min-height: 28px;
+    max-height: 164px;
+    padding: 2px 2px 8px;
+    display: block;
+  }
+  .composer textarea::placeholder { color: var(--muted-2); }
+
+  .composer-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 4px;
+  }
+
+  .composer-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+  }
+
+  /* Botoes simetricos da barra de digitacao (38x38 desktop / 42x42 mobile) */
+  .composer-icon-btn {
+    width: var(--composer-btn);
+    height: var(--composer-btn);
+    padding: 0;
+    border-radius: 999px;
+    background: var(--surface);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+    position: relative;
+  }
+  .composer-icon-btn:hover {
+    background: var(--surface-2);
+    border-color: var(--border-hover);
+    color: var(--text-strong);
+  }
+  .composer-icon-btn.active-chip {
+    background: var(--accent-soft);
+    border-color: rgba(234, 179, 8, 0.55);
+    color: var(--accent-hover);
+  }
+  .composer-icon-btn.mic-listening {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent-hover);
+    animation: micPulse 1.2s infinite ease-in-out;
+  }
+
+  @keyframes micPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0.45); }
+    50% { box-shadow: 0 0 0 7px rgba(234, 179, 8, 0); }
+  }
+
+  .chip-dot {
+    position: absolute;
+    top: 7px;
+    right: 7px;
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 6px rgba(234, 179, 8, 0.7);
+  }
+
+  .btn-send-circle {
+    width: var(--composer-btn);
+    height: var(--composer-btn);
+    padding: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #111214;
+    border: 1px solid transparent;
+    flex-shrink: 0;
+  }
+  .btn-send-circle:hover { background: var(--accent-hover); }
+
+  .btn-stop-circle {
+    width: var(--composer-btn);
+    height: var(--composer-btn);
+    padding: 0;
+    border-radius: 999px;
+    background: rgba(239, 68, 68, 0.18);
+    color: #fca5a5;
+    border: 1px solid rgba(248, 113, 113, 0.55);
+    flex-shrink: 0;
+  }
+  .btn-stop-circle:hover {
+    background: rgba(239, 68, 68, 0.3);
+    color: #fff;
+    border-color: #f87171;
+  }
+
+  /* Popover minimalista de escolha do modelo */
+  .model-popover {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 10px);
+    min-width: 310px;
+    max-width: min(360px, 90vw);
+    width: auto;
+    background: var(--surface);
+    border: 1px solid var(--border-hover);
+    border-radius: 14px;
+    padding: 6px;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.55);
+    z-index: 60;
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+    pointer-events: none;
+    transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  }
+
+  .model-popover.open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+
+  .model-popover-title {
+    padding: 6px 10px 4px;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+
+  .model-option {
+    width: 100%;
+    height: auto;
+    padding: 9px 10px;
+    border-radius: 10px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    text-align: left;
+    gap: 12px;
+    white-space: normal;
+  }
+  .model-option:hover {
+    background: var(--surface-2);
+    color: var(--text-strong);
+  }
+  .model-option.selected {
+    background: var(--accent-soft);
+    border-color: rgba(234, 179, 8, 0.4);
+    color: var(--text-strong);
+  }
+  .model-opt-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+    white-space: normal;
+  }
+  .model-opt-name {
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-strong);
+    white-space: normal;
+    line-height: 1.3;
+  }
+  .model-opt-desc {
+    font-size: 11.5px;
+    font-weight: 400;
+    color: var(--muted);
+    white-space: normal;
+    line-height: 1.35;
+    overflow-wrap: break-word;
+  }
+  .model-opt-check {
+    color: var(--accent-hover);
+    opacity: 0;
+    flex-shrink: 0;
+  }
+  .model-option.selected .model-opt-check { opacity: 1; }
+
+  /* Preview de multiplos anexos multimodais */
+  .attach-preview {
+    display: none;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 2px 2px 6px;
+    overflow-x: auto;
+    max-width: 100%;
+    scrollbar-width: thin;
+  }
+  .attach-preview.visible { display: flex; }
+
+  .attach-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px 5px 6px;
+    background: var(--surface);
+    border: 1px solid rgba(234, 179, 8, 0.42);
+    border-radius: 12px;
+    flex-shrink: 0;
+    max-width: 240px;
+  }
+
+  .attach-thumb {
+    width: 36px;
+    height: 36px;
+    border-radius: 7px;
+    object-fit: cover;
+    border: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .attach-pdf-ico {
+    width: 34px;
+    height: 34px;
+    border-radius: 7px;
+    background: var(--accent-soft);
+    color: var(--accent-hover);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .attach-info {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    font-size: 12px;
+  }
+  .attach-name {
+    color: var(--text-strong);
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 140px;
+  }
+  .attach-size { color: var(--muted); font-size: 11px; }
+
+  .attach-remove {
+    background: transparent;
+    color: var(--muted);
+    border: 0;
+    padding: 0;
+    border-radius: 999px;
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+  }
+  .attach-remove:hover {
+    background: rgba(248, 113, 113, 0.16);
+    color: var(--neg);
+  }
+
+  .attach-meta {
+    flex-shrink: 0;
+    font-size: 11.5px;
+    font-family: var(--font-ui);
+    font-weight: 600;
+    color: var(--muted);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 10px;
+    white-space: nowrap;
+  }
+
+  /* Painel lateral direito recolhivel (Agentes & Memoria) */
+  .side-panel {
+    width: 320px;
+    flex-shrink: 0;
+    background: var(--bg-elev);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: width var(--dur-med) var(--ease), opacity var(--dur-fast) var(--ease), transform var(--dur-med) var(--ease);
+  }
+  .side-panel.collapsed {
+    width: 0;
+    opacity: 0;
+    border-left-color: transparent;
+    pointer-events: none;
+  }
+
+  .side-inner {
+    width: 320px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .side-section-title {
+    margin: 0;
+    padding: 12px 14px;
+    font-family: var(--font-ui);
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .side-close-mobile {
+    display: none;
+    margin-left: auto;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+  }
+
+  .mem-bar {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: flex-start;
+    max-height: 155px;
+    overflow-y: auto;
+    min-height: 48px;
+  }
+
+  .pill {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    color: var(--text);
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+    max-width: 100%;
+  }
+  .pill span.lbl {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .pill span.x {
+    cursor: pointer;
+    color: var(--muted);
+    font-weight: 700;
+    line-height: 1;
+  }
+  .pill span.x:hover { color: var(--neg); }
+
+  .trilha-lista {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    padding: 10px 12px;
+    border-radius: 9px;
+    font-size: 12.5px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: var(--text);
+  }
+  .card.ferramenta { border-left-color: #f59e0b; }
+  .card.resposta { border-left-color: #34d399; }
+
+  .card .rota {
+    font-family: var(--font-ui);
+    font-weight: 700;
+    color: var(--accent-hover);
+    margin-bottom: 4px;
+    font-size: 11.5px;
+  }
+  .card.ferramenta .rota { color: #fbbf24; }
+  .card.resposta .rota { color: #6ee7b7; }
+
+  .card .corpo-toggle {
+    margin-top: 6px;
+    height: auto;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    color: var(--accent-hover);
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+
+  /* ===== PAGINAS DAS ABAS (Carteira, Estudos, Faxina, Rotinas) ===== */
+  .page-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    width: 100%;
+  }
+
+  .page {
+    padding: 24px 26px 44px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    max-width: 1080px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .section-divider {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section-divider h2 {
+    margin: 0;
+    font-family: var(--font-ui);
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-strong);
+    letter-spacing: -0.015em;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+  }
+
+  .kpi {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 16px 18px;
+  }
+  .kpi .lbl {
+    font-family: var(--font-ui);
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .kpi .val {
+    font-family: var(--font-ui);
+    font-size: 24px;
+    font-weight: 700;
+    margin-top: 6px;
+    color: var(--text-strong);
+    letter-spacing: -0.02em;
+  }
+  .kpi .sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 18px 20px;
+  }
+
+  .panel h3 {
+    margin: 0 0 14px;
+    font-family: var(--font-ui);
+    font-size: 14.5px;
+    font-weight: 700;
+    color: var(--text-strong);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  table.grid {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13.5px;
+  }
+  table.grid th, table.grid td {
+    padding: 10px 11px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+    vertical-align: middle;
+  }
+  table.grid th {
+    font-family: var(--font-ui);
+    color: var(--muted);
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: var(--bg-elev);
+    white-space: nowrap;
+  }
+  table.grid tbody tr:hover { background: rgba(255, 255, 255, 0.025); }
+
+  .pos { color: var(--pos); font-weight: 600; }
+  .neg { color: var(--neg); font-weight: 600; }
+  .empty-note { color: var(--muted); font-size: 13.5px; line-height: 1.55; }
+
+  /* Formularios simetricos */
+  .form-inline-grid {
+    display: grid;
+    grid-template-columns: 148px minmax(150px, 1.4fr) 128px 110px minmax(120px, 1fr) auto;
+    gap: 8px;
+    margin-bottom: 16px;
+    align-items: center;
+  }
+
+  .field-dark {
+    height: var(--ctrl-h);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-strong);
+    border-radius: var(--radius-sm);
+    padding: 0 11px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    outline: none;
+    min-width: 0;
+    width: 100%;
+    transition: border-color var(--dur-fast) var(--ease);
+  }
+  .field-dark:focus { border-color: var(--accent); }
+  .field-dark::placeholder { color: var(--muted-2); }
+
+  /* Barras de progresso e badges */
+  .bar-bg {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    height: 9px;
+    overflow: hidden;
+    margin-top: 7px;
+  }
+  .bar-fill {
+    background: linear-gradient(90deg, #ca8a04, #facc15);
+    height: 100%;
+    border-radius: 999px;
+    transition: width 240ms var(--ease);
+  }
+
+  .prova-card, .acao-card {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 10px;
+    padding: 13px 15px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+
+  .acao-info {
+    flex: 1;
+    min-width: 220px;
+    font-size: 13.5px;
+    line-height: 1.55;
+  }
+  .acao-path {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text);
+    word-break: break-all;
+  }
+  .acao-btns {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .badge, .badge-tipo {
+    background: var(--accent-soft);
+    color: var(--accent-hover);
+    border: 1px solid rgba(234, 179, 8, 0.35);
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-family: var(--font-ui);
+    font-size: 11.5px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .badge-tipo { font-size: 11px; text-transform: uppercase; }
+
+  .badge-exec {
+    background: rgba(22, 163, 74, 0.16);
+    color: #6ee7b7;
+    border: 1px solid rgba(52, 211, 153, 0.35);
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .badge-rec {
+    background: rgba(220, 38, 38, 0.16);
+    color: #fca5a5;
+    border: 1px solid rgba(248, 113, 113, 0.35);
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .badge-mover {
+    background: var(--accent-soft);
+    color: var(--accent-hover);
+    border: 1px solid rgba(234, 179, 8, 0.45);
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .badge-lixeira {
+    background: rgba(220, 38, 38, 0.18);
+    color: #fca5a5;
+    border: 1px solid rgba(248, 113, 113, 0.42);
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .badge-desfeita {
+    background: rgba(148, 163, 184, 0.14);
+    color: #cbd5e1;
+    border: 1px solid rgba(148, 163, 184, 0.32);
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .acao-fluxo {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text);
+    word-break: break-all;
+    margin-top: 6px;
+  }
+  .acao-fluxo .seta {
+    color: var(--accent-hover);
+    font-weight: 700;
+    padding: 0 5px;
+  }
+
+  /* Ulife & Rotinas */
+  .ulife-head-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .ulife-sub {
+    font-family: var(--font-body);
+    font-size: 12.5px;
+    font-weight: 400;
+    color: var(--muted);
+  }
+  .ulife-strip, .rotina-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .ulife-chip {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 6px 11px;
+    font-size: 12.5px;
+    color: var(--text);
+  }
+  .ulife-chip strong { color: var(--accent-hover); }
+
+  .ulife-section-lbl {
+    margin: 16px 0 8px;
+    font-family: var(--font-ui);
+    font-size: 11.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+  }
+  .ulife-aval-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .ulife-aval-pill {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 12px;
+    color: var(--text);
+    white-space: nowrap;
+  }
+  .ulife-nota-val {
+    color: var(--accent-hover);
+    font-family: var(--font-ui);
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .ulife-avisos {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 340px;
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+  .ulife-aviso-item {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 9px;
+    padding: 10px 13px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  .ulife-aviso-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 4px;
+  }
+  .ulife-aviso-desc {
+    color: var(--muted);
+    font-size: 12.5px;
+    margin-top: 2px;
+  }
+
+  .rotina-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .toggle-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    height: var(--ctrl-h);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    user-select: none;
+  }
+  .toggle-wrap input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+  .toggle-track {
+    width: 42px;
+    height: 24px;
+    background: var(--bg);
+    border: 1px solid var(--border-hover);
+    border-radius: 999px;
+    position: relative;
+    transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+    flex-shrink: 0;
+  }
+  .toggle-track::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 999px;
+    background: var(--muted);
+    transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+  }
+  .toggle-wrap input:checked + .toggle-track {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+  }
+  .toggle-wrap input:checked + .toggle-track::after {
+    transform: translateX(18px);
+    background: var(--accent);
+  }
+
+  .time-input {
+    height: var(--ctrl-h);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-strong);
+    border-radius: var(--radius-sm);
+    padding: 0 11px;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 600;
+    outline: none;
+    color-scheme: dark;
+  }
+  .time-input:focus { border-color: var(--accent); }
+
+  .briefing-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    max-height: 520px;
+    overflow-y: auto;
+  }
+
+  .rotinas-side-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr);
+    gap: 16px;
+    align-items: start;
+  }
+  .rotinas-side-grid > .panel {
+    margin-bottom: 0;
+  }
+  .tele-kpis {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .tele-kpi {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+  .tele-kpi .lbl {
+    font-size: 11px;
+    font-family: var(--font-ui);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .tele-kpi .val {
+    font-family: var(--font-ui);
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-strong);
+  }
+  .tele-kpi .sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+  @media (max-width: 1024px) {
+    .rotinas-side-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .tele-kpis {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  /* Toast (z-index 9000) */
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--surface-2);
+    color: var(--text-strong);
+    border: 1px solid var(--accent);
+    padding: 11px 16px;
+    border-radius: 12px;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+    z-index: 9000;
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+    max-width: 440px;
+    word-break: break-word;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.erro {
+    background: #2b1416;
+    color: #fecaca;
+    border-color: #ef4444;
+  }
+
+  /* Tela de bloqueio fullscreen por PIN + Biometria (z-index 10000) */
+  .lock-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: #111214;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .lock-overlay.hidden { display: none; }
+
+  .lock-card {
+    width: 100%;
+    max-width: 368px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 30px 24px 26px;
+    text-align: center;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
+  }
+  .lock-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 999px;
+    object-fit: cover;
+    border: 2px solid rgba(234, 179, 8, 0.65);
+    box-shadow: 0 0 28px rgba(234, 179, 8, 0.24);
+    margin: 0 auto 14px;
+    display: block;
+  }
+  .lock-card h2 {
+    margin: 0 0 6px;
+    font-family: var(--font-ui);
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-strong);
+  }
+  .lock-card p {
+    margin: 0 0 20px;
+    font-size: 13.5px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+  .lock-input {
+    width: 100%;
+    height: 48px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0 14px;
+    color: var(--text-strong);
+    font-family: var(--font-ui);
+    font-size: 20px;
+    letter-spacing: 0.28em;
+    text-align: center;
+    outline: none;
+    transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+  }
+  .lock-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.2);
+  }
+  .lock-btn {
+    width: 100%;
+    height: 44px;
+    margin-top: 12px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .lock-btn-bio {
+    width: 100%;
+    height: 42px;
+    margin-top: 10px;
+    border-radius: 12px;
+    font-size: 13.5px;
+    font-weight: 600;
+  }
+  .lock-btn-bio .ico { color: var(--accent); }
+  .lock-erro {
+    min-height: 20px;
+    margin-top: 12px;
+    font-size: 12.5px;
+    color: var(--neg);
+    font-weight: 500;
+  }
+
+  /* ===== RESPONSIVIDADE (Tablet & Celular / Tailscale) ===== */
+  @media (max-width: 1024px) {
+    .form-inline-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .side-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: min(340px, 90vw);
+      z-index: 50;
+      box-shadow: -14px 0 38px rgba(0, 0, 0, 0.65);
+      transform: translateX(0);
+      opacity: 1;
+    }
+    .side-panel.collapsed {
+      width: min(340px, 90vw);
+      transform: translateX(100%);
+      opacity: 0;
+      pointer-events: none;
+    }
+    .side-inner { width: 100%; }
+    .side-close-mobile { display: inline-flex; }
+  }
+
+  @media (max-width: 768px) {
+    :root {
+      --composer-btn: 42px;
+      --ctrl-h: 40px;
+    }
+
+    .mobile-menu-btn {
+      display: inline-flex;
+    }
+
+    /* Sidebar vira drawer deslizante sobreposto no celular */
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: min(272px, 84vw);
+      z-index: 50;
+      transform: translateX(-100%);
+      box-shadow: 14px 0 38px rgba(0, 0, 0, 0.65);
+    }
+    .sidebar.mobile-open {
+      transform: translateX(0);
+    }
+    .sidebar.collapsed {
+      width: min(272px, 84vw);
+    }
+    .sidebar.collapsed .nav-item {
+      padding: 0 13px;
+      justify-content: flex-start;
+    }
+    .sidebar.collapsed .nav-label {
+      opacity: 1;
+      width: auto;
+      display: inline;
+    }
+
+    .topbar {
+      padding: 0 12px;
+    }
+
+    .chat-scroll {
+      padding: 16px 14px 12px;
+    }
+    .chat-column { gap: 18px; }
+    .chat-empty { padding: 20px 8px 34px; }
+    .chat-empty h2 { font-size: 23px; }
+
+    .msg {
+      font-size: 16px;
+      line-height: 1.65;
+    }
+    .msg.user {
+      max-width: 88%;
+      padding: 10px 14px;
+    }
+    .msg-row.bot { gap: 10px; }
+    .bot-avatar { width: 25px; height: 25px; }
+
+    .composer-wrap {
+      padding: 6px 10px max(12px, env(safe-area-inset-bottom));
+    }
+    .composer {
+      border-radius: 20px;
+      padding: 10px 12px 10px 14px;
+    }
+    .composer textarea,
+    .field-dark,
+    .time-input,
+    .lock-input {
+      font-size: 16px;
+    }
+
+    .page {
+      padding: 16px 12px 32px;
+      gap: 14px;
+    }
+    .panel { padding: 15px 14px; }
+    .kpis {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .kpi { padding: 13px 14px; }
+    .kpi .val { font-size: 20px; }
+
+    .form-inline-grid {
+      grid-template-columns: 1fr;
+    }
+
+    table.grid { font-size: 13px; }
+    table.grid th, table.grid td { padding: 8px 9px; }
+
+    .briefing-box {
+      padding: 13px 14px;
+      max-height: none;
+    }
+
+    .toast {
+      left: 12px;
+      right: 12px;
+      bottom: max(12px, env(safe-area-inset-bottom));
+      max-width: none;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Backdrop mobile compartilhado para Sidebar e Gaveta de Agentes -->
+    <div id="drawer-backdrop" class="drawer-backdrop" onclick="fecharDrawersMobile()"></div>
+
+    <!-- BARRA LATERAL ESQUERDA RECOLHIVEL (ESTILO GEMINI) -->
+    <aside id="sidebar" class="sidebar" aria-label="Navegação principal">
+      <div class="sidebar-top">
+        <button type="button" class="menu-btn" id="btn-sidebar-toggle" onclick="alternarSidebar()" title="Expandir ou recolher menu" aria-label="Alternar menu lateral">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+        </button>
+      </div>
+
+      <nav class="sidebar-nav" aria-label="Seções da Athena">
+        <button type="button" class="nav-item active" data-aba="chat" onclick="abrirAba('chat', this)" title="Chat">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="nav-label">Chat</span>
+        </button>
+        <button type="button" class="nav-item" data-aba="carteira" onclick="abrirAba('carteira', this)" title="Carteira">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+          <span class="nav-label">Carteira</span>
+        </button>
+        <button type="button" class="nav-item" data-aba="estudos" onclick="abrirAba('estudos', this)" title="Estudos">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+          <span class="nav-label">Estudos</span>
+        </button>
+        <button type="button" class="nav-item" data-aba="faxina" onclick="abrirAba('faxina', this)" title="Faxina">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.8L20 10.7l-5.1 3.7 1.9 5.8L12 16.5l-4.8 3.7 1.9-5.8L4 10.7l6.1-1.9z"/></svg>
+          <span class="nav-label">Faxina</span>
+        </button>
+        <button type="button" class="nav-item" data-aba="rotinas" onclick="abrirAba('rotinas', this)" title="Rotinas">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span class="nav-label">Rotinas</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <button type="button" class="nav-item nav-util" id="btn-escolher-pasta" onclick="escolherPasta()" title="Pasta autorizada para os agentes">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>
+          <span class="nav-label" id="pasta-label">Pasta ativa</span>
+        </button>
+
+        <button type="button" class="nav-item nav-util" id="btn-ativar-biometria" onclick="ativarBiometria()" title="Cadastrar digital/biometria deste dispositivo" style="display:none;">
+          <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></svg>
+          <span class="nav-label">Biometria</span>
+        </button>
+
+        <button type="button" class="nav-item nav-util" id="btn-bloquear" onclick="bloquearPainel()" title="Bloquear Athena (PIN)" style="display:none;">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span class="nav-label">Bloquear</span>
+        </button>
+
+        <button type="button" class="nav-item nav-util danger" onclick="limparChat()" title="Limpar conversa atual">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
+          <span class="nav-label">Limpar chat</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- AREA PRINCIPAL -->
+    <div class="app-main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button type="button" class="menu-btn mobile-menu-btn" onclick="abrirSidebarMobile()" aria-label="Abrir menu">
+            <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
+          </button>
+          <div class="brand">
+            <img class="brand-icon" src="/athena-icon?v=2" alt="Athena" />
+            <span>Athena</span>
+          </div>
+        </div>
+
+        <div class="topbar-right">
+          <button type="button" class="ghost btn-agentes chat-only" id="btn-toggle-agentes" onclick="alternarPainelAgentes()" title="Abrir ou esconder trilha de agentes e memória">
+            <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+            <span class="btn-label">Agentes</span>
+          </button>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <!-- ABA 1: CHAT -->
+        <main id="view-chat" class="view active">
+          <section id="chat-stage" class="chat-stage">
+            <div id="drop-overlay" class="drop-overlay" aria-hidden="true">
+              <div class="drop-overlay-ico">
+                <svg class="ico ico-lg" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              </div>
+              <div class="drop-overlay-title">Solte imagens ou PDFs aqui</div>
+              <div class="drop-overlay-sub">Até 6 arquivos por mensagem · JPG, PNG, WebP ou PDF · soma máxima de 18 MB</div>
+            </div>
+
+            <div id="chat-scroll" class="chat-scroll">
+              <div id="chat" class="chat-column"></div>
+            </div>
+
+            <div class="composer-wrap">
+              <div class="composer">
+                <div id="attach-preview" class="attach-preview" aria-live="polite"></div>
+                <input
+                  type="file"
+                  id="input-arquivo"
+                  accept="image/*,application/pdf"
+                  multiple
+                  style="display:none;"
+                  onchange="selecionarArquivo(event)"
+                />
+                <textarea
+                  id="entrada"
+                  rows="1"
+                  placeholder="Pergunte para a Athena, cole prints (Ctrl+V), arraste fotos/PDFs ou fale no microfone..."
+                  oninput="ajustarTextarea(this)"
+                  onpaste="colarArquivoChat(event)"
+                  onkeydown="if(event.key==='Enter' && !event.shiftKey){ event.preventDefault(); enviar(); }"
+                ></textarea>
+                <div class="composer-bar">
+                  <div class="composer-group">
+                    <button
+                      type="button"
+                      id="btn-modelo-chip"
+                      class="composer-icon-btn active-chip"
+                      onclick="alternarPopoverModelo(event)"
+                      title="Modelo ativo: Auto · Inteligente"
+                      aria-haspopup="true"
+                      aria-expanded="false"
+                      aria-label="Escolher modelo de IA"
+                    >
+                      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+                        <rect x="6" y="6" width="12" height="12" rx="2"/>
+                        <rect x="9.5" y="9.5" width="5" height="5" rx="0.8"/>
+                        <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>
+                      </svg>
+                      <span id="chip-dot" class="chip-dot" style="display:block;"></span>
+                    </button>
+
+                    <div id="model-popover" class="model-popover" role="menu" aria-label="Selecionar modelo de IA">
+                      <div class="model-popover-title">Modelo da Athena</div>
+                      <button type="button" class="model-option selected" data-model="auto" onclick="selecionarModelo('auto')" role="menuitem">
+                        <span class="model-opt-info">
+                          <span class="model-opt-name" style="color:var(--accent-hover);">Auto · Inteligente</span>
+                          <span class="model-opt-desc">Escolhe o melhor modelo por complexidade</span>
+                        </span>
+                        <svg class="ico ico-sm model-opt-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                      </button>
+                      <button type="button" class="model-option" data-model="gemini-3.5-flash-lite" onclick="selecionarModelo('gemini-3.5-flash-lite')" role="menuitem">
+                        <span class="model-opt-info">
+                          <span class="model-opt-name">Flash-Lite</span>
+                          <span class="model-opt-desc">Rápido e ágil para o dia a dia</span>
+                        </span>
+                        <svg class="ico ico-sm model-opt-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                      </button>
+                      <button type="button" class="model-option" data-model="gemini-4-hydrogen" onclick="selecionarModelo('gemini-4-hydrogen')" role="menuitem">
+                        <span class="model-opt-info">
+                          <span class="model-opt-name">Hydrogen</span>
+                          <span class="model-opt-desc">Analítico, criativo e apresentações</span>
+                        </span>
+                        <svg class="ico ico-sm model-opt-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                      </button>
+                      <button type="button" class="model-option" data-model="gemini-4-neon" onclick="selecionarModelo('gemini-4-neon')" role="menuitem">
+                        <span class="model-opt-info">
+                          <span class="model-opt-name">Neon</span>
+                          <span class="model-opt-desc">Raciocínio profundo e tarefas complexas</span>
+                        </span>
+                        <svg class="ico ico-sm model-opt-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="composer-group">
+                    <button type="button" id="btn-anexar" class="composer-icon-btn" onclick="abrirSeletorArquivo()" title="Anexar fotos ou PDFs (até 6 arquivos · máx. 18 MB)" aria-label="Anexar arquivos">
+                      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                    </button>
+                    <button type="button" id="btn-mic" class="composer-icon-btn" onclick="alternarMicrofone()" title="Falar mensagem (microfone pt-BR)" aria-label="Microfone">
+                      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                    </button>
+                    <button type="button" id="btn-enviar" class="btn-send-circle" onclick="enviar()" title="Enviar mensagem" aria-label="Enviar">
+                      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+                    </button>
+                    <button type="button" id="btn-parar" class="btn-stop-circle" onclick="cancelarGeracaoAtual()" title="Parar resposta da Athena" aria-label="Parar" style="display:none;">
+                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <aside id="painel-agentes" class="side-panel" aria-label="Conversa entre Agentes e Memória">
+            <div class="side-inner">
+              <h2 class="side-section-title">
+                <svg class="ico ico-sm ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 2.5 1.3 4.7 3.3 6 .5.3.7.9.7 1.5V18a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-1.5c0-.6.2-1.2.7-1.5 2-1.3 3.3-3.5 3.3-6a7 7 0 0 0-7-7z"/><line x1="9" y1="22" x2="15" y2="22"/></svg>
+                <span>Memória de Longo Prazo</span>
+                <button type="button" class="ghost mini side-close-mobile" onclick="aplicarEstadoPainelAgentes(false)" title="Fechar painel" aria-label="Fechar painel de agentes">
+                  <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </h2>
+              <div id="fatos" class="mem-bar"></div>
+              <h2 class="side-section-title">
+                <svg class="ico ico-sm ico-accent" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                <span>Conversa entre Agentes</span>
+              </h2>
+              <div id="trilha" class="trilha-lista"></div>
+            </div>
+          </aside>
+        </main>
+
+        <!-- ABA 2: CARTEIRA (REAL MERCADO PAGO + SIMULADOR) -->
+        <main id="view-carteira" class="view">
+          <div class="page-scroll">
+            <div class="page">
+              <div class="section-divider">
+                <h2>
+                  <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                  <span>Carteira Real (Mercado Pago)</span>
+                </h2>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                  <input type="file" id="input-extrato-mp" accept=".csv,.pdf" style="display:none;" onchange="importarExtratoMP(event)" />
+                  <button type="button" class="ghost" id="btn-importar-extrato" onclick="document.getElementById('input-extrato-mp').click()">
+                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span class="btn-label">Importar Extrato CSV/PDF</span>
+                  </button>
+                  <button type="button" onclick="carregarCarteira(true)">
+                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span>Atualizar</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="kpis">
+                <div class="kpi">
+                  <div class="lbl">Patrimônio Real</div>
+                  <div id="kpi-real-pat" class="val">--</div>
+                  <div id="kpi-real-base-cdi" class="sub">Base CDI/RF: --</div>
+                </div>
+                <div class="kpi">
+                  <div class="lbl">Selic / CDI (BCB)</div>
+                  <div id="kpi-real-selic" class="val" style="color:var(--accent-hover);">--</div>
+                  <div id="kpi-real-cdi-sub" class="sub">100% CDI: --</div>
+                </div>
+                <div class="kpi">
+                  <div class="lbl">Est. 100% CDI / Mês</div>
+                  <div id="kpi-real-rend" class="val pos">--</div>
+                  <div id="kpi-real-rend-ano" class="sub">Anual bruto est.: --</div>
+                </div>
+                <div class="kpi">
+                  <div class="lbl">Propostas Pendentes</div>
+                  <div id="kpi-real-prop" class="val">--</div>
+                  <div class="sub">Aguardando sua aprovação</div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <h3>
+                  <span>Saldos e Ativos Reais (Mercado Pago)</span>
+                  <span id="real-alocacao-chips" style="display:inline-flex;gap:6px;flex-wrap:wrap;font-weight:500;"></span>
+                </h3>
+                <form class="form-inline-grid" onsubmit="salvarAtivoRealForm(event)">
+                  <select id="real-tipo" class="field-dark" aria-label="Tipo de ativo">
+                    <option value="conta_cdi">Conta CDI</option>
+                    <option value="renda_fixa">Renda Fixa</option>
+                    <option value="cripto">Cripto</option>
+                    <option value="acoes_fiis">Ações / FIIs</option>
+                    <option value="etf">ETF</option>
+                  </select>
+                  <input id="real-nome" class="field-dark" placeholder="Nome (ex.: Saldo Mercado Pago)" required />
+                  <input id="real-valor" class="field-dark" type="number" step="0.01" min="0" placeholder="Valor R$" required />
+                  <input id="real-ticker" class="field-dark" placeholder="Ticker (opc.)" />
+                  <input id="real-taxa" class="field-dark" placeholder="Taxa (ex.: 105% CDI)" />
+                  <button type="submit" id="btn-salvar-ativo-real">
+                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    <span>Salvar</span>
+                  </button>
+                </form>
+                <div id="box-real-ativos" class="table-wrap empty-note">Carregando carteira real...</div>
+              </div>
+
+              <div class="panel">
+                <h3>
+                  <span>Propostas de Investimento da Athena</span>
+                  <span style="font-size:12px;font-weight:500;color:var(--muted);">Aprovação humana obrigatória · Obsidian <code>03-Financas/Aportes.md</code></span>
+                </h3>
+                <div id="box-real-propostas" class="empty-note">Carregando propostas...</div>
+                <div id="box-real-propostas-hist" class="table-wrap" style="margin-top:14px;"></div>
+              </div>
+
+              <div class="panel">
+                <h3>
+                  <span>Extrato Importado (Mercado Pago)</span>
+                  <span id="real-extrato-resumo" style="font-size:12px;font-weight:500;color:var(--muted);"></span>
+                </h3>
+                <div id="box-real-extrato" class="table-wrap empty-note">Nenhum extrato importado ainda. Use o botão "Importar Extrato CSV/PDF".</div>
+              </div>
+
+              <div class="section-divider" style="margin-top:12px;">
+                <h2>
+                  <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                  <span>Simulador (Paper Trading)</span>
+                </h2>
+                <button type="button" class="ghost" onclick="carregarCarteiraSimulada(true)">
+                  <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  <span>Atualizar cotações</span>
+                </button>
+              </div>
+
+              <div class="kpis">
+                <div class="kpi"><div class="lbl">Patrimônio Total (Simulado)</div><div id="kpi-pat" class="val">--</div></div>
+                <div class="kpi"><div class="lbl">Em Ativos</div><div id="kpi-atv" class="val">--</div></div>
+                <div class="kpi"><div class="lbl">Caixa Disponível</div><div id="kpi-cxa" class="val">--</div></div>
+              </div>
+              <div class="panel">
+                <h3><span>Posições Abertas (Simulador)</span></h3>
+                <div id="box-posicoes" class="table-wrap empty-note">Carregando...</div>
+              </div>
+              <div class="panel">
+                <h3><span>Histórico de Operações Simuladas</span></h3>
+                <div id="box-ops" class="table-wrap empty-note">Carregando...</div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <!-- ABA 3: ESTUDOS & PROVAS -->
+        <main id="view-estudos" class="view">
+          <div class="page-scroll">
+            <div class="page">
+              <div class="panel">
+                <h3>
+                  <span class="ulife-head-info">
+                    <span>Ulife (API Direta)</span>
+                    <span id="ulife-meta" class="ulife-sub">Carregando dados salvos...</span>
+                  </span>
+                  <button type="button" id="btn-sync-ulife" onclick="sincronizarUlife()">
+                    <svg class="ico ico-sm" id="ico-sync-ulife" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span class="btn-label">Sincronizar Ulife</span>
+                  </button>
+                </h3>
+                <div id="box-ulife" class="empty-note">Carregando...</div>
+              </div>
+
+              <div class="panel">
+                <h3>
+                  <span>Agenda de Provas e Entregas</span>
+                  <button type="button" class="ghost" onclick="carregarEstudos()">
+                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span>Atualizar</span>
+                  </button>
+                </h3>
+                <div id="box-provas" class="empty-note">Carregando...</div>
+              </div>
+
+              <div class="panel">
+                <h3>
+                  <span class="ulife-head-info">
+                    <span>Progresso por Matéria (PDFs da Faculdade)</span>
+                    <span id="rag-meta" class="ulife-sub">Qdrant Vetorial: verificando índice...</span>
+                  </span>
+                  <button type="button" class="ghost mini" id="btn-sync-rag" onclick="sincronizarQdrant()" title="Reindexar incrementalmente PDFs e notas do Obsidian no Qdrant">
+                    <svg class="ico ico-sm" id="ico-sync-rag" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
+                    <span class="btn-label">Reindexar Qdrant</span>
+                  </button>
+                </h3>
+                <div id="box-materias" class="empty-note">Carregando...</div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <!-- ABA 4: FAXINA & APROVACOES -->
+        <main id="view-faxina" class="view">
+          <div class="page-scroll">
+            <div class="page">
+              <div class="kpis">
+                <div class="kpi"><div class="lbl">Ações Pendentes</div><div id="kpi-fax-pend" class="val">--</div></div>
+                <div class="kpi"><div class="lbl">Ações Executadas</div><div id="kpi-fax-exec" class="val pos">--</div></div>
+                <div class="kpi"><div class="lbl">Ações Recusadas</div><div id="kpi-fax-rec" class="val neg">--</div></div>
+              </div>
+              <div class="panel">
+                <h3>
+                  <span>Ações Pendentes de Aprovação</span>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                    <button type="button" id="btn-aprovar-todas" class="btn-aprovar" onclick="aprovarTodasAcoes(this)" style="display:none;">
+                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                      <span class="btn-label">Aprovar Tudo</span>
+                    </button>
+                    <button type="button" class="ghost" onclick="carregarFaxina()">
+                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                      <span>Atualizar</span>
+                    </button>
+                  </div>
+                </h3>
+                <div id="box-fax-pendentes" class="empty-note">Carregando...</div>
+              </div>
+              <div class="panel">
+                <h3><span>Histórico de Faxina (Executadas, Recusadas & Desfeitas)</span></h3>
+                <div id="box-fax-historico" class="table-wrap empty-note">Carregando...</div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <!-- ABA 5: ROTINAS AGENDADAS + MCP -->
+        <main id="view-rotinas" class="view">
+          <div class="page-scroll">
+            <div class="page">
+              <div class="panel">
+                <h3>
+                  <span style="display:inline-flex;align-items:center;gap:8px;">
+                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    <span>Rotinas Agendadas (America/Sao_Paulo)</span>
+                  </span>
+                  <button type="button" class="ghost" onclick="carregarRotinas()">
+                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span>Atualizar</span>
+                  </button>
+                </h3>
+                <div id="box-rotinas" class="empty-note">Carregando rotinas...</div>
+              </div>
+
+              <div class="rotinas-side-grid">
+                <div class="panel">
+                  <h3>
+                    <span style="display:inline-flex;align-items:center;gap:8px;">
+                      <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v6"/><path d="M12 16v6"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="M2 12h6"/><path d="M16 12h6"/><path d="m4.93 19.07 4.24-4.24"/><path d="m14.83 9.17 4.24-4.24"/></svg>
+                      <span>Servidores MCP Conectados</span>
+                    </span>
+                    <button type="button" class="ghost mini" onclick="carregarServidoresMcp()">
+                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                      <span>Atualizar</span>
+                    </button>
+                  </h3>
+                  <div id="box-mcp-servidores" class="empty-note">Carregando servidores MCP...</div>
+                </div>
+
+                <div class="panel">
+                  <h3>
+                    <span style="display:inline-flex;align-items:center;gap:8px;">
+                      <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                      <span>Telemetria da Athena</span>
+                    </span>
+                    <button type="button" class="ghost mini" onclick="carregarTelemetria()">
+                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                      <span>Atualizar</span>
+                    </button>
+                  </h3>
+                  <div class="tele-kpis">
+                    <div class="tele-kpi">
+                      <div class="lbl">Tempo Médio</div>
+                      <div id="kpi-tele-ms" class="val" style="color:var(--accent-hover);">--</div>
+                      <div class="sub">latência média</div>
+                    </div>
+                    <div class="tele-kpi">
+                      <div class="lbl">Tokens Hoje</div>
+                      <div id="kpi-tele-tok" class="val">--</div>
+                      <div id="kpi-tele-tok-sub" class="sub">in / out</div>
+                    </div>
+                    <div class="tele-kpi">
+                      <div class="lbl">Execuções</div>
+                      <div id="kpi-tele-exec" class="val">--</div>
+                      <div id="kpi-tele-hoje" class="sub">hoje: --</div>
+                    </div>
+                    <div class="tele-kpi">
+                      <div class="lbl">Sucesso</div>
+                      <div id="kpi-tele-ok" class="val pos">--</div>
+                      <div class="sub">taxa geral</div>
+                    </div>
+                  </div>
+                  <div id="box-telemetria" class="table-wrap empty-note">Carregando telemetria...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- TELA DE BLOQUEIO FULLSCREEN POR PIN + BIOMETRIA -->
+  <div id="lock-screen" class="lock-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="lock-title">
+    <form class="lock-card" onsubmit="desbloquearComPin(event)">
+      <img class="lock-avatar" src="/athena-icon?v=2" alt="Athena" />
+      <h2 id="lock-title">Athena</h2>
+      <p>Digite o PIN de acesso para desbloquear o painel.</p>
+      <input
+        id="pin-input"
+        class="lock-input"
+        type="password"
+        inputmode="numeric"
+        autocomplete="current-password"
+        placeholder="••••••"
+        aria-label="PIN de acesso"
+      />
+      <button type="submit" id="btn-desbloquear" class="lock-btn">
+        <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+        <span>Desbloquear</span>
+      </button>
+      <button type="button" id="btn-desbloquear-bio" class="ghost lock-btn-bio" onclick="desbloquearComBiometria()" style="display:none;">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></svg>
+        <span>Desbloquear com Digital</span>
+      </button>
+      <div id="pin-erro" class="lock-erro" role="alert"></div>
+    </form>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script>
+const STORAGE_KEY_PAINEL = "athena_painel_agentes_aberto";
+const STORAGE_KEY_SIDEBAR = "athena_sidebar_recolhida";
+const STORAGE_KEY_CONVERSA = "athena_conversa_id";
+const MAX_UPLOAD_ARQUIVOS = 6;
+const MAX_UPLOAD_SOMA_BYTES = 18 * 1024 * 1024;
+const TIPOS_UPLOAD_PERMITIDOS = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+const MODELO_ROTULOS = {
+  "auto": "Auto · Inteligente",
+  "gemini-3.5-flash-lite": "Flash-Lite",
+  "gemini-flash-lite-latest": "Flash-Lite",
+  "gemini-3.8-flash": "Flash 3.8",
+  "gemini-4-hydrogen": "Hydrogen",
+  "gemini-4-neon": "Neon",
+};
+
+let _toastTimer = null;
+let _enviando = false;
+let _conversaId = "";
+let _modeloAtual = "auto";
+let _pastaRaizAtual = "";
+let _arquivosSelecionados = [];
+let _anexoSeq = 0;
+let _dragDepth = 0;
+let _recognition = null;
+let _ouvindoMic = false;
+let _textoAntesMic = "";
+let _btnFalandoAtual = null;
+let _authProtegido = false;
+let _biometriaDisponivel = false;
+let _appInicializada = false;
+
+function mostrarToast(texto, erro = false) {
+  const el = document.getElementById("toast");
+  if (!el) return;
+  el.textContent = texto;
+  el.classList.toggle("erro", !!erro);
+  el.classList.add("show");
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove("show"), 3800);
+}
+
+function escHtml(txt) {
+  return String(txt ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function fmtBRL(v) {
+  return Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function renderMD(txt) {
+  if (window.marked) {
+    const html = marked.parse(txt || "");
+    const tmp = document.createElement("div");
+    tmp.innerHTML = html;
+    tmp.querySelectorAll("script, iframe, object, embed, style, form").forEach(el => el.remove());
+    tmp.querySelectorAll("*").forEach(el => {
+      for (const attr of Array.from(el.attributes)) {
+        const name = attr.name.toLowerCase();
+        const val = (attr.value || "").trim().toLowerCase();
+        if (name.startsWith("on") || ((name === "href" || name === "src") && val.startsWith("javascript:"))) {
+          el.removeAttribute(attr.name);
+        }
+      }
+    });
+    tmp.querySelectorAll("a[href]").forEach(a => {
+      a.setAttribute("target", "_blank");
+      a.setAttribute("rel", "noopener noreferrer");
+    });
+    tmp.querySelectorAll("img[src]").forEach(img => {
+      img.setAttribute("loading", "lazy");
+      const src = img.getAttribute("src") || "";
+      if (src && (!img.parentElement || img.parentElement.tagName.toLowerCase() !== "a")) {
+        const link = document.createElement("a");
+        link.setAttribute("href", src);
+        link.setAttribute("target", "_blank");
+        link.setAttribute("rel", "noopener noreferrer");
+        link.setAttribute("title", "Abrir imagem em tamanho completo");
+        img.parentNode.insertBefore(link, img);
+        link.appendChild(img);
+      }
+    });
+    return tmp.innerHTML;
+  }
+  return escHtml(txt || "").replace(/\n/g, "<br>");
+}
+
+function ajustarTextarea(el) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 164) + "px";
+}
+
+/* ===== SIDEBAR & DRAWERS ===== */
+function ehMobile() {
+  return window.innerWidth <= 768;
+}
+
+function atualizarBackdrop() {
+  const sb = document.getElementById("sidebar");
+  const ag = document.getElementById("painel-agentes");
+  const bd = document.getElementById("drawer-backdrop");
+  if (!bd) return;
+  const sbAberto = sb && sb.classList.contains("mobile-open");
+  const agAberto = window.innerWidth <= 1024 && ag && !ag.classList.contains("collapsed");
+  bd.classList.toggle("visible", !!(sbAberto || agAberto));
+}
+
+function fecharDrawersMobile() {
+  const sb = document.getElementById("sidebar");
+  if (sb) sb.classList.remove("mobile-open");
+  if (window.innerWidth <= 1024) {
+    aplicarEstadoPainelAgentes(false);
+  }
+  atualizarBackdrop();
+}
+
+function abrirSidebarMobile() {
+  const sb = document.getElementById("sidebar");
+  if (!sb) return;
+  if (window.innerWidth <= 1024) aplicarEstadoPainelAgentes(false);
+  sb.classList.toggle("mobile-open");
+  atualizarBackdrop();
+}
+
+function alternarSidebar() {
+  const sb = document.getElementById("sidebar");
+  if (!sb) return;
+  if (ehMobile()) {
+    sb.classList.toggle("mobile-open");
+    atualizarBackdrop();
+    return;
+  }
+  const recolhida = sb.classList.toggle("collapsed");
+  try { localStorage.setItem(STORAGE_KEY_SIDEBAR, recolhida ? "1" : "0"); } catch (_) {}
+}
+
+function initSidebar() {
+  const sb = document.getElementById("sidebar");
+  if (!sb || ehMobile()) return;
+  try {
+    if (localStorage.getItem(STORAGE_KEY_SIDEBAR) === "1") {
+      sb.classList.add("collapsed");
+    }
+  } catch (_) {}
+}
+
+function aplicarEstadoPainelAgentes(aberto) {
+  const painel = document.getElementById("painel-agentes");
+  const btn = document.getElementById("btn-toggle-agentes");
+  if (!painel || !btn) return;
+  if (aberto && ehMobile()) {
+    const sb = document.getElementById("sidebar");
+    if (sb) sb.classList.remove("mobile-open");
+  }
+  painel.classList.toggle("collapsed", !aberto);
+  btn.classList.toggle("active-toggle", aberto);
+  const lbl = btn.querySelector(".btn-label");
+  if (lbl) lbl.textContent = aberto ? "Agentes" : "Agentes";
+  if (window.innerWidth > 1024) {
+    try { localStorage.setItem(STORAGE_KEY_PAINEL, aberto ? "1" : "0"); } catch (_) {}
+  }
+  atualizarBackdrop();
+}
+
+function initPainelAgentes() {
+  if (window.innerWidth <= 1024) {
+    aplicarEstadoPainelAgentes(false);
+    return;
+  }
+  let aberto = true;
+  try {
+    const salvo = localStorage.getItem(STORAGE_KEY_PAINEL);
+    if (salvo === "0") aberto = false;
+    else if (salvo === "1") aberto = true;
+  } catch (_) {}
+  aplicarEstadoPainelAgentes(aberto);
+}
+
+function alternarPainelAgentes() {
+  const painel = document.getElementById("painel-agentes");
+  if (!painel) return;
+  aplicarEstadoPainelAgentes(painel.classList.contains("collapsed"));
+}
+
+function abrirAba(nome, btn) {
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  document.querySelectorAll(".sidebar-nav .nav-item").forEach(t => t.classList.remove("active"));
+  const alvo = document.getElementById("view-" + nome);
+  if (alvo) alvo.classList.add("active");
+  if (btn) btn.classList.add("active");
+
+  document.querySelectorAll(".topbar-right .chat-only").forEach(el => {
+    el.classList.toggle("hidden", nome !== "chat");
+  });
+
+  if (ehMobile()) {
+    fecharDrawersMobile();
+  }
+
+  if (nome === "carteira") carregarCarteira();
+  if (nome === "estudos") carregarEstudos();
+  if (nome === "faxina") carregarFaxina();
+  if (nome === "rotinas") carregarRotinas();
+}
+
+/* ===== MODELO CHIP POPOVER ===== */
+function atualizarUIModelo(modeloId) {
+  _modeloAtual = modeloId || "auto";
+  const rotulo = MODELO_ROTULOS[_modeloAtual] || _modeloAtual;
+  const btn = document.getElementById("btn-modelo-chip");
+  const dot = document.getElementById("chip-dot");
+  const destacarAmarelo = _modeloAtual === "auto" || _modeloAtual === "gemini-4-hydrogen" || _modeloAtual === "gemini-4-neon";
+  if (btn) {
+    btn.title = `Modelo ativo: ${rotulo} (${_modeloAtual})`;
+    btn.classList.toggle("active-chip", destacarAmarelo);
+  }
+  if (dot) {
+    dot.style.display = destacarAmarelo ? "block" : "none";
+  }
+  document.querySelectorAll("#model-popover .model-option").forEach(opt => {
+    opt.classList.toggle("selected", opt.dataset.model === _modeloAtual);
+  });
+}
+
+function alternarPopoverModelo(ev) {
+  if (ev) ev.stopPropagation();
+  const pop = document.getElementById("model-popover");
+  const btn = document.getElementById("btn-modelo-chip");
+  if (!pop || !btn) return;
+  const abrindo = !pop.classList.contains("open");
+  pop.classList.toggle("open", abrindo);
+  btn.setAttribute("aria-expanded", abrindo ? "true" : "false");
+}
+
+function fecharPopoverModelo() {
+  const pop = document.getElementById("model-popover");
+  const btn = document.getElementById("btn-modelo-chip");
+  if (pop) pop.classList.remove("open");
+  if (btn) btn.setAttribute("aria-expanded", "false");
+}
+
+async function selecionarModelo(modelo) {
+  fecharPopoverModelo();
+  if (modelo === _modeloAtual) return;
+  atualizarUIModelo(modelo);
+  try {
+    const r = await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modelo }),
+    }).then(x => x.json());
+    if (r.ok) {
+      atualizarUIModelo(r.modelo);
+      mostrarToast("Modelo ativo: " + (MODELO_ROTULOS[r.modelo] || r.modelo));
+    } else {
+      mostrarToast("Erro: " + (r.erro || "Modelo inválido."), true);
+      carregarConfig();
+    }
+  } catch (e) {
+    mostrarToast("Erro ao atualizar modelo.", true);
+  }
+}
+
+document.addEventListener("click", (ev) => {
+  const pop = document.getElementById("model-popover");
+  const btn = document.getElementById("btn-modelo-chip");
+  if (pop && pop.classList.contains("open") && !pop.contains(ev.target) && (!btn || !btn.contains(ev.target))) {
+    fecharPopoverModelo();
+  }
+});
+
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape") {
+    fecharPopoverModelo();
+    fecharDrawersMobile();
+  }
+});
+
+/* ===== CONFIG & PASTA ATIVA ===== */
+function atualizarLabelPasta(caminho) {
+  _pastaRaizAtual = caminho || "";
+  const btn = document.getElementById("btn-escolher-pasta");
+  const lbl = document.getElementById("pasta-label");
+  const partes = _pastaRaizAtual.replace(/[\\/]+$/, "").split(/[\\/]/);
+  const nomeBase = partes[partes.length - 1] || "Pasta ativa";
+  if (lbl) lbl.textContent = nomeBase;
+  if (btn) btn.title = _pastaRaizAtual ? `Pasta ativa: ${_pastaRaizAtual} (clique para alterar)` : "Escolher pasta autorizada";
+}
+
+async function carregarConfig() {
+  try {
+    const r = await fetch("/api/config").then(x => x.json());
+    if (r.pasta_raiz) atualizarLabelPasta(r.pasta_raiz);
+    if (r.modelo) atualizarUIModelo(r.modelo);
+  } catch (e) {
+    mostrarToast("Não foi possível carregar as configurações.", true);
+  }
+}
+
+async function escolherPasta() {
+  const btn = document.getElementById("btn-escolher-pasta");
+  const lbl = document.getElementById("pasta-label");
+  const textoAnt = lbl ? lbl.textContent : "Pasta ativa";
+  if (btn) btn.disabled = true;
+  if (lbl) lbl.textContent = "Abrindo...";
+  try {
+    const r = await fetch("/api/escolher-pasta", { method: "POST" }).then(x => x.json());
+    if (r.ok) {
+      atualizarLabelPasta(r.pasta_raiz);
+      mostrarToast("Pasta selecionada: " + r.pasta_raiz);
+    } else if (!r.cancelado) {
+      mostrarToast("Erro: " + (r.erro || "Não foi possível selecionar a pasta."), true);
+      if (lbl) lbl.textContent = textoAnt;
+    } else if (lbl) {
+      lbl.textContent = textoAnt;
+    }
+  } catch (e) {
+    mostrarToast("Erro ao abrir o seletor de pastas.", true);
+    if (lbl) lbl.textContent = textoAnt;
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* ===== VOZ (TTS + MICROFONE) & MULTIMODAL ===== */
+function limparMarkdownParaVoz(txt) {
+  return String(txt || "")
+    .replace(/```[\s\S]*?```/g, " trecho de código omitido. ")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]+\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/[*_~>]/g, "")
+    .replace(/\n{2,}/g, ". ")
+    .replace(/\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function pararLeituraVoz() {
+  if (window.speechSynthesis) {
+    try { window.speechSynthesis.cancel(); } catch (_) {}
+  }
+  if (_btnFalandoAtual) {
+    _btnFalandoAtual.classList.remove("speaking");
+    _btnFalandoAtual.innerHTML = '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg><span>Ouvir</span>';
+    _btnFalandoAtual = null;
+  }
+}
+
+function alternarLeituraResposta(btn, textoBruto) {
+  if (!window.speechSynthesis) {
+    mostrarToast("Seu navegador não suporta leitura por voz (speechSynthesis).", true);
+    return;
+  }
+  const eraOMesmo = _btnFalandoAtual === btn;
+  pararLeituraVoz();
+  if (eraOMesmo) return;
+
+  const limpo = limparMarkdownParaVoz(textoBruto);
+  if (!limpo) return;
+
+  const utt = new SpeechSynthesisUtterance(limpo);
+  utt.lang = "pt-BR";
+  utt.rate = 1.04;
+  const vozes = window.speechSynthesis.getVoices ? window.speechSynthesis.getVoices() : [];
+  const vozPt = vozes.find(v => (v.lang || "").toLowerCase().startsWith("pt-br")) || vozes.find(v => (v.lang || "").toLowerCase().startsWith("pt"));
+  if (vozPt) utt.voice = vozPt;
+
+  btn.classList.add("speaking");
+  btn.innerHTML = '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>Parar</span>';
+  _btnFalandoAtual = btn;
+
+  utt.onend = () => { if (_btnFalandoAtual === btn) pararLeituraVoz(); };
+  utt.onerror = () => { if (_btnFalandoAtual === btn) pararLeituraVoz(); };
+  window.speechSynthesis.speak(utt);
+}
+
+function formatarLatenciaChat(ms) {
+  const n = Math.max(0, Math.round(Number(ms || 0)));
+  if (n >= 10000) {
+    return `${(n / 1000).toFixed(2).replace(".", ",")} s`;
+  }
+  return `${n.toLocaleString("pt-BR")} ms`;
+}
+
+function anexarBotaoOuvir(wrapper, textoBruto, metaModelo = null) {
+  const antigo = wrapper.querySelector(".msg-actions");
+  if (antigo) antigo.remove();
+  const limpo = (textoBruto || "").trim();
+  if (!limpo) return;
+
+  const actions = document.createElement("div");
+  actions.className = "msg-actions";
+  actions.style.flexWrap = "wrap";
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "btn-ouvir";
+  btn.title = "Ouvir resposta em voz alta (pt-BR)";
+  btn.innerHTML = '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg><span>Ouvir</span>';
+  btn.onclick = () => alternarLeituraResposta(btn, limpo);
+  actions.appendChild(btn);
+
+  const modeloUsado = metaModelo ? (metaModelo.modeloUsado || metaModelo.modelo_usado || "") : "";
+  const modoAuto = metaModelo ? Boolean(metaModelo.modoAuto ?? metaModelo.modo_auto) : false;
+  const motivo = metaModelo ? (metaModelo.motivo || metaModelo.motivo_modelo || "") : "";
+
+  if (modeloUsado) {
+    const rotReal = MODELO_ROTULOS[modeloUsado] || modeloUsado;
+    const tag = document.createElement("span");
+    tag.className = "msg-model-tag" + (modoAuto ? " is-auto" : "");
+    tag.textContent = modoAuto ? `Auto → ${rotReal}` : rotReal;
+    if (motivo) tag.title = motivo;
+    actions.appendChild(tag);
+  }
+
+  const durMs = metaModelo ? Number(metaModelo.duracao_ms ?? metaModelo.duracaoMs ?? 0) : 0;
+  const tokIn = metaModelo ? Number(metaModelo.tokens_in ?? metaModelo.tokensIn ?? 0) : 0;
+  const tokOut = metaModelo ? Number(metaModelo.tokens_out ?? metaModelo.tokensOut ?? 0) : 0;
+  const tokTotal = tokIn + tokOut;
+
+  if (durMs > 0 || tokTotal > 0) {
+    const partes = [];
+    if (durMs > 0) partes.push(formatarLatenciaChat(durMs));
+    if (tokTotal > 0) partes.push(`${tokTotal.toLocaleString("pt-BR")} tokens`);
+    const stats = document.createElement("span");
+    stats.className = "msg-meta-stats";
+    stats.textContent = partes.join(" · ");
+    const dica = [];
+    if (durMs > 0) dica.push(`Tempo: ${Math.round(durMs).toLocaleString("pt-BR")} ms (${(durMs / 1000).toFixed(2).replace(".", ",")} s)`);
+    if (tokTotal > 0) dica.push(`Entrada: ${tokIn.toLocaleString("pt-BR")} tokens · Saída: ${tokOut.toLocaleString("pt-BR")} tokens`);
+    if (dica.length) stats.title = dica.join(" | ");
+    actions.appendChild(stats);
+  }
+
+  wrapper.appendChild(actions);
+}
+
+function formatarTamanhoArquivo(bytes) {
+  if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  return Math.max(1, Math.round(bytes / 1024)) + " KB";
+}
+
+function abrirSeletorArquivo() {
+  const inp = document.getElementById("input-arquivo");
+  if (inp) inp.click();
+}
+
+function somaBytesAnexos() {
+  return _arquivosSelecionados.reduce((acc, item) => acc + (item.file ? item.file.size : 0), 0);
+}
+
+function gerarNomeAnexoSeguro(file, ehPaste = false) {
+  const nomeBruto = (file && file.name ? file.name : "").trim();
+  const mime = (file && file.type ? file.type : "").toLowerCase();
+  const extPorMime = mime === "image/jpeg" || mime === "image/jpg" ? "jpg"
+    : mime === "image/webp" ? "webp"
+    : mime === "application/pdf" ? "pdf"
+    : "png";
+
+  if (!nomeBruto || (ehPaste && /^image\.(png|jpe?g|webp)$/i.test(nomeBruto))) {
+    const agora = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const stamp = `${pad(agora.getHours())}${pad(agora.getMinutes())}${pad(agora.getSeconds())}`;
+    return `print_${stamp}_${_anexoSeq + 1}.${extPorMime}`;
+  }
+  return nomeBruto;
+}
+
+function renderAnexosPreview() {
+  const box = document.getElementById("attach-preview");
+  const btnAnexar = document.getElementById("btn-anexar");
+  if (!box) return;
+
+  if (!_arquivosSelecionados.length) {
+    box.innerHTML = "";
+    box.classList.remove("visible");
+    if (btnAnexar) btnAnexar.classList.remove("active-chip");
+    return;
+  }
+
+  const chipsHtml = _arquivosSelecionados.map((item) => {
+    const iconeHtml = item.ehImg && item.previewUrl
+      ? `<img class="attach-thumb" src="${item.previewUrl}" alt="Prévia" />`
+      : '<span class="attach-pdf-ico"><svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>';
+
+    return `
+      <div class="attach-chip">
+        ${iconeHtml}
+        <div class="attach-info">
+          <span class="attach-name" title="${escHtml(item.nome)}">${escHtml(item.nome)}</span>
+          <span class="attach-size">${formatarTamanhoArquivo(item.file.size)}</span>
+        </div>
+        <button type="button" class="attach-remove" onclick="removerAnexoPorId(${item.id})" title="Remover anexo" aria-label="Remover anexo">
+          <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    `;
+  }).join("");
+
+  const metaHtml = `<span class="attach-meta">${_arquivosSelecionados.length}/${MAX_UPLOAD_ARQUIVOS} · ${formatarTamanhoArquivo(somaBytesAnexos())}</span>`;
+  box.innerHTML = chipsHtml + metaHtml;
+  box.classList.add("visible");
+  if (btnAnexar) btnAnexar.classList.add("active-chip");
+}
+
+function adicionarAnexos(fileList, ehPaste = false) {
+  const lista = Array.from(fileList || []).filter(Boolean);
+  if (!lista.length) return 0;
+
+  let adicionados = 0;
+  let somaAtual = somaBytesAnexos();
+  let avisoTipo = false;
+  let avisoQtd = false;
+  let avisoTam = false;
+
+  for (const file of lista) {
+    const ext = (file.name || "").split(".").pop().toLowerCase();
+    const mimeRaw = (file.type || "").toLowerCase();
+    const mime = mimeRaw === "image/jpg" ? "image/jpeg" : mimeRaw;
+    const extOk = ["jpg", "jpeg", "png", "webp", "pdf"].includes(ext);
+
+    if (!TIPOS_UPLOAD_PERMITIDOS.has(mime) && !extOk) {
+      avisoTipo = true;
+      continue;
+    }
+    if (_arquivosSelecionados.length >= MAX_UPLOAD_ARQUIVOS) {
+      avisoQtd = true;
+      continue;
+    }
+    if (somaAtual + file.size > MAX_UPLOAD_SOMA_BYTES) {
+      avisoTam = true;
+      continue;
+    }
+
+    const ehImg = mime.startsWith("image/") || ["jpg", "jpeg", "png", "webp"].includes(ext);
+    const nome = gerarNomeAnexoSeguro(file, ehPaste);
+    const id = ++_anexoSeq;
+    const previewUrl = ehImg ? URL.createObjectURL(file) : null;
+
+    _arquivosSelecionados.push({ id, file, nome, ehImg, previewUrl });
+    somaAtual += file.size;
+    adicionados += 1;
+  }
+
+  renderAnexosPreview();
+
+  if (avisoQtd) {
+    mostrarToast(`Limite de ${MAX_UPLOAD_ARQUIVOS} arquivos por mensagem atingido.`, true);
+  } else if (avisoTam) {
+    mostrarToast("Soma dos anexos excede o limite de 18 MB por mensagem.", true);
+  } else if (avisoTipo) {
+    mostrarToast("Alguns arquivos foram ignorados. Use JPG, PNG, WebP ou PDF.", true);
+  } else if (adicionados > 0 && ehPaste) {
+    mostrarToast(adicionados === 1 ? "Imagem colada como anexo!" : `${adicionados} arquivos colados como anexos!`);
+  }
+
+  return adicionados;
+}
+
+function selecionarArquivo(ev) {
+  const files = ev.target && ev.target.files ? ev.target.files : null;
+  if (files && files.length) {
+    adicionarAnexos(files, false);
+  }
+  if (ev.target) ev.target.value = "";
+}
+
+function colarArquivoChat(ev) {
+  const dt = ev.clipboardData;
+  if (!dt) return;
+
+  const coletados = [];
+  if (dt.items && dt.items.length) {
+    for (const item of Array.from(dt.items)) {
+      if (item.kind === "file") {
+        const f = item.getAsFile();
+        if (f && ((f.type || "").startsWith("image/") || f.type === "application/pdf")) {
+          coletados.push(f);
+        }
+      }
+    }
+  } else if (dt.files && dt.files.length) {
+    for (const f of Array.from(dt.files)) {
+      if ((f.type || "").startsWith("image/") || f.type === "application/pdf") {
+        coletados.push(f);
+      }
+    }
+  }
+
+  if (coletados.length) {
+    ev.preventDefault();
+    adicionarAnexos(coletados, true);
+  }
+}
+
+function removerAnexoPorId(id) {
+  const idx = _arquivosSelecionados.findIndex(item => item.id === id);
+  if (idx === -1) return;
+  const [rem] = _arquivosSelecionados.splice(idx, 1);
+  if (rem && rem.previewUrl) {
+    try { URL.revokeObjectURL(rem.previewUrl); } catch (_) {}
+  }
+  renderAnexosPreview();
+}
+
+function removerAnexo() {
+  for (const item of _arquivosSelecionados) {
+    if (item && item.previewUrl) {
+      try { URL.revokeObjectURL(item.previewUrl); } catch (_) {}
+    }
+  }
+  _arquivosSelecionados = [];
+  const inp = document.getElementById("input-arquivo");
+  if (inp) inp.value = "";
+  renderAnexosPreview();
+}
+
+function initDragAndDropChat() {
+  const stage = document.getElementById("chat-stage");
+  if (!stage) return;
+
+  const temArquivos = (ev) => {
+    const dt = ev.dataTransfer;
+    if (!dt || !dt.types) return false;
+    return Array.from(dt.types).includes("Files");
+  };
+
+  window.addEventListener("dragover", (ev) => {
+    if (temArquivos(ev)) ev.preventDefault();
+  });
+  window.addEventListener("drop", (ev) => {
+    if (temArquivos(ev)) {
+      ev.preventDefault();
+      _dragDepth = 0;
+      stage.classList.remove("drag-over");
+    }
+  });
+
+  stage.addEventListener("dragenter", (ev) => {
+    if (!temArquivos(ev)) return;
+    ev.preventDefault();
+    _dragDepth += 1;
+    stage.classList.add("drag-over");
+  });
+
+  stage.addEventListener("dragover", (ev) => {
+    if (!temArquivos(ev)) return;
+    ev.preventDefault();
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy";
+    stage.classList.add("drag-over");
+  });
+
+  stage.addEventListener("dragleave", (ev) => {
+    if (!temArquivos(ev)) return;
+    _dragDepth = Math.max(0, _dragDepth - 1);
+    if (_dragDepth === 0) stage.classList.remove("drag-over");
+  });
+
+  stage.addEventListener("drop", (ev) => {
+    if (!temArquivos(ev)) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    _dragDepth = 0;
+    stage.classList.remove("drag-over");
+    const files = ev.dataTransfer && ev.dataTransfer.files ? ev.dataTransfer.files : null;
+    if (files && files.length) {
+      const qtd = adicionarAnexos(files, false);
+      if (qtd > 0) {
+        mostrarToast(qtd === 1 ? "1 arquivo adicionado ao chat." : `${qtd} arquivos adicionados ao chat.`);
+      }
+    }
+  });
+}
+
+function atualizarEstadoMic(ativo) {
+  _ouvindoMic = ativo;
+  const btn = document.getElementById("btn-mic");
+  if (btn) {
+    btn.classList.toggle("mic-listening", ativo);
+    btn.title = ativo ? "Parar gravação de voz" : "Falar mensagem (microfone pt-BR)";
+  }
+}
+
+function alternarMicrofone() {
+  if (_ouvindoMic && _recognition) {
+    try { _recognition.stop(); } catch (_) {}
+    atualizarEstadoMic(false);
+    return;
+  }
+
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    mostrarToast("Reconhecimento de voz não disponível neste navegador (use Chrome/Edge).", true);
+    return;
+  }
+
+  if (!window.isSecureContext) {
+    mostrarToast("O navegador bloqueia o microfone em HTTP. Ative HTTPS com `tailscale serve` para falar pelo celular.", true);
+    return;
+  }
+
+  const inp = document.getElementById("entrada");
+  _textoAntesMic = (inp.value || "").trim();
+
+  try {
+    const rec = new SR();
+    rec.lang = "pt-BR";
+    rec.interimResults = true;
+    rec.continuous = false;
+
+    rec.onstart = () => atualizarEstadoMic(true);
+
+    rec.onresult = (event) => {
+      let transcrito = "";
+      for (let i = 0; i < event.results.length; i++) {
+        transcrito += event.results[i][0].transcript;
+      }
+      inp.value = _textoAntesMic ? `${_textoAntesMic} ${transcrito.trim()}` : transcrito.trim();
+      ajustarTextarea(inp);
+    };
+
+    rec.onerror = (ev) => {
+      atualizarEstadoMic(false);
+      const err = ev && ev.error ? ev.error : "";
+      if (err === "not-allowed" || err === "service-not-allowed") {
+        if (location.protocol !== "https:" && location.hostname !== "127.0.0.1" && location.hostname !== "localhost") {
+          mostrarToast("Microfone bloqueado em HTTP. Use HTTPS (ex.: `tailscale serve`) para habilitar o microfone.", true);
+        } else {
+          mostrarToast("Permissão do microfone negada no navegador.", true);
+        }
+      } else if (err && err !== "no-speech" && err !== "aborted") {
+        mostrarToast("Erro no microfone: " + err, true);
+      }
+    };
+
+    rec.onend = () => {
+      atualizarEstadoMic(false);
+      inp.focus();
+    };
+
+    _recognition = rec;
+    rec.start();
+  } catch (e) {
+    atualizarEstadoMic(false);
+    mostrarToast("Não foi possível iniciar o microfone. Em acesso remoto, use HTTPS via `tailscale serve`.", true);
+  }
+}
+
+/* ===== CHAT ===== */
+function renderEstadoVazioChat() {
+  const chat = document.getElementById("chat");
+  chat.innerHTML = `
+    <div class="chat-empty">
+      <img class="chat-empty-avatar" src="/athena-icon?v=2" alt="Athena" />
+      <h2>Olá, eu sou a <span>Athena</span></h2>
+      <p>Sua assistente central com 7 especialistas integrados: Estudos &amp; Ulife, Carteira Real &amp; Mercado, Sistema, Pesquisador, Analista, Faxineiro e Google.</p>
+      <div class="suggestions">
+        <button type="button" class="sug-chip" onclick="usarSugestao('Analise minha carteira real do Mercado Pago comparando com a Selic/CDI atual')">Carteira Real vs CDI</button>
+        <button type="button" class="sug-chip" onclick="usarSugestao('Quais são minhas notas, provas e avisos recentes no Ulife?')">Notas e prazos Ulife</button>
+        <button type="button" class="sug-chip" onclick="usarSugestao('Escaneie minha pasta Downloads procurando arquivos grandes ou duplicados')">Faxina em Downloads</button>
+      </div>
+    </div>
+  `;
+}
+
+function usarSugestao(texto) {
+  const inp = document.getElementById("entrada");
+  inp.value = texto;
+  ajustarTextarea(inp);
+  inp.focus();
+}
+
+function removerEstadoVazioChat() {
+  const vazio = document.querySelector("#chat .chat-empty");
+  if (vazio) vazio.remove();
+}
+
+function addMsg(cls, txt, isHtml = false, extraOpts = null, animar = true) {
+  removerEstadoVazioChat();
+  const chat = document.getElementById("chat");
+  const row = document.createElement("div");
+  row.className = "msg-row " + cls + (animar ? " animate-in" : "");
+
+  const bubble = document.createElement("div");
+  bubble.className = "msg " + cls;
+
+  if (cls === "bot") {
+    const avatar = document.createElement("img");
+    avatar.className = "bot-avatar";
+    avatar.src = "/athena-icon?v=2";
+    avatar.alt = "Athena";
+    row.appendChild(avatar);
+
+    const wrap = document.createElement("div");
+    wrap.className = "msg-bot-wrap";
+    bubble.innerHTML = isHtml ? txt : renderMD(txt);
+    wrap.appendChild(bubble);
+    if (extraOpts && Array.isArray(extraOpts.acoes_windows)) {
+      for (const ac of extraOpts.acoes_windows) {
+        anexarCardPermissaoNaBolha(wrap, ac);
+      }
+    }
+    if (!isHtml && txt) {
+      anexarBotaoOuvir(wrap, txt, extraOpts);
+    }
+    row.appendChild(wrap);
+  } else {
+    if (extraOpts && Array.isArray(extraOpts.imgs) && extraOpts.imgs.length) {
+      const grid = document.createElement("div");
+      grid.className = "user-attach-grid";
+      for (const im of extraOpts.imgs) {
+        if (!im || !im.dataUrl) continue;
+        const img = document.createElement("img");
+        img.className = "user-attach-thumb";
+        img.src = im.dataUrl;
+        img.alt = im.fileName || "Imagem anexada";
+        grid.appendChild(img);
+      }
+      if (grid.childNodes.length) bubble.appendChild(grid);
+    } else if (extraOpts && extraOpts.imgDataUrl) {
+      const img = document.createElement("img");
+      img.className = "user-attach-thumb";
+      img.src = extraOpts.imgDataUrl;
+      img.alt = extraOpts.fileName || "Imagem anexada";
+      bubble.appendChild(img);
+    }
+    const spanTxt = document.createElement("div");
+    spanTxt.textContent = txt;
+    bubble.appendChild(spanTxt);
+    row.appendChild(bubble);
+  }
+
+  chat.appendChild(row);
+  const sc = document.getElementById("chat-scroll");
+  sc.scrollTop = sc.scrollHeight;
+  return bubble;
+}
+
+function renderTrilha(trilha) {
+  const box = document.getElementById("trilha");
+  box.innerHTML = "";
+  if (!trilha || !trilha.length) {
+    box.innerHTML = '<span class="empty-note">As delegações e ações dos agentes aparecerão aqui.</span>';
+    return;
+  }
+  const LIMITE_RESUMO = 260;
+  for (const item of trilha) {
+    const c = document.createElement("div");
+    c.className = "card " + (item.tipo || "");
+    const rota = document.createElement("div");
+    rota.className = "rota";
+    rota.textContent = `${item.de} -> ${item.para} (${item.tipo})`;
+    const corpo = document.createElement("div");
+    const completo = String(item.conteudo || "");
+    const longo = completo.length > LIMITE_RESUMO;
+    corpo.textContent = longo ? completo.slice(0, LIMITE_RESUMO) + "..." : completo;
+    c.appendChild(rota);
+    c.appendChild(corpo);
+    if (longo) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "corpo-toggle";
+      btn.textContent = "Ver completo";
+      let aberto = false;
+      btn.onclick = () => {
+        aberto = !aberto;
+        corpo.textContent = aberto ? completo : completo.slice(0, LIMITE_RESUMO) + "...";
+        btn.textContent = aberto ? "Recolher" : "Ver completo";
+      };
+      c.appendChild(btn);
+    }
+    box.appendChild(c);
+  }
+}
+
+function renderFatos(fatos) {
+  const bar = document.getElementById("fatos");
+  bar.innerHTML = "";
+  if (!fatos || !fatos.length) {
+    bar.innerHTML = '<span class="empty-note" style="font-size:12px;">Nenhuma memória salva ainda. Diga "Lembra que..." no chat.</span>';
+    return;
+  }
+  for (const f of fatos) {
+    const p = document.createElement("span");
+    p.className = "pill";
+    p.title = `${f.chave}: ${f.valor}`;
+    const t = document.createElement("span");
+    t.className = "lbl";
+    t.textContent = `${f.chave}: ${f.valor}`;
+    const x = document.createElement("span");
+    x.className = "x";
+    x.textContent = "×";
+    x.title = "Remover memória";
+    x.onclick = async () => {
+      await fetch("/api/memorias/" + encodeURIComponent(f.chave), { method: "DELETE" });
+      carregarHistorico();
+      mostrarToast("Memória removida: " + f.chave);
+    };
+    p.appendChild(t);
+    p.appendChild(x);
+    bar.appendChild(p);
+  }
+}
+
+async function carregarHistorico() {
+  try {
+    const r = await fetch("/api/historico").then(x => x.json());
+    const chat = document.getElementById("chat");
+    chat.innerHTML = "";
+    let ultimaTrilha = [];
+    const msgs = r.mensagens || [];
+    if (!msgs.length) {
+      renderEstadoVazioChat();
+    } else {
+      for (const m of msgs) {
+        addMsg(m.role, m.conteudo, false, m.role === "bot" ? (m.meta || null) : null, false);
+        if (m.trilha && m.trilha.length) ultimaTrilha = m.trilha;
+      }
+    }
+    renderTrilha(ultimaTrilha);
+    renderFatos(r.fatos);
+  } catch (e) {
+    mostrarToast("Erro ao carregar histórico.", true);
+  }
+}
+
+function obterOuCriarConversaId(forcarNova = false) {
+  let cid = "";
+  if (!forcarNova) {
+    try { cid = (localStorage.getItem(STORAGE_KEY_CONVERSA) || "").trim(); } catch (_) {}
+  }
+  if (!cid || !/^[A-Za-z0-9_-]{3,64}$/.test(cid)) {
+    cid = "conv_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
+    try { localStorage.setItem(STORAGE_KEY_CONVERSA, cid); } catch (_) {}
+  }
+  _conversaId = cid;
+  return cid;
+}
+
+function definirEstadoExecutando(ativo) {
+  _enviando = !!ativo;
+  const btnEnviar = document.getElementById("btn-enviar");
+  const btnParar = document.getElementById("btn-parar");
+  if (btnEnviar) {
+    btnEnviar.style.display = _enviando ? "none" : "inline-flex";
+    btnEnviar.disabled = _enviando;
+  }
+  if (btnParar) {
+    btnParar.style.display = _enviando ? "inline-flex" : "none";
+    btnParar.disabled = false;
+  }
+}
+
+async function cancelarGeracaoAtual() {
+  const cid = obterOuCriarConversaId();
+  const btnParar = document.getElementById("btn-parar");
+  if (btnParar) btnParar.disabled = true;
+  try {
+    const r = await fetch(`/api/chat-cancelar/${encodeURIComponent(cid)}`, { method: "POST" }).then(x => x.json());
+    if (r && r.cancelada) {
+      mostrarToast("Interrompendo resposta da Athena...");
+    } else {
+      definirEstadoExecutando(false);
+    }
+  } catch (e) {
+    mostrarToast("Não foi possível cancelar a tarefa.", true);
+    if (btnParar) btnParar.disabled = false;
+  }
+}
+
+async function limparChat() {
+  pararLeituraVoz();
+  if (_enviando) {
+    try { await fetch(`/api/chat-cancelar/${encodeURIComponent(obterOuCriarConversaId())}`, { method: "POST" }); } catch (_) {}
+    definirEstadoExecutando(false);
+  }
+  try {
+    await fetch("/api/historico", { method: "DELETE" });
+    obterOuCriarConversaId(true);
+    renderEstadoVazioChat();
+    renderTrilha([]);
+    mostrarToast("Conversa limpa.");
+    if (ehMobile()) fecharDrawersMobile();
+  } catch (e) {
+    mostrarToast("Erro ao limpar o chat.", true);
+  }
+}
+
+/* ===== CARD INLINE DE PERMISSAO WINDOWS 11 ===== */
+function criarHtmlAcoesCardWindows(acao) {
+  const st = String(acao.status || "pendente").toLowerCase();
+  if (st === "executada") {
+    const rotulo = acao.auto_executada ? "Executado automaticamente ✓" : "Executado ✓";
+    return `<span class="win-perm-status is-exec">${rotulo}</span>`;
+  }
+  if (st === "recusada") {
+    return `<span class="win-perm-status is-rec">Recusado</span>`;
+  }
+  const podeSempre = acao.tipo === "abrir_app" && String(acao.risco || "baixo") === "baixo";
+  const btnSempre = podeSempre
+    ? `<button type="button" class="btn-win-sempre" onclick="responderPermissaoWindows(${Number(acao.id)}, true, true, this)">Sempre permitir</button>`
+    : "";
+  return `
+    <button type="button" class="btn-win-permitir" onclick="responderPermissaoWindows(${Number(acao.id)}, true, false, this)">Permitir</button>
+    ${btnSempre}
+    <button type="button" class="btn-win-recusar" onclick="responderPermissaoWindows(${Number(acao.id)}, false, false, this)">Recusar</button>
+  `;
+}
+
+function criarCardPermissaoWindows(acao) {
+  const card = document.createElement("div");
+  card.className = "win-perm-card";
+  card.dataset.winAcaoId = String(acao.id);
+
+  const risco = String(acao.risco || "baixo").toLowerCase();
+  const iconeSvg = acao.tipo === "abrir_url"
+    ? '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
+    : (acao.tipo === "abrir_caminho"
+      ? '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>'
+      : '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="18" x2="12" y2="21"/></svg>');
+
+  card.innerHTML = `
+    <div class="win-perm-head">
+      <div class="win-perm-title">${iconeSvg}<span>${escHtml(acao.descricao || "Ação no Windows")}</span></div>
+      <span class="win-perm-risco ${escHtml(risco)}">risco ${escHtml(risco)}</span>
+    </div>
+    <div class="win-perm-target">${escHtml(acao.alvo || "")}</div>
+    <div class="win-perm-actions">${criarHtmlAcoesCardWindows(acao)}</div>
+  `;
+  return card;
+}
+
+function anexarCardPermissaoNaBolha(bubbleOuWrap, acao) {
+  if (!bubbleOuWrap || !acao || acao.id === undefined || acao.id === null) return;
+  const wrap = bubbleOuWrap.classList.contains("msg-bot-wrap")
+    ? bubbleOuWrap
+    : (bubbleOuWrap.parentElement && bubbleOuWrap.parentElement.classList.contains("msg-bot-wrap")
+      ? bubbleOuWrap.parentElement
+      : null);
+  if (!wrap) return;
+
+  const existente = wrap.querySelector(`.win-perm-card[data-win-acao-id="${acao.id}"]`);
+  if (existente) {
+    const boxAcoes = existente.querySelector(".win-perm-actions");
+    if (boxAcoes) boxAcoes.innerHTML = criarHtmlAcoesCardWindows(acao);
+    return;
+  }
+
+  const card = criarCardPermissaoWindows(acao);
+  const actionsBar = wrap.querySelector(".msg-actions");
+  if (actionsBar) wrap.insertBefore(card, actionsBar);
+  else wrap.appendChild(card);
+}
+
+async function responderPermissaoWindows(acaoId, aprovar, semprePermitir, btn) {
+  const card = btn ? btn.closest(".win-perm-card") : document.querySelector(`.win-perm-card[data-win-acao-id="${acaoId}"]`);
+  const boxAcoes = card ? card.querySelector(".win-perm-actions") : null;
+  if (card) {
+    card.querySelectorAll("button").forEach(b => { b.disabled = true; });
+    const errAnt = card.querySelector(".win-perm-erro");
+    if (errAnt) errAnt.remove();
+  }
+  try {
+    const url = aprovar
+      ? `/api/windows/aprovar/${encodeURIComponent(acaoId)}`
+      : `/api/windows/recusar/${encodeURIComponent(acaoId)}`;
+    const opts = aprovar
+      ? {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sempre_permitir: !!semprePermitir }),
+        }
+      : { method: "POST" };
+    const r = await fetch(url, opts).then(x => x.json());
+    if (r && r.ok) {
+      if (boxAcoes) {
+        const acaoAtual = r.acao || { id: acaoId, status: aprovar ? "executada" : "recusada" };
+        boxAcoes.innerHTML = criarHtmlAcoesCardWindows(acaoAtual);
+      }
+      mostrarToast(r.mensagem || (aprovar ? "Executado no Windows ✓" : "Solicitação recusada."));
+    } else {
+      const msgErro = (r && r.erro) ? r.erro : "Não foi possível concluir a ação.";
+      if (card) {
+        card.querySelectorAll("button").forEach(b => { b.disabled = false; });
+        const divErr = document.createElement("div");
+        divErr.className = "win-perm-erro";
+        divErr.textContent = msgErro;
+        card.appendChild(divErr);
+      }
+      mostrarToast("Erro: " + msgErro, true);
+    }
+  } catch (e) {
+    if (card) card.querySelectorAll("button").forEach(b => { b.disabled = false; });
+    mostrarToast("Falha na comunicação com o servidor.", true);
+  }
+}
+
+async function consumirFluxoSSEChat(resp, { bubbleInicial = null, modeloInicial = _modeloAtual, modoReattach = false } = {}) {
+  const sc = document.getElementById("chat-scroll");
+  let temp = bubbleInicial;
+  let textoAcumulado = "";
+  let recebeuChunk = false;
+  let finalPayload = null;
+  let erroStream = null;
+  let ehIdle = false;
+  let renderAgendado = false;
+  let fluxoEncerrado = false;
+  let modeloUsadoLive = "";
+  let modoAutoLive = modeloInicial === "auto";
+  let motivoAutoLive = "";
+
+  const garantirBolhaBot = (textoStatus = "Athena retomando resposta em andamento...") => {
+    if (!temp) {
+      definirEstadoExecutando(true);
+      temp = addMsg(
+        "bot",
+        `<span class="thinking"><span class="thinking-dot"></span><span class="thinking-text">${escHtml(textoStatus)}</span></span>`,
+        true,
+        null,
+        true
+      );
+    }
+    return temp;
+  };
+
+  const rolarSePertoDoFim = () => {
+    if (!sc) return;
+    const dist = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
+    if (dist < 140) sc.scrollTop = sc.scrollHeight;
+  };
+
+  const agendarRenderLive = () => {
+    if (renderAgendado || fluxoEncerrado) return;
+    renderAgendado = true;
+    requestAnimationFrame(() => {
+      renderAgendado = false;
+      if (fluxoEncerrado) return;
+      const alvo = garantirBolhaBot();
+      alvo.innerHTML = renderMD(textoAcumulado);
+      rolarSePertoDoFim();
+    });
+  };
+
+  const processarBlocoSSE = (blocoRaw) => {
+    const linhas = blocoRaw.replace(/\r/g, "").split("\n");
+    let evTipo = "message";
+    const dataLinhas = [];
+    for (const ln of linhas) {
+      if (!ln || ln.startsWith(":")) continue;
+      if (ln.startsWith("event:")) {
+        evTipo = ln.slice(6).trim();
+      } else if (ln.startsWith("data:")) {
+        dataLinhas.push(ln.slice(5).trimStart());
+      }
+    }
+    if (!dataLinhas.length) return;
+    let payload;
+    try {
+      payload = JSON.parse(dataLinhas.join("\n"));
+    } catch (_) {
+      return;
+    }
+
+    if (evTipo === "idle" || payload.tipo === "idle") {
+      ehIdle = true;
+      return;
+    }
+
+    if (evTipo === "status") {
+      if (payload.modelo_usado) modeloUsadoLive = payload.modelo_usado;
+      if (typeof payload.modo_auto === "boolean") modoAutoLive = payload.modo_auto;
+      if (payload.motivo_modelo) motivoAutoLive = payload.motivo_modelo;
+      const rotReal = modeloUsadoLive ? (MODELO_ROTULOS[modeloUsadoLive] || modeloUsadoLive) : "";
+      const prefixo = (modoAutoLive && rotReal) ? `[Auto → ${rotReal}] ` : "";
+      const passoTxt = payload.passo ? (prefixo + payload.passo) : "Athena trabalhando...";
+      const alvo = garantirBolhaBot(passoTxt);
+      if (!recebeuChunk && payload.passo) {
+        const txtEl = alvo.querySelector(".thinking-text");
+        if (txtEl) txtEl.textContent = passoTxt;
+      }
+      if (Array.isArray(payload.trilha)) {
+        renderTrilha(payload.trilha);
+        const boxTrilha = document.getElementById("trilha");
+        if (boxTrilha) boxTrilha.scrollTop = boxTrilha.scrollHeight;
+      }
+    } else if (evTipo === "chunk") {
+      const delta = String(payload.delta || "");
+      if (delta) {
+        garantirBolhaBot();
+        recebeuChunk = true;
+        textoAcumulado += delta;
+        agendarRenderLive();
+      }
+    } else if (evTipo === "permissao_windows" || payload.tipo === "permissao_windows") {
+      if (payload.acao) {
+        const alvo = garantirBolhaBot("Athena solicitou permissão no Windows...");
+        anexarCardPermissaoNaBolha(alvo, payload.acao);
+        rolarSePertoDoFim();
+      }
+    } else if (evTipo === "done") {
+      finalPayload = payload;
+      if (payload.modelo_usado) modeloUsadoLive = payload.modelo_usado;
+      if (typeof payload.modo_auto === "boolean") modoAutoLive = payload.modo_auto;
+      if (payload.motivo_modelo) motivoAutoLive = payload.motivo_modelo;
+    } else if (evTipo === "error") {
+      erroStream = payload;
+    }
+  };
+
+  if (resp.body && typeof resp.body.getReader === "function") {
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      buffer = buffer.replace(/\r\n/g, "\n");
+      let idxSep;
+      while ((idxSep = buffer.indexOf("\n\n")) !== -1) {
+        const bloco = buffer.slice(0, idxSep);
+        buffer = buffer.slice(idxSep + 2);
+        if (bloco.trim()) processarBlocoSSE(bloco);
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) processarBlocoSSE(buffer);
+  } else {
+    const bruto = await resp.text();
+    for (const bloco of bruto.replace(/\r\n/g, "\n").split("\n\n")) {
+      if (bloco.trim()) processarBlocoSSE(bloco);
+    }
+  }
+
+  fluxoEncerrado = true;
+  if (ehIdle && !temp) {
+    return { idle: true };
+  }
+  if (ehIdle && temp) {
+    return { idle: true };
+  }
+
+  const alvoFinal = garantirBolhaBot();
+  if (erroStream) {
+    const msgErro = erroStream.cancelada
+      ? "*Geração interrompida pelo usuário.*"
+      : "**Erro:** " + (erroStream.erro || "Falha ao responder.");
+    alvoFinal.innerHTML = renderMD(msgErro);
+    if (erroStream.trilha) renderTrilha(erroStream.trilha);
+    if (erroStream.fatos) renderFatos(erroStream.fatos);
+  } else {
+    const textoFinal = (finalPayload && finalPayload.resposta) ? finalPayload.resposta : textoAcumulado;
+    alvoFinal.innerHTML = renderMD(textoFinal || "*(Sem resposta)*");
+    if (textoFinal && alvoFinal.parentElement && alvoFinal.parentElement.classList.contains("msg-bot-wrap")) {
+      if (finalPayload && Array.isArray(finalPayload.acoes_windows)) {
+        for (const ac of finalPayload.acoes_windows) {
+          anexarCardPermissaoNaBolha(alvoFinal.parentElement, ac);
+        }
+      }
+      const tele = (finalPayload && finalPayload.telemetria) ? finalPayload.telemetria : {};
+      anexarBotaoOuvir(alvoFinal.parentElement, textoFinal, {
+        modeloUsado: modeloUsadoLive || (finalPayload && finalPayload.modelo_usado) || modeloInicial,
+        modoAuto: modoAutoLive,
+        motivo: motivoAutoLive,
+        duracao_ms: finalPayload?.duracao_ms ?? tele.duracao_ms ?? 0,
+        tokens_in: finalPayload?.tokens_in ?? tele.tokens_in ?? 0,
+        tokens_out: finalPayload?.tokens_out ?? tele.tokens_out ?? 0,
+      });
+    }
+    if (finalPayload && finalPayload.trilha) renderTrilha(finalPayload.trilha);
+    if (finalPayload && finalPayload.fatos) renderFatos(finalPayload.fatos);
+  }
+
+  if (sc) sc.scrollTop = sc.scrollHeight;
+  return { idle: false, modeReattach: modoReattach };
+}
+
+async function reconectarConversaAtiva() {
+  const cid = obterOuCriarConversaId();
+  try {
+    const resp = await fetch(`/api/chat-reattach/${encodeURIComponent(cid)}`, {
+      method: "GET",
+      headers: { "Accept": "text/event-stream" },
+    });
+    if (!resp.ok) return;
+    await consumirFluxoSSEChat(resp, { bubbleInicial: null, modeloInicial: _modeloAtual, modoReattach: true });
+  } catch (_) {
+    // Reconexao silenciosa: se falhar rede, nao polui o chat
+  } finally {
+    definirEstadoExecutando(false);
+  }
+}
+
+async function enviar() {
+  if (_enviando) return;
+  fecharPopoverModelo();
+  if (_ouvindoMic && _recognition) {
+    try { _recognition.stop(); } catch (_) {}
+    atualizarEstadoMic(false);
+  }
+
+  const inp = document.getElementById("entrada");
+  const msg = inp.value.trim();
+  const anexos = _arquivosSelecionados.slice();
+  if (!msg && !anexos.length) return;
+
+  const cid = obterOuCriarConversaId();
+  const modelo = _modeloAtual;
+  const rotuloMod = MODELO_ROTULOS[modelo] || modelo;
+
+  const thumbsParaMsg = await Promise.all(
+    anexos
+      .filter(item => item && item.ehImg && item.file)
+      .map(item => new Promise((resolve) => {
+        try {
+          const rd = new FileReader();
+          rd.onload = () => resolve({ dataUrl: rd.result, fileName: item.nome });
+          rd.onerror = () => resolve(null);
+          rd.readAsDataURL(item.file);
+        } catch (_) {
+          resolve(null);
+        }
+      }))
+  );
+  const imgsValidas = thumbsParaMsg.filter(Boolean);
+
+  definirEstadoExecutando(true);
+  inp.value = "";
+  ajustarTextarea(inp);
+  removerAnexo();
+
+  let textoExibicao = msg;
+  if (anexos.length === 1) {
+    const tag = `[Anexo: ${anexos[0].nome}]`;
+    textoExibicao = msg ? `${tag} ${msg}` : tag;
+  } else if (anexos.length > 1) {
+    const nomes = anexos.map(a => a.nome).join(", ");
+    const tag = `[Anexos (${anexos.length}): ${nomes}]`;
+    textoExibicao = msg ? `${tag} ${msg}` : tag;
+  }
+
+  addMsg("user", textoExibicao, false, imgsValidas.length ? { imgs: imgsValidas } : null, true);
+  const labelPensando = anexos.length > 1
+    ? `analisando os ${anexos.length} arquivos anexados...`
+    : (anexos.length === 1 ? "analisando o arquivo anexado..." : "acionando os agentes...");
+  const temp = addMsg(
+    "bot",
+    `<span class="thinking"><span class="thinking-dot"></span><span class="thinking-text">Athena (${escHtml(rotuloMod)}) ${labelPensando}</span></span>`,
+    true,
+    null,
+    true
+  );
+
+  try {
+    let resp;
+    if (anexos.length) {
+      const form = new FormData();
+      form.append("mensagem", msg);
+      form.append("modelo", modelo);
+      form.append("conversa_id", cid);
+      for (const item of anexos) {
+        form.append("arquivos", item.file, item.nome);
+      }
+      resp = await fetch("/api/chat-stream", {
+        method: "POST",
+        headers: { "Accept": "text/event-stream" },
+        body: form,
+      });
+    } else {
+      resp = await fetch("/api/chat-stream", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream",
+        },
+        body: JSON.stringify({ mensagem: msg, modelo, conversa_id: cid }),
+      });
+    }
+
+    if (!resp.ok) {
+      const errJson = await resp.json().catch(() => ({}));
+      throw new Error(errJson.erro || `HTTP ${resp.status}`);
+    }
+
+    await consumirFluxoSSEChat(resp, { bubbleInicial: temp, modeloInicial: modelo, modoReattach: false });
+  } catch (e) {
+    // Se a conexao caiu (ex.: troca de app no celular), tenta reconectar na tarefa em background
+    let recuperado = false;
+    try {
+      await new Promise(r => setTimeout(r, 300));
+      const respRe = await fetch(`/api/chat-reattach/${encodeURIComponent(cid)}`, {
+        method: "GET",
+        headers: { "Accept": "text/event-stream" },
+      });
+      if (respRe.ok) {
+        const resRe = await consumirFluxoSSEChat(respRe, {
+          bubbleInicial: temp,
+          modeloInicial: modelo,
+          modoReattach: true,
+        });
+        if (resRe && resRe.idle) {
+          await carregarHistorico();
+        }
+        recuperado = true;
+      }
+    } catch (_) {}
+    if (!recuperado) {
+      temp.innerHTML = renderMD("**Erro de conexão:** " + escHtml((e && e.message) ? e.message : "Não foi possível falar com o servidor."));
+      mostrarToast("Falha na comunicação com o servidor.", true);
+    }
+  } finally {
+    definirEstadoExecutando(false);
+    inp.focus();
+  }
+}
+
+/* ===== CARTEIRA REAL + SIMULADOR ===== */
+async function carregarCarteiraReal(forcar = false) {
+  try {
+    const url = forcar ? "/api/painel/carteira-real?forcar=1" : "/api/painel/carteira-real";
+    const r = await fetch(url).then(x => x.json());
+    const bcb = r.bcb || {};
+    document.getElementById("kpi-real-pat").textContent = fmtBRL(r.patrimonio_real);
+    document.getElementById("kpi-real-base-cdi").textContent = `Base CDI/RF: ${fmtBRL(r.base_cdi)}`;
+    document.getElementById("kpi-real-selic").textContent = `${Number(bcb.selic_anual || 0).toFixed(2)}% a.a.`;
+    document.getElementById("kpi-real-cdi-sub").textContent = `100% CDI: ~${Number(bcb.cdi_anual || 0).toFixed(2)}% a.a. (${Number(bcb.cdi_mensal || 0).toFixed(2)}% a.m.)`;
+    document.getElementById("kpi-real-rend").textContent = fmtBRL(r.rendimento_cdi_mensal_est);
+    document.getElementById("kpi-real-rend-ano").textContent = `Anual bruto est.: ${fmtBRL(r.rendimento_cdi_anual_est)}`;
+    document.getElementById("kpi-real-prop").textContent = (r.propostas_pendentes || []).length;
+
+    const alocEl = document.getElementById("real-alocacao-chips");
+    if (alocEl) {
+      alocEl.innerHTML = (r.alocacao || []).map(a =>
+        `<span class="ulife-aval-pill">${escHtml(a.label)}: <strong>${a.pct}%</strong></span>`
+      ).join("");
+    }
+
+    const boxAtivos = document.getElementById("box-real-ativos");
+    if (!r.ativos || !r.ativos.length) {
+      boxAtivos.innerHTML = '<span class="empty-note">Nenhum saldo ou ativo real cadastrado ainda. Use o formulário acima para registrar seu saldo do Mercado Pago ou peça no chat.</span>';
+    } else {
+      let h = '<table class="grid"><thead><tr><th>Ativo</th><th>Categoria</th><th>Instituição</th><th>Taxa / Info</th><th>Valor Atual</th><th>% Carteira</th></tr></thead><tbody>';
+      for (const a of r.ativos) {
+        const tk = a.ticker ? ` <span style="color:var(--muted);font-size:12px;">(${escHtml(a.ticker)})</span>` : "";
+        h += `<tr>
+          <td><strong style="color:var(--text-strong);">${escHtml(a.nome)}</strong>${tk}</td>
+          <td><span class="badge-tipo">${escHtml(a.tipo_label || a.tipo)}</span></td>
+          <td style="color:var(--muted);">${escHtml(a.instituicao)}</td>
+          <td style="color:var(--muted);">${escHtml(a.taxa_info || "-")}</td>
+          <td class="ulife-nota-val">${fmtBRL(a.valor_atual)}</td>
+          <td>${a.pct}%</td>
+        </tr>`;
+      }
+      boxAtivos.innerHTML = h + "</tbody></table>";
+    }
+
+    const boxProp = document.getElementById("box-real-propostas");
+    const pend = r.propostas_pendentes || [];
+    if (!pend.length) {
+      boxProp.innerHTML = '<span class="empty-note">Nenhuma proposta pendente. Peça no chat para a Athena analisar sua carteira real e sugerir aportes comparados ao CDI.</span>';
+    } else {
+      boxProp.innerHTML = pend.map(p => `
+        <div class="acao-card">
+          <div class="acao-info">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <span class="badge-tipo">${escHtml(p.tipo_label || p.tipo)}</span>
+              <strong style="color:var(--text-strong);font-size:14.5px;">${escHtml(p.ativo)}</strong>
+              <span class="ulife-nota-val">${fmtBRL(p.valor_sugerido)}</span>
+              <span class="ulife-aval-pill">Risco: <strong>${escHtml(p.risco)}</strong></span>
+              <span style="color:var(--muted);font-size:12px;">#${p.id} · ${escHtml(p.criado_em)}</span>
+            </div>
+            <div style="margin-top:6px;"><strong>Motivo:</strong> ${escHtml(p.motivo)}</div>
+            <div style="color:var(--muted);margin-top:3px;"><strong>Comparação vs CDI:</strong> ${escHtml(p.comparacao_cdi)}</div>
+          </div>
+          <div class="acao-btns">
+            <button type="button" class="btn-aprovar" onclick="responderPropostaReal(${p.id}, true, this)">
+              <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Aprovar</span>
+            </button>
+            <button type="button" class="btn-recusar" onclick="responderPropostaReal(${p.id}, false, this)">
+              <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              <span>Recusar</span>
+            </button>
+          </div>
+        </div>
+      `).join("");
+    }
+
+    const boxHist = document.getElementById("box-real-propostas-hist");
+    const hist = r.propostas_historico || [];
+    if (!hist.length) {
+      boxHist.innerHTML = "";
+    } else {
+      let h = '<div class="ulife-section-lbl">Histórico de Propostas</div><table class="grid"><thead><tr><th>ID</th><th>Data</th><th>Ativo</th><th>Valor</th><th>Risco</th><th>Status</th></tr></thead><tbody>';
+      for (const p of hist) {
+        const badge = p.status === "aprovada" ? '<span class="badge-exec">aprovada</span>' : '<span class="badge-rec">recusada</span>';
+        h += `<tr><td>#${p.id}</td><td>${escHtml(p.criado_em)}</td><td><strong>${escHtml(p.ativo)}</strong></td><td>${fmtBRL(p.valor_sugerido)}</td><td>${escHtml(p.risco)}</td><td>${badge}</td></tr>`;
+      }
+      boxHist.innerHTML = h + "</tbody></table>";
+    }
+
+    const ext = r.extrato || {};
+    const resExt = document.getElementById("real-extrato-resumo");
+    if (resExt) {
+      resExt.textContent = ext.total_lancamentos
+        ? `${ext.total_lancamentos} lanç. · Entradas ${fmtBRL(ext.entradas)} · Saídas ${fmtBRL(ext.saidas)} · Líquido ${fmtBRL(ext.saldo_liquido)}`
+        : "Sem lançamentos importados";
+    }
+    const boxExt = document.getElementById("box-real-extrato");
+    const movs = ext.movimentos || [];
+    if (!movs.length) {
+      boxExt.innerHTML = '<span class="empty-note">Nenhum extrato importado ainda. Clique em <strong>Importar Extrato CSV/PDF</strong> para subir seu extrato do Mercado Pago.</span>';
+    } else {
+      let h = '<table class="grid"><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th></tr></thead><tbody>';
+      for (const m of movs) {
+        const cls = Number(m.valor) >= 0 ? "pos" : "neg";
+        h += `<tr><td>${escHtml(m.data)}</td><td>${escHtml(m.descricao)}</td><td><span class="ulife-aval-pill">${escHtml(m.categoria)}</span></td><td class="${cls}">${fmtBRL(m.valor)}</td></tr>`;
+      }
+      boxExt.innerHTML = h + "</tbody></table>";
+    }
+  } catch (e) {
+    mostrarToast("Erro ao carregar a Carteira Real.", true);
+  }
+}
+
+async function salvarAtivoRealForm(ev) {
+  if (ev) ev.preventDefault();
+  const btn = document.getElementById("btn-salvar-ativo-real");
+  const tipo = document.getElementById("real-tipo").value;
+  const nome = document.getElementById("real-nome").value.trim();
+  const valor_atual = parseFloat(document.getElementById("real-valor").value);
+  const ticker = document.getElementById("real-ticker").value.trim();
+  const taxa_info = document.getElementById("real-taxa").value.trim();
+  if (!nome || Number.isNaN(valor_atual)) {
+    mostrarToast("Preencha o nome e um valor válido.", true);
+    return;
+  }
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch("/api/painel/carteira-real/ativo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo, nome, valor_atual, ticker, taxa_info }),
+    }).then(x => x.json());
+    if (r.ok) {
+      document.getElementById("real-nome").value = "";
+      document.getElementById("real-valor").value = "";
+      document.getElementById("real-ticker").value = "";
+      document.getElementById("real-taxa").value = "";
+      mostrarToast(`Ativo ${r.acao || "salvo"} na Carteira Real!`);
+      carregarCarteiraReal();
+    } else {
+      mostrarToast("Erro: " + (r.erro || "Falha ao salvar ativo."), true);
+    }
+  } catch (e) {
+    mostrarToast("Falha na comunicação ao salvar ativo.", true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function importarExtratoMP(ev) {
+  const file = ev.target && ev.target.files ? ev.target.files[0] : null;
+  if (!file) return;
+  const btn = document.getElementById("btn-importar-extrato");
+  const lbl = btn ? btn.querySelector(".btn-label") : null;
+  if (btn) btn.disabled = true;
+  if (lbl) lbl.textContent = "Importando...";
+  try {
+    const form = new FormData();
+    form.append("arquivo", file, file.name);
+    const r = await fetch("/api/painel/carteira-real/importar", { method: "POST", body: form }).then(x => x.json());
+    if (r.ok) {
+      mostrarToast(`Extrato importado: ${r.importados} lançamento(s) novo(s) (${r.duplicados_ignorados || 0} duplicado(s)).`);
+      carregarCarteiraReal();
+    } else {
+      mostrarToast("Erro ao importar extrato: " + (r.erro || "falha desconhecida"), true);
+    }
+  } catch (e) {
+    mostrarToast("Falha ao enviar o arquivo de extrato.", true);
+  } finally {
+    if (ev.target) ev.target.value = "";
+    if (btn) btn.disabled = false;
+    if (lbl) lbl.textContent = "Importar Extrato CSV/PDF";
+  }
+}
+
+async function responderPropostaReal(id, aprovar, btn) {
+  const acao = aprovar ? "aprovar" : "recusar";
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`/api/painel/carteira-real/propostas/${id}/${acao}`, { method: "POST" }).then(x => x.json());
+    if (r.ok) {
+      mostrarToast(r.mensagem || `Proposta #${id} ${aprovar ? "aprovada" : "recusada"}.`);
+      carregarCarteiraReal();
+    } else {
+      mostrarToast("Erro: " + (r.erro || "Falha ao responder proposta."), true);
+      if (btn) btn.disabled = false;
+    }
+  } catch (e) {
+    mostrarToast(`Falha ao ${acao} proposta #${id}.`, true);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function carregarCarteiraSimulada(forcar = false) {
+  document.getElementById("box-posicoes").innerHTML = '<span class="empty-note">Buscando cotações reais...</span>';
+  try {
+    const url = forcar ? "/api/painel/carteira?forcar=1" : "/api/painel/carteira";
+    const r = await fetch(url).then(x => x.json());
+    document.getElementById("kpi-pat").textContent = fmtBRL(r.patrimonio);
+    document.getElementById("kpi-atv").textContent = fmtBRL(r.em_ativos);
+    document.getElementById("kpi-cxa").textContent = fmtBRL(r.caixa);
+
+    if (!r.posicoes || !r.posicoes.length) {
+      document.getElementById("box-posicoes").innerHTML = '<span class="empty-note">Nenhuma posição aberta ainda. Peça no chat para simular uma compra.</span>';
+    } else {
+      let h = '<table class="grid"><thead><tr><th>Ativo</th><th>Qtd</th><th>Preço Médio</th><th>Atual</th><th>Total</th><th>Resultado</th></tr></thead><tbody>';
+      for (const p of r.posicoes) {
+        const cls = p.lucro >= 0 ? "pos" : "neg";
+        h += `<tr><td><strong>${escHtml(p.ticker)}</strong></td><td>${p.quantidade}</td><td>${fmtBRL(p.preco_medio)}</td><td>${fmtBRL(p.preco_atual)}</td><td>${fmtBRL(p.total)}</td><td class="${cls}">${fmtBRL(p.lucro)} (${p.pct >= 0 ? "+" : ""}${p.pct}%)</td></tr>`;
+      }
+      document.getElementById("box-posicoes").innerHTML = h + "</tbody></table>";
+    }
+
+    if (!r.operacoes || !r.operacoes.length) {
+      document.getElementById("box-ops").innerHTML = '<span class="empty-note">Nenhuma operação registrada ainda.</span>';
+    } else {
+      let h = '<table class="grid"><thead><tr><th>Data</th><th>Tipo</th><th>Ativo</th><th>Qtd</th><th>Preço</th><th>Total</th><th>Motivo</th></tr></thead><tbody>';
+      for (const o of r.operacoes) {
+        const cls = o.tipo === "COMPRA" ? "pos" : "neg";
+        h += `<tr><td>${escHtml(o.data_hora)}</td><td class="${cls}">${escHtml(o.tipo)}</td><td>${escHtml(o.ticker)}</td><td>${o.quantidade}</td><td>${fmtBRL(o.preco)}</td><td>${fmtBRL(o.total)}</td><td>${escHtml(o.motivo || "")}</td></tr>`;
+      }
+      document.getElementById("box-ops").innerHTML = h + "</tbody></table>";
+    }
+  } catch (e) {
+    mostrarToast("Erro ao carregar a carteira simulada.", true);
+  }
+}
+
+async function carregarCarteira(forcar = false) {
+  carregarCarteiraReal(forcar);
+  carregarCarteiraSimulada(forcar);
+}
+
+/* ===== ESTUDOS, ULIFE V2 & QDRANT ===== */
+const NOMES_MATERIAS_LEGIVEIS = {
+  "academia_de_futuros_profissionais": "Academia de Futuros Profissionais",
+  "calculo_algebra_linear": "Cálculo e Álgebra Linear",
+  "fisica_pratica": "Física e Mecânica dos Sólidos (Prática)",
+  "fisica_teorica": "Física e Mecânica dos Sólidos (Teórica)",
+  "fisica_e_mecanica_dos_solidos": "Física e Mecânica dos Sólidos",
+  "geral": "Geral",
+};
+
+const PREPOSICOES_PT_MIN = new Set(["de", "da", "do", "dos", "das", "e", "em", "na", "no", "nas", "nos", "para", "com", "di", "du", "del"]);
+
+function formatarNomeMateria(slug) {
+  const bruto = String(slug || "").trim();
+  if (!bruto) return "Geral";
+  const chave = bruto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  if (NOMES_MATERIAS_LEGIVEIS[chave]) return NOMES_MATERIAS_LEGIVEIS[chave];
+  if (!bruto.includes("_") && /[A-ZÁÉÍÓÚÂÊÔÃÕÇ]/.test(bruto)) return bruto;
+  return bruto
+    .split(/[_\-\s]+/)
+    .filter(Boolean)
+    .map((p, idx) => {
+      const low = p.toLowerCase();
+      if (idx > 0 && PREPOSICOES_PT_MIN.has(low)) return low;
+      return low.charAt(0).toUpperCase() + low.slice(1);
+    })
+    .join(" ");
+}
+
+function normalizarNomePessoa(nome) {
+  const bruto = String(nome || "").replace(/\s+/g, " ").trim();
+  if (!bruto) return "";
+  const capParte = (parte) =>
+    parte
+      .trim()
+      .split(" ")
+      .filter(Boolean)
+      .map((p, idx) => {
+        const low = p.toLowerCase();
+        if (idx > 0 && PREPOSICOES_PT_MIN.has(low)) return low;
+        return low.charAt(0).toUpperCase() + low.slice(1);
+      })
+      .join(" ");
+  const unicos = Array.from(new Set(bruto.split(",").map(capParte).filter(Boolean)));
+  return unicos.join(", ");
+}
+
+function fmtDataUlife(iso) {
+  const s = String(iso || "").trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}:\d{2}))?/);
+  if (!m) return s ? s.slice(0, 16) : "-";
+  return m[4] ? `${m[3]}/${m[2]}/${m[1]} ${m[4]}` : `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+function renderPainelUlife(u) {
+  const meta = document.getElementById("ulife-meta");
+  const box = document.getElementById("box-ulife");
+  if (!u || !u.sincronizado) {
+    meta.textContent = "Ainda não sincronizado";
+    box.innerHTML = '<span class="empty-note">Clique em <strong>Sincronizar Ulife</strong> para buscar suas matérias, notas, faltas, materiais/PDFs e avisos diretamente via API JSON.</span>';
+    return;
+  }
+
+  const res = u.resumo || {};
+  const nfLista = u.notas_faltas || [];
+  const avisos = u.avisos || [];
+  const atividades = u.atividades || [];
+
+  meta.textContent = `Última sincronização: ${u.atualizado_em || res.sincronizado_em || "-"}`;
+
+  let h = '<div class="ulife-strip">';
+  if (res.curso) h += `<span class="ulife-chip"><strong>Curso:</strong> ${escHtml(res.curso)}</span>`;
+  if (res.instituicao) h += `<span class="ulife-chip"><strong>Instituição:</strong> ${escHtml(res.instituicao)}</span>`;
+  if (res.ra) h += `<span class="ulife-chip"><strong>RA:</strong> ${escHtml(res.ra)}</span>`;
+  h += `<span class="ulife-chip"><strong>Matérias:</strong> ${nfLista.length}</span>`;
+  h += `<span class="ulife-chip"><strong>Materiais:</strong> ${res.total_materiais ?? (u.materiais || []).length}</span>`;
+  h += `<span class="ulife-chip"><strong>Avisos:</strong> ${avisos.length}</span>`;
+  h += "</div>";
+
+  h += '<div class="ulife-section-lbl">Matérias, Notas e Faltas</div>';
+  if (!nfLista.length) {
+    h += '<div class="empty-note">Nenhuma disciplina retornada pela API.</div>';
+  } else {
+    h += '<div class="table-wrap"><table class="grid"><thead><tr><th>Matéria</th><th>Avaliações</th><th>Nota</th><th>Faltas / Freq.</th><th>Aulas</th></tr></thead><tbody>';
+    for (const nf of nfLista) {
+      const avals = (nf.avaliacoes || []).map(a => {
+        const rot = a.item || a.nome || "Aval.";
+        const nTxt = a.nota !== null && a.nota !== undefined ? Number(a.nota).toFixed(1) : "-";
+        const pTxt = a.peso !== null && a.peso !== undefined ? `/${Number(a.peso).toFixed(0)}` : "";
+        return `<span class="ulife-aval-pill">${escHtml(rot)}: <strong>${nTxt}${pTxt}</strong></span>`;
+      }).join("");
+      const notaTot = nf.nota_total !== null && nf.nota_total !== undefined
+        ? `${Number(nf.nota_total).toFixed(1)}${nf.peso_total ? " / " + Number(nf.peso_total).toFixed(0) : ""}`
+        : "N/D";
+      const partesF = [];
+      if (nf.faltas !== null && nf.faltas !== undefined) {
+        partesF.push(nf.max_faltas ? `${nf.faltas}/${nf.max_faltas}` : `${nf.faltas} falta(s)`);
+      }
+      if (nf.frequencia_pct !== null && nf.frequencia_pct !== undefined) {
+        partesF.push(`${Number(nf.frequencia_pct).toFixed(0)}%`);
+      }
+      const faltasTxt = partesF.length ? partesF.join(" · ") : "—";
+      const faltasCls = partesF.length ? "" : ' style="color:var(--muted-2);"';
+      const temAulas = nf.aulas_vistas !== null && nf.aulas_vistas !== undefined && nf.aulas_total;
+      const aulasTxt = temAulas ? `${nf.aulas_vistas}/${nf.aulas_total}` : "—";
+      const aulasCls = temAulas ? ' style="color:var(--muted);"' : ' style="color:var(--muted-2);"';
+      const profFmt = normalizarNomePessoa(nf.professor || "");
+      const profHtml = profFmt
+        ? `<div style="font-size:12px;color:var(--muted);margin-top:2px;">${escHtml(profFmt)}</div>`
+        : "";
+      const modHtml = nf.modalidade
+        ? `<div style="font-size:11px;color:var(--muted-2);margin-top:1px;">${escHtml(nf.modalidade)}</div>`
+        : "";
+      h += `<tr>
+        <td><strong style="color:var(--text-strong);">${escHtml(nf.disciplina)}</strong>${profHtml}${modHtml}</td>
+        <td><div class="ulife-aval-list">${avals || '<span class="empty-note">Sem lançamentos</span>'}</div></td>
+        <td class="ulife-nota-val">${escHtml(notaTot)}</td>
+        <td${faltasCls}>${escHtml(faltasTxt)}</td>
+        <td${aulasCls}>${escHtml(aulasTxt)}</td>
+      </tr>`;
+    }
+    h += "</tbody></table></div>";
+  }
+
+  if (atividades.length) {
+    h += '<div class="ulife-section-lbl">Atividades e Provas Online (Ulife)</div>';
+    h += atividades.slice(0, 8).map(at => {
+      const dt = at.entrega_texto || fmtDataUlife(at.entrega_em);
+      return `<div class="prova-card"><div><strong>${escHtml(at.titulo)}</strong> <span style="color:var(--muted);">(${escHtml(at.disciplina)})</span><div style="font-size:12px;color:var(--muted);margin-top:2px;">${escHtml(at.tipo || "Atividade")}</div></div><span class="badge">Entrega: ${escHtml(dt)}</span></div>`;
+    }).join("");
+  }
+
+  h += '<div class="ulife-section-lbl">Avisos Recentes</div>';
+  if (!avisos.length) {
+    h += '<div class="empty-note">Nenhum aviso recente salvo no banco.</div>';
+  } else {
+    h += '<div class="ulife-avisos">' + avisos.slice(0, 15).map(av => {
+      const dt = fmtDataUlife(av.data);
+      const cat = av.categoria || av.origem || "Aviso";
+      const desc = (av.descricao || "").slice(0, 220);
+      return `<div class="ulife-aviso-item">
+        <div class="ulife-aviso-top">
+          <strong>${escHtml(av.titulo)}</strong>
+          <span><span class="badge-tipo">${escHtml(cat)}</span> <span style="color:var(--muted);font-size:11.5px;margin-left:4px;">${escHtml(dt)}</span></span>
+        </div>
+        ${desc ? `<div class="ulife-aviso-desc">${escHtml(desc)}${(av.descricao || "").length > 220 ? "..." : ""}</div>` : ""}
+      </div>`;
+    }).join("") + "</div>";
+  }
+
+  box.innerHTML = h;
+}
+
+async function carregarUlife() {
+  try {
+    const u = await fetch("/api/painel/estudos/ulife").then(x => x.json());
+    renderPainelUlife(u);
+  } catch (e) {
+    document.getElementById("ulife-meta").textContent = "Erro ao ler banco";
+    document.getElementById("box-ulife").innerHTML = '<span class="empty-note">Não foi possível carregar os dados salvos do Ulife.</span>';
+  }
+}
+
+async function sincronizarUlife() {
+  const btn = document.getElementById("btn-sync-ulife");
+  const ico = document.getElementById("ico-sync-ulife");
+  const lbl = btn.querySelector(".btn-label");
+  btn.disabled = true;
+  if (ico) ico.classList.add("spinning");
+  if (lbl) lbl.textContent = "Sincronizando...";
+  try {
+    const r = await fetch("/api/painel/estudos/ulife/sincronizar", { method: "POST" }).then(x => x.json());
+    if (r.ok) {
+      const res = r.resumo || {};
+      mostrarToast(`Ulife sincronizado: ${res.total_disciplinas || 0} matérias, ${res.pdfs_novos_baixados || 0} PDF(s) novo(s).`);
+      await carregarEstudos();
+    } else {
+      mostrarToast("Erro ao sincronizar Ulife: " + (r.erro || "falha desconhecida"), true);
+    }
+  } catch (e) {
+    mostrarToast("Falha na comunicação ao sincronizar o Ulife.", true);
+  } finally {
+    btn.disabled = false;
+    if (ico) ico.classList.remove("spinning");
+    if (lbl) lbl.textContent = "Sincronizar Ulife";
+  }
+}
+
+function atualizarMetaRag(rag) {
+  const el = document.getElementById("rag-meta");
+  if (!el) return;
+  if (!rag) {
+    el.textContent = "Qdrant Vetorial: indisponível";
+    return;
+  }
+  const trechos = Number(rag.trechos_indexados ?? rag.total_trechos ?? 0);
+  const arquivos = Number(rag.arquivos_indexados ?? rag.total_arquivos ?? 0);
+  const att = rag.ultima_sincronizacao ? ` · atualizado em ${rag.ultima_sincronizacao}` : "";
+  el.textContent = trechos > 0
+    ? `Qdrant Vetorial: ${trechos} trecho(s) em ${arquivos} arquivo(s)${att}`
+    : "Qdrant Vetorial: 0 trechos indexados (clique em Reindexar Qdrant)";
+}
+
+async function sincronizarQdrant() {
+  const btn = document.getElementById("btn-sync-rag");
+  const ico = document.getElementById("ico-sync-rag");
+  const lbl = btn ? btn.querySelector(".btn-label") : null;
+  if (btn) btn.disabled = true;
+  if (ico) ico.classList.add("spinning");
+  if (lbl) lbl.textContent = "Indexando...";
+  try {
+    const r = await fetch("/api/rag/sincronizar", { method: "POST" }).then(x => x.json());
+    if (r.ok) {
+      atualizarMetaRag(r);
+      mostrarToast(`Qdrant atualizado: ${r.total_trechos || 0} trechos (${r.arquivos_novos_ou_alterados || 0} arquivo(s) novo(s)/alterado(s)).`);
+    } else {
+      mostrarToast("Erro ao reindexar Qdrant: " + (r.erro || "falha desconhecida"), true);
+    }
+  } catch (e) {
+    mostrarToast("Falha na comunicação ao reindexar o Qdrant.", true);
+  } finally {
+    if (btn) btn.disabled = false;
+    if (ico) ico.classList.remove("spinning");
+    if (lbl) lbl.textContent = "Reindexar Qdrant";
+  }
+}
+
+async function carregarEstudos() {
+  carregarUlife();
+  try {
+    const r = await fetch("/api/painel/estudos").then(x => x.json());
+    atualizarMetaRag(r.rag);
+    const bp = document.getElementById("box-provas");
+    if (!r.provas || !r.provas.length) {
+      bp.innerHTML = '<span class="empty-note">Nenhuma prova cadastrada ainda. Peça ao Agente de Estudos para ler seus Planos de Ensino.</span>';
+    } else {
+      bp.innerHTML = r.provas.map(p => {
+        const tag = p.dias === null ? p.data_iso : (p.dias >= 0 ? `em ${p.dias} dia(s)` : `há ${-p.dias} dia(s)`);
+        const matNome = formatarNomeMateria(p.materia_nome || p.materia);
+        return `<div class="prova-card"><div><strong>${escHtml(p.titulo)}</strong> <span style="color:var(--muted);">(${escHtml(matNome)})</span><div style="font-size:12px;color:var(--muted);margin-top:3px;">${escHtml(p.data_iso)} ${p.detalhes ? "· " + escHtml(p.detalhes) : ""}</div></div><span class="badge">${escHtml(tag)}</span></div>`;
+      }).join("");
+    }
+
+    const bm = document.getElementById("box-materias");
+    if (!r.materias || !r.materias.length) {
+      bm.innerHTML = '<span class="empty-note">Nenhum PDF encontrado em agente-faculdade/pdfs_faculdade.</span>';
+    } else {
+      bm.innerHTML = r.materias.map(m => {
+        const nomeMat = formatarNomeMateria(m.nome || m.materia);
+        return `
+        <div style="margin-bottom:16px;">
+          <div style="display:flex;justify-content:space-between;font-size:13.5px;gap:10px;flex-wrap:wrap;">
+            <strong>${escHtml(nomeMat)}</strong>
+            <span style="color:var(--muted);">${m.estudadas}/${m.total} estudadas (${m.pct}%) ${m.revisar ? "· " + m.revisar + " revisar" : ""}</span>
+          </div>
+          <div class="bar-bg"><div class="bar-fill" style="width:${m.pct}%"></div></div>
+        </div>
+      `;
+      }).join("");
+    }
+  } catch (e) {
+    mostrarToast("Erro ao carregar dados de estudos.", true);
+  }
+}
+
+/* ===== FAXINA ===== */
+async function carregarFaxina() {
+  try {
+    const r = await fetch("/api/painel/faxina").then(x => x.json());
+    const res = r.resumo || {};
+    document.getElementById("kpi-fax-pend").textContent = res.pendentes ?? (r.pendentes || []).length;
+    document.getElementById("kpi-fax-exec").textContent = res.executadas ?? 0;
+    document.getElementById("kpi-fax-rec").textContent = res.recusadas ?? 0;
+
+    const bp = document.getElementById("box-fax-pendentes");
+    const btnTodas = document.getElementById("btn-aprovar-todas");
+    const pendLista = r.pendentes || [];
+    if (btnTodas) {
+      btnTodas.style.display = pendLista.length ? "inline-flex" : "none";
+      const lbl = btnTodas.querySelector(".btn-label");
+      if (lbl) lbl.textContent = pendLista.length > 1 ? `Aprovar Tudo (${pendLista.length})` : "Aprovar Tudo";
+    }
+
+    if (!pendLista.length) {
+      bp.innerHTML = '<span class="empty-note">Nenhuma ação pendente de aprovação. Peça ao Agente Faxineiro no chat para organizar sua Área de Trabalho ou escanear suas pastas autorizadas.</span>';
+    } else {
+      bp.innerHTML = pendLista.map(a => {
+        const ehLixeira = a.tipo === "lixeira";
+        const badgeTipo = ehLixeira
+          ? '<span class="badge-lixeira">LIXEIRA</span>'
+          : '<span class="badge-mover">MOVER</span>';
+        const fluxoHtml = !ehLixeira && a.destino
+          ? `<div class="acao-fluxo">${escHtml(a.origem)}<span class="seta">-&gt;</span>${escHtml(a.destino)}</div>`
+          : `<div class="acao-path" style="margin-top:5px;"><strong>Origem:</strong> ${escHtml(a.origem)}</div>`;
+        return `
+          <div class="acao-card">
+            <div class="acao-info">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${badgeTipo} <strong>#${a.id}</strong> <span style="color:var(--muted);font-size:12px;">· ${escHtml(a.criado_em)}</span></div>
+              ${fluxoHtml}
+              <div style="color:var(--muted);margin-top:4px;"><strong>Motivo:</strong> ${escHtml(a.motivo)}</div>
+            </div>
+            <div class="acao-btns">
+              <button type="button" class="btn-aprovar" onclick="aprovarAcao(${a.id}, this)">
+                <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                <span>Aprovar</span>
+              </button>
+              <button type="button" class="btn-recusar" onclick="recusarAcao(${a.id}, this)">
+                <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                <span>Recusar</span>
+              </button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    const bh = document.getElementById("box-fax-historico");
+    if (!r.historico || !r.historico.length) {
+      bh.innerHTML = '<span class="empty-note">Nenhuma ação executada, recusada ou desfeita ainda.</span>';
+    } else {
+      let h = '<table class="grid"><thead><tr><th>ID</th><th>Data</th><th>Tipo</th><th>Origem</th><th>Destino</th><th>Motivo</th><th>Status</th><th>Ação</th></tr></thead><tbody>';
+      for (const a of r.historico) {
+        const badgeTipo = a.tipo === "lixeira"
+          ? '<span class="badge-lixeira">LIXEIRA</span>'
+          : '<span class="badge-mover">MOVER</span>';
+        const badgeStatus = a.status === "executada"
+          ? '<span class="badge-exec">executada</span>'
+          : (a.status === "desfeita" ? '<span class="badge-desfeita">desfeita</span>' : '<span class="badge-rec">' + escHtml(a.status) + '</span>');
+        const btnDesfazer = (a.tipo === "mover" && a.status === "executada")
+          ? `<button type="button" class="ghost mini" onclick="desfazerAcao(${a.id}, this)" title="Devolver arquivo para o local original">Desfazer</button>`
+          : '<span style="color:var(--muted-2);font-size:12px;">-</span>';
+        h += `<tr><td>#${a.id}</td><td style="white-space:nowrap;">${escHtml(a.criado_em)}</td><td>${badgeTipo}</td><td class="acao-path">${escHtml(a.origem)}</td><td class="acao-path">${escHtml(a.destino || "-")}</td><td>${escHtml(a.motivo)}</td><td>${badgeStatus}</td><td>${btnDesfazer}</td></tr>`;
+      }
+      bh.innerHTML = h + "</tbody></table>";
+    }
+  } catch (e) {
+    mostrarToast("Erro ao carregar fila de faxina.", true);
+  }
+}
+
+async function aprovarTodasAcoes(btn) {
+  if (btn) btn.disabled = true;
+  const lbl = btn ? btn.querySelector(".btn-label") : null;
+  if (lbl) lbl.textContent = "Executando...";
+  try {
+    const r = await fetch("/api/painel/faxina/aprovar-todas", { method: "POST" }).then(x => x.json());
+    if (r.ok) mostrarToast(r.mensagem || "Todas as ações pendentes foram executadas.");
+    else mostrarToast("Erro ao aprovar tudo: " + (r.erro || r.mensagem || "falha desconhecida"), true);
+    await carregarFaxina();
+  } catch (e) {
+    mostrarToast("Falha na comunicação ao aprovar todas as ações.", true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function desfazerAcao(id, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`/api/painel/faxina/${id}/desfazer`, { method: "POST" }).then(x => x.json());
+    if (r.ok) mostrarToast(r.mensagem || `Movimentação #${id} desfeita.`);
+    else mostrarToast(`Erro ao desfazer #${id}: ${r.erro}`, true);
+    await carregarFaxina();
+  } catch (e) {
+    mostrarToast(`Falha ao desfazer movimentação #${id}.`, true);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function aprovarAcao(id, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`/api/painel/faxina/${id}/aprovar`, { method: "POST" }).then(x => x.json());
+    if (r.ok) mostrarToast(r.mensagem || `Ação #${id} executada com sucesso.`);
+    else mostrarToast(`Erro ao aprovar #${id}: ${r.erro}`, true);
+    carregarFaxina();
+  } catch (e) {
+    mostrarToast(`Erro ao aprovar ação #${id}.`, true);
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function recusarAcao(id, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`/api/painel/faxina/${id}/recusar`, { method: "POST" }).then(x => x.json());
+    if (r.ok) mostrarToast(r.mensagem || `Ação #${id} recusada.`);
+    else mostrarToast(`Erro ao recusar #${id}: ${r.erro}`, true);
+    carregarFaxina();
+  } catch (e) {
+    mostrarToast(`Erro ao recusar ação #${id}.`, true);
+    if (btn) btn.disabled = false;
+  }
+}
+
+/* ===== ROTINAS & SERVIDORES MCP ===== */
+function renderRotinas(lista) {
+  const box = document.getElementById("box-rotinas");
+  if (!lista || !lista.length) {
+    box.innerHTML = '<span class="empty-note">Nenhuma rotina cadastrada.</span>';
+    return;
+  }
+
+  box.innerHTML = lista.map((r, idx) => {
+    const rid = escHtml(r.id);
+    const ehUlife = r.id === "sincronizar_ulife";
+    const subtitulo = ehUlife
+      ? "Cookies diretos (httpx) · Renovação silenciosa · PDFs novos -> Obsidian <code>01-Faculdade/Painel-Ulife.md</code>"
+      : "Agenda (3 dias) · Gmail (não lidos) · Ulife · Carteira -> Obsidian <code>04-Diario/</code>";
+    const tituloResultado = ehUlife ? "Última Sincronização" : "Último Briefing Gerado";
+    const vazioResultado = ehUlife
+      ? '<div class="empty-note">Ainda não executada pelo agendador. Clique em <strong>Rodar agora</strong> para testar a sincronização silenciosa.</div>'
+      : '<div class="empty-note">Nenhum briefing gerado ainda. Clique em <strong>Rodar agora</strong> para gerar o primeiro briefing e salvá-lo em <code>04-Diario/YYYY-MM-DD.md</code>.</div>';
+    const badgeStatus = r.ativa
+      ? '<span class="badge-exec">Ativa</span>'
+      : '<span class="badge-rec">Pausada</span>';
+    const proxTxt = r.ativa && r.proxima_execucao ? r.proxima_execucao : "Pausada";
+    const ultTxt = r.ultima_execucao || "Ainda não executada";
+    const resultadoHtml = r.ultimo_resultado
+      ? `<div class="briefing-box"><div class="msg bot">${renderMD(r.ultimo_resultado)}</div></div>`
+      : vazioResultado;
+    const sepStyle = idx > 0 ? "border-top:1px solid var(--border);padding-top:18px;margin-top:18px;" : "";
+
+    return `
+      <div style="${sepStyle}">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
+          <div>
+            <strong style="font-family:var(--font-ui);font-size:15px;color:var(--text-strong);">${escHtml(r.nome)}</strong>
+            <div style="font-size:12.5px;color:var(--muted);margin-top:2px;">${subtitulo}</div>
+          </div>
+          ${badgeStatus}
+        </div>
+
+        <div class="rotina-controls">
+          <label class="toggle-wrap" title="Ligar ou desligar agendamento diário">
+            <input type="checkbox" id="rot-ativa-${rid}" ${r.ativa ? "checked" : ""} onchange="salvarRotina('${rid}')" />
+            <span class="toggle-track"></span>
+            <span>${r.ativa ? "Agendado" : "Desligado"}</span>
+          </label>
+
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);">
+            <span>Horário:</span>
+            <input type="time" id="rot-hora-${rid}" class="time-input" value="${escHtml(r.horario || "08:00")}" onchange="salvarRotina('${rid}')" />
+          </label>
+
+          <button type="button" class="ghost" onclick="salvarRotina('${rid}')">
+            <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            <span>Salvar</span>
+          </button>
+
+          <button type="button" id="btn-rodar-${rid}" onclick="executarRotinaAgora('${rid}')">
+            <svg class="ico ico-sm" id="ico-rodar-${rid}" viewBox="0 0 24 24" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+            <span class="btn-label">Rodar agora</span>
+          </button>
+        </div>
+
+        <div class="rotina-meta">
+          <span class="ulife-chip"><strong>Próxima execução:</strong> ${escHtml(proxTxt)}</span>
+          <span class="ulife-chip"><strong>Última execução:</strong> ${escHtml(ultTxt)}</span>
+        </div>
+
+        <div class="ulife-section-lbl">${tituloResultado}</div>
+        ${resultadoHtml}
+      </div>
+    `;
+  }).join("");
+}
+
+async function carregarRotinas() {
+  carregarServidoresMcp();
+  carregarTelemetria();
+  try {
+    const r = await fetch("/api/rotinas").then(x => x.json());
+    renderRotinas(r.rotinas || []);
+  } catch (e) {
+    document.getElementById("box-rotinas").innerHTML = '<span class="empty-note">Não foi possível carregar as rotinas agendadas.</span>';
+    mostrarToast("Erro ao carregar rotinas.", true);
+  }
+}
+
+function fmtDuracaoMs(ms) {
+  const n = Number(ms || 0);
+  if (n >= 1000) return `${(n / 1000).toFixed(2)} s`;
+  return `${Math.round(n)} ms`;
+}
+
+function fmtTokens(n) {
+  const v = Number(n || 0);
+  if (v >= 1000000) return `${(v / 1000000).toFixed(2)}M`;
+  if (v >= 1000) return `${(v / 1000).toFixed(1)}k`;
+  return String(v);
+}
+
+async function carregarTelemetria() {
+  const box = document.getElementById("box-telemetria");
+  if (!box) return;
+  try {
+    const t = await fetch("/api/telemetria").then(x => x.json());
+    const elMs = document.getElementById("kpi-tele-ms");
+    const elTok = document.getElementById("kpi-tele-tok");
+    const elTokSub = document.getElementById("kpi-tele-tok-sub");
+    const elExec = document.getElementById("kpi-tele-exec");
+    const elHoje = document.getElementById("kpi-tele-hoje");
+    const elOk = document.getElementById("kpi-tele-ok");
+
+    if (elMs) elMs.textContent = t.total_execucoes ? `${t.tempo_medio_ms} ms` : "--";
+    const tokHoje = t.tokens_hoje ?? t.tokens_hoje_total ?? 0;
+    if (elTok) elTok.textContent = fmtTokens(tokHoje);
+    if (elTokSub) elTokSub.textContent = `${fmtTokens(t.tokens_hoje_in || 0)} in · ${fmtTokens(t.tokens_hoje_out || 0)} out`;
+    if (elExec) elExec.textContent = String(t.total_execucoes || 0);
+    if (elHoje) elHoje.textContent = `hoje: ${t.execucoes_hoje || 0} · total ${fmtTokens(t.tokens_in || 0)}/${fmtTokens(t.tokens_out || 0)}`;
+    if (elOk) elOk.textContent = `${Number(t.taxa_sucesso ?? 100).toFixed(1)}%`;
+
+    const lista = t.ultimas_execucoes || [];
+    if (!lista.length) {
+      box.innerHTML = '<span class="empty-note">Nenhuma execução registrada ainda. Envie uma mensagem no chat para medir latência e tokens.</span>';
+      return;
+    }
+
+    let h = '<table class="grid"><thead><tr><th>Hora</th><th>Modelo</th><th>Duração</th><th>Tokens</th><th>Agentes</th><th>Status</th></tr></thead><tbody>';
+    for (const item of lista) {
+      const horaCurta = String(item.data_hora || "").replace("T", " ").slice(5, 16);
+      const modCurto = MODELO_ROTULOS[item.modelo] || item.modelo;
+      const badge = item.sucesso
+        ? '<span class="badge-exec">ok</span>'
+        : '<span class="badge-rec">erro</span>';
+      const tokStr = `${fmtTokens(item.tokens_in)}/${fmtTokens(item.tokens_out)}`;
+      h += `<tr>
+        <td style="white-space:nowrap;color:var(--muted);">${escHtml(horaCurta)}</td>
+        <td><span class="badge-tipo">${escHtml(modCurto)}</span></td>
+        <td class="ulife-nota-val">${escHtml(fmtDuracaoMs(item.duracao_ms))}</td>
+        <td style="white-space:nowrap;color:var(--muted);" title="${item.tokens_in} entrada / ${item.tokens_out} saída">${escHtml(tokStr)}</td>
+        <td style="font-size:12px;color:var(--muted);">${escHtml(item.agentes_usados || "Athena")}</td>
+        <td>${badge}</td>
+      </tr>`;
+    }
+    box.innerHTML = h + "</tbody></table>";
+  } catch (e) {
+    box.innerHTML = '<span class="empty-note">Erro ao carregar telemetria local.</span>';
+  }
+}
+
+async function carregarServidoresMcp() {
+  const box = document.getElementById("box-mcp-servidores");
+  if (!box) return;
+  try {
+    const r = await fetch("/api/mcp/servidores").then(x => x.json());
+    const lista = r.servidores || [];
+    if (!lista.length) {
+      box.innerHTML = '<span class="empty-note">Nenhum servidor configurado em <code>mcp_servers.json</code>.</span>';
+      return;
+    }
+    box.innerHTML = lista.map(s => {
+      const badge = s.status === "ativo"
+        ? '<span class="badge-exec">ativo</span>'
+        : (s.status === "erro" ? '<span class="badge-rec">erro</span>' : '<span class="badge-tipo">inativo</span>');
+      const erroHtml = s.erro ? `<div style="color:var(--neg);font-size:12px;margin-top:4px;">${escHtml(s.erro)}</div>` : "";
+      return `
+        <div class="acao-card" style="margin-bottom:8px;">
+          <div class="acao-info">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <strong style="color:var(--text-strong);">${escHtml(s.nome)}</strong>
+              <span class="badge-tipo">${escHtml(s.transporte || "stdio")}</span>
+              ${badge}
+            </div>
+            ${s.descricao ? `<div style="color:var(--muted);font-size:12.5px;margin-top:3px;">${escHtml(s.descricao)}</div>` : ""}
+            ${s.alvo ? `<div class="acao-path" style="margin-top:3px;color:var(--muted);">${escHtml(s.alvo)}</div>` : ""}
+            ${erroHtml}
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (e) {
+    box.innerHTML = '<span class="empty-note">Erro ao consultar servidores MCP.</span>';
+  }
+}
+
+async function salvarRotina(id) {
+  const chk = document.getElementById("rot-ativa-" + id);
+  const inp = document.getElementById("rot-hora-" + id);
+  if (!chk || !inp) return;
+  const partes = String(inp.value || "08:00").split(":");
+  const hora = parseInt(partes[0], 10);
+  const minuto = parseInt(partes[1], 10);
+  if (Number.isNaN(hora) || Number.isNaN(minuto)) {
+    mostrarToast("Horário inválido.", true);
+    return;
+  }
+  try {
+    const r = await fetch(`/api/rotinas/${encodeURIComponent(id)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hora, minuto, ativa: chk.checked }),
+    }).then(x => x.json());
+    if (r.ok) {
+      const rot = r.rotina || {};
+      mostrarToast(`Rotina salva: ${rot.ativa ? "ativa às " + rot.horario : "pausada"}.`);
+      carregarRotinas();
+    } else {
+      mostrarToast("Erro: " + (r.erro || "Falha ao atualizar rotina."), true);
+    }
+  } catch (e) {
+    mostrarToast("Falha ao salvar configuração da rotina.", true);
+  }
+}
+
+async function executarRotinaAgora(id) {
+  const btn = document.getElementById("btn-rodar-" + id);
+  const ico = document.getElementById("ico-rodar-" + id);
+  const lbl = btn ? btn.querySelector(".btn-label") : null;
+  if (btn) btn.disabled = true;
+  if (ico) ico.classList.add("spinning");
+  if (lbl) lbl.textContent = "Executando...";
+  try {
+    const r = await fetch(`/api/rotinas/${encodeURIComponent(id)}/executar`, { method: "POST" }).then(x => x.json());
+    if (r.ok) {
+      mostrarToast(id === "sincronizar_ulife" ? "Ulife sincronizado e salvo no Obsidian!" : "Briefing gerado e salvo no Obsidian (04-Diario)!");
+      carregarRotinas();
+    } else {
+      mostrarToast("Erro ao executar rotina: " + (r.erro || "falha desconhecida"), true);
+      carregarRotinas();
+    }
+  } catch (e) {
+    mostrarToast("Falha na comunicação ao rodar a rotina.", true);
+  } finally {
+    if (btn) btn.disabled = false;
+    if (ico) ico.classList.remove("spinning");
+    if (lbl) lbl.textContent = "Rodar agora";
+  }
+}
+
+/* ===== AUTENTICACAO: PIN + BIOMETRIA WEBAUTHN ===== */
+function b64urlToBuf(b64url) {
+  const pad = "=".repeat((4 - (b64url.length % 4)) % 4);
+  const b64 = (b64url + pad).replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+
+function bufToB64url(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  for (let i = 0; i < bytes.byteLength; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function detectarNomeDispositivo() {
+  const ua = navigator.userAgent || "";
+  if (/Android/i.test(ua)) return "Android";
+  if (/iPhone|iPad|iPod/i.test(ua)) return "iOS";
+  if (/Windows/i.test(ua)) return "Windows PC";
+  if (/Mac/i.test(ua)) return "Mac";
+  return "Dispositivo";
+}
+
+function atualizarBotoesAuthUI() {
+  const btnLock = document.getElementById("btn-bloquear");
+  const btnAtivarBio = document.getElementById("btn-ativar-biometria");
+  const btnBioLogin = document.getElementById("btn-desbloquear-bio");
+  const suportaWebAuthn = !!window.PublicKeyCredential;
+
+  if (btnLock) btnLock.style.display = _authProtegido ? "flex" : "none";
+  if (btnAtivarBio) btnAtivarBio.style.display = suportaWebAuthn ? "flex" : "none";
+  if (btnBioLogin) btnBioLogin.style.display = (_biometriaDisponivel && suportaWebAuthn) ? "inline-flex" : "none";
+}
+
+function mostrarTelaBloqueio(mostrar, msgErro = "") {
+  const overlay = document.getElementById("lock-screen");
+  const erroEl = document.getElementById("pin-erro");
+  const inp = document.getElementById("pin-input");
+  atualizarBotoesAuthUI();
+  if (!overlay) return;
+  overlay.classList.toggle("hidden", !mostrar);
+  if (erroEl) erroEl.textContent = msgErro || "";
+  if (mostrar && inp) {
+    inp.value = "";
+    setTimeout(() => inp.focus(), 60);
+  }
+}
+
+async function ativarBiometria() {
+  if (!window.PublicKeyCredential || !navigator.credentials) {
+    mostrarToast("Este navegador não suporta biometria WebAuthn / Passkeys.", true);
+    return;
+  }
+  if (!window.isSecureContext) {
+    mostrarToast("Biometria exige HTTPS (use `tailscale serve` no celular ou http://localhost:8000 no PC).", true);
+    return;
+  }
+  const btn = document.getElementById("btn-ativar-biometria");
+  const lbl = btn ? btn.querySelector(".nav-label") : null;
+  if (btn) btn.disabled = true;
+  if (lbl) lbl.textContent = "Aguardando...";
+
+  try {
+    const rOp = await fetch("/api/auth/biometria/registrar/opcoes", { method: "POST" });
+    const dadosOp = await rOp.json().catch(() => ({}));
+    if (!rOp.ok || !dadosOp.ok) {
+      mostrarToast(dadosOp.erro || "Não foi possível iniciar o cadastro de biometria.", true);
+      return;
+    }
+
+    const pub = dadosOp.options;
+    pub.challenge = b64urlToBuf(pub.challenge);
+    pub.user.id = b64urlToBuf(pub.user.id);
+    if (Array.isArray(pub.excludeCredentials)) {
+      pub.excludeCredentials = pub.excludeCredentials.map(c => ({ ...c, id: b64urlToBuf(c.id) }));
+    }
+
+    const cred = await navigator.credentials.create({ publicKey: pub });
+    if (!cred) {
+      mostrarToast("Cadastro de biometria cancelado.", true);
+      return;
+    }
+
+    const payloadCred = {
+      id: cred.id,
+      rawId: bufToB64url(cred.rawId),
+      type: cred.type,
+      response: {
+        attestationObject: bufToB64url(cred.response.attestationObject),
+        clientDataJSON: bufToB64url(cred.response.clientDataJSON),
+      },
+    };
+    if (typeof cred.response.getTransports === "function") {
+      payloadCred.response.transports = cred.response.getTransports();
+    }
+
+    const rVer = await fetch("/api/auth/biometria/registrar/verificar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        challenge_id: dadosOp.challenge_id,
+        credential: payloadCred,
+        nome: detectarNomeDispositivo(),
+      }),
+    });
+    const dadosVer = await rVer.json().catch(() => ({}));
+    if (rVer.ok && dadosVer.ok) {
+      _biometriaDisponivel = true;
+      atualizarBotoesAuthUI();
+      mostrarToast("Biometria ativada neste dispositivo!");
+    } else {
+      mostrarToast(dadosVer.erro || "Falha ao salvar a biometria.", true);
+    }
+  } catch (e) {
+    if (e && e.name === "InvalidStateError") {
+      mostrarToast("Este dispositivo já possui biometria cadastrada na Athena.");
+      _biometriaDisponivel = true;
+      atualizarBotoesAuthUI();
+    } else if (e && e.name === "NotAllowedError") {
+      mostrarToast("Cadastro de biometria cancelado ou não autorizado.", true);
+    } else {
+      mostrarToast("Erro ao ativar biometria: " + (e && e.message ? e.message : e), true);
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+    if (lbl) lbl.textContent = "Biometria";
+  }
+}
+
+async function desbloquearComBiometria() {
+  const erroEl = document.getElementById("pin-erro");
+  const btn = document.getElementById("btn-desbloquear-bio");
+  if (!window.PublicKeyCredential || !navigator.credentials) {
+    if (erroEl) erroEl.textContent = "Biometria não suportada neste navegador.";
+    return;
+  }
+  if (btn) btn.disabled = true;
+  if (erroEl) erroEl.textContent = "";
+
+  try {
+    const rOp = await fetch("/api/auth/biometria/login/opcoes", { method: "POST" });
+    const dadosOp = await rOp.json().catch(() => ({}));
+    if (!rOp.ok || !dadosOp.ok) {
+      if (erroEl) erroEl.textContent = dadosOp.erro || "Biometria indisponível.";
+      return;
+    }
+
+    const pub = dadosOp.options;
+    pub.challenge = b64urlToBuf(pub.challenge);
+    if (Array.isArray(pub.allowCredentials)) {
+      pub.allowCredentials = pub.allowCredentials.map(c => ({ ...c, id: b64urlToBuf(c.id) }));
+    }
+
+    const cred = await navigator.credentials.get({ publicKey: pub });
+    if (!cred) {
+      if (erroEl) erroEl.textContent = "Verificação biométrica cancelada.";
+      return;
+    }
+
+    const payloadCred = {
+      id: cred.id,
+      rawId: bufToB64url(cred.rawId),
+      type: cred.type,
+      response: {
+        authenticatorData: bufToB64url(cred.response.authenticatorData),
+        clientDataJSON: bufToB64url(cred.response.clientDataJSON),
+        signature: bufToB64url(cred.response.signature),
+        userHandle: cred.response.userHandle ? bufToB64url(cred.response.userHandle) : null,
+      },
+    };
+
+    const rVer = await fetch("/api/auth/biometria/login/verificar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        challenge_id: dadosOp.challenge_id,
+        credential: payloadCred,
+      }),
+    });
+    const dadosVer = await rVer.json().catch(() => ({}));
+    if (rVer.ok && dadosVer.ok) {
+      mostrarTelaBloqueio(false);
+      await carregarDadosIniciaisApp();
+    } else {
+      if (erroEl) erroEl.textContent = dadosVer.erro || "Falha ao validar a digital.";
+    }
+  } catch (e) {
+    if (erroEl) {
+      erroEl.textContent = (e && e.name === "NotAllowedError")
+        ? "Leitura biométrica cancelada. Use o PIN ou tente novamente."
+        : "Não foi possível validar a digital neste dispositivo.";
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function desbloquearComPin(ev) {
+  if (ev) ev.preventDefault();
+  const inp = document.getElementById("pin-input");
+  const btn = document.getElementById("btn-desbloquear");
+  const erroEl = document.getElementById("pin-erro");
+  const pin = (inp ? inp.value : "").trim();
+  if (!pin) {
+    if (erroEl) erroEl.textContent = "Informe o PIN.";
+    if (inp) inp.focus();
+    return;
+  }
+  if (btn) btn.disabled = true;
+  if (erroEl) erroEl.textContent = "";
+  try {
+    const resp = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin }),
+    });
+    const r = await resp.json().catch(() => ({}));
+    if (resp.ok && r.ok) {
+      mostrarTelaBloqueio(false);
+      await carregarDadosIniciaisApp();
+    } else {
+      if (erroEl) erroEl.textContent = r.erro || "PIN incorreto.";
+      if (inp) {
+        inp.value = "";
+        inp.focus();
+      }
+    }
+  } catch (e) {
+    if (erroEl) erroEl.textContent = "Falha ao conectar com o servidor.";
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function bloquearPainel() {
+  pararLeituraVoz();
+  fecharDrawersMobile();
+  try {
+    await fetch("/api/auth/logout", { method: "POST" });
+  } catch (_) {}
+  _appInicializada = false;
+  const chat = document.getElementById("chat");
+  if (chat) chat.innerHTML = "";
+  renderTrilha([]);
+  renderFatos([]);
+  mostrarTelaBloqueio(true);
+}
+
+async function carregarDadosIniciaisApp() {
+  if (_appInicializada) return;
+  _appInicializada = true;
+  obterOuCriarConversaId();
+  atualizarBotoesAuthUI();
+  await Promise.all([carregarConfig(), carregarHistorico()]);
+  reconectarConversaAtiva();
+}
+
+async function iniciarAplicacao() {
+  initSidebar();
+  initPainelAgentes();
+  initDragAndDropChat();
+  try {
+    const st = await fetch("/api/auth/status").then(x => x.json());
+    _authProtegido = !!st.protegido;
+    _biometriaDisponivel = !!st.biometria_disponivel;
+    atualizarBotoesAuthUI();
+
+    if (_authProtegido && !st.autenticado) {
+      mostrarTelaBloqueio(true);
+      return;
+    }
+    mostrarTelaBloqueio(false);
+    await carregarDadosIniciaisApp();
+  } catch (e) {
+    mostrarToast("Não foi possível verificar o status de autenticação.", true);
+    await carregarDadosIniciaisApp();
+  }
+}
+
+window.addEventListener("resize", () => {
+  if (!ehMobile()) {
+    const sb = document.getElementById("sidebar");
+    if (sb) sb.classList.remove("mobile-open");
+  }
+  atualizarBackdrop();
+});
+
+iniciarAplicacao();
+
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,54 @@
+name: CI — Athena
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  secret-scan:
+    name: Secret Scan (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  quality-and-tests:
+    name: Lint, Typecheck & Tests (Python 3.12)
+    runs-on: ubuntu-latest
+    env:
+      GOOGLE_API_KEY: test-dummy-key
+      GEMINI_API_KEY: test-dummy-key
+      LOGFIRE_SEND_TO_LOGFIRE: "false"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup uv and Python 3.12
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Install project and dev dependencies
+        run: uv sync --dev
+
+      - name: Lint with Ruff
+        run: uv run ruff check .
+
+      - name: Typecheck with Pyright
+        run: uv run pyright
+
+      - name: Run offline tests with Pytest
+        run: uv run pytest -v

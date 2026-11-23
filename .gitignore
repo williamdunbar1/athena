@@ -1,0 +1,37 @@
+# Python & caches
+__pycache__/
+*.py[oc]
+*.pyo
+*$py.class
+build/
+dist/
+wheels/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual environments & IDE
+.venv/
+.venv
+.vscode/
+
+# Segredos e credenciais (exceto .env.example)
+.env
+.env.*
+!.env.example
+credentials.json
+token.json
+ulife_cookies.json
+apis_ulife_descobertas.json
+
+# Banco local, vetores, observabilidade e arquivos de execucao
+memoria.db*
+qdrant_db/
+sandbox_files/
+.logfire/
+relatorio_carteira.md
+
+# Atalhos e instaladores locais do Windows
+*.lnk
+*.exe

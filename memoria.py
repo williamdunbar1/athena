@@ -1,0 +1,288 @@
+import json
+import sqlite3
+from contextlib import contextmanager
+from datetime import datetime
+from pathlib import Path
+
+DB_PATH = Path(__file__).resolve().parent / "memoria.db"
+
+
+@contextmanager
+def _conn():
+    c = sqlite3.connect(DB_PATH, timeout=5.0)
+    try:
+        c.execute("PRAGMA journal_mode=WAL;")
+        c.execute("PRAGMA busy_timeout=5000;")
+        yield c
+        c.commit()
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        c.close()
+
+
+def _garantir_coluna_meta_mensagens(c: sqlite3.Connection) -> None:
+    cols = {r[1] for r in c.execute("PRAGMA table_info(mensagens)").fetchall()}
+    if "meta_json" not in cols:
+        c.execute("ALTER TABLE mensagens ADD COLUMN meta_json TEXT DEFAULT '{}'")
+
+
+def init_db():
+    with _conn() as c:
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS mensagens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                role TEXT NOT NULL,
+                conteudo TEXT NOT NULL,
+                trilha_json TEXT DEFAULT '[]',
+                criado_em TEXT NOT NULL,
+                meta_json TEXT DEFAULT '{}'
+            )
+            """
+        )
+        _garantir_coluna_meta_mensagens(c)
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS fatos (
+                chave TEXT PRIMARY KEY,
+                valor TEXT NOT NULL,
+                atualizado_em TEXT NOT NULL
+            )
+            """
+        )
+        c.execute(
+            """
+            CREATE TABLE IF NOT EXISTS telemetria (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                data_hora TEXT NOT NULL,
+                modelo TEXT NOT NULL,
+                duracao_ms INTEGER NOT NULL,
+                tokens_in INTEGER NOT NULL DEFAULT 0,
+                tokens_out INTEGER NOT NULL DEFAULT 0,
+                agentes_usados TEXT DEFAULT '',
+                sucesso INTEGER NOT NULL DEFAULT 1
+            )
+            """
+        )
+
+
+def salvar_mensagem(
+    role: str,
+    conteudo: str,
+    trilha: list[dict] | None = None,
+    meta: dict | None = None,
+):
+    agora = datetime.now().isoformat(timespec="seconds")
+    meta_str = json.dumps(meta or {}, ensure_ascii=False)
+    with _conn() as c:
+        _garantir_coluna_meta_mensagens(c)
+        c.execute(
+            "INSERT INTO mensagens (role, conteudo, trilha_json, criado_em, meta_json) VALUES (?, ?, ?, ?, ?)",
+            (role, conteudo, json.dumps(trilha or [], ensure_ascii=False), agora, meta_str),
+        )
+
+
+def listar_mensagens(limite: int = 30) -> list[dict]:
+    with _conn() as c:
+        _garantir_coluna_meta_mensagens(c)
+        rows = c.execute(
+            "SELECT id, role, conteudo, trilha_json, criado_em, COALESCE(meta_json, '{}') FROM mensagens ORDER BY id DESC LIMIT ?",
+            (limite,),
+        ).fetchall()
+    rows.reverse()
+    out: list[dict] = []
+    for r in rows:
+        try:
+            meta_obj = json.loads(r[5] or "{}")
+            if not isinstance(meta_obj, dict):
+                meta_obj = {}
+        except Exception:
+            meta_obj = {}
+        out.append({
+            "id": r[0],
+            "role": r[1],
+            "conteudo": r[2],
+            "trilha": json.loads(r[3] or "[]"),
+            "criado_em": r[4],
+            "meta": meta_obj,
+        })
+    return out
+
+
+def limpar_mensagens():
+    with _conn() as c:
+        c.execute("DELETE FROM mensagens")
+
+
+def guardar_fato(chave: str, valor: str):
+    agora = datetime.now().isoformat(timespec="seconds")
+    with _conn() as c:
+        c.execute(
+            "INSERT INTO fatos (chave, valor, atualizado_em) VALUES (?, ?, ?) "
+            "ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=excluded.atualizado_em",
+            (chave.strip().lower(), valor.strip(), agora),
+        )
+
+
+def listar_fatos() -> list[dict]:
+    with _conn() as c:
+        rows = c.execute("SELECT chave, valor, atualizado_em FROM fatos ORDER BY atualizado_em DESC").fetchall()
+    return [{"chave": r[0], "valor": r[1], "atualizado_em": r[2]} for r in rows]
+
+
+def apagar_fato(chave: str):
+    with _conn() as c:
+        c.execute("DELETE FROM fatos WHERE chave = ?", (chave,))
+
+
+def montar_contexto_prompt(mensagem_atual: str, ultimas: int = 5, max_chars_msg: int = 400) -> str:
+    fatos = listar_fatos()
+    hist = listar_mensagens(limite=ultimas)
+
+    partes = []
+    if fatos:
+        bloco_fatos = "\n".join(f"- {f['chave']}: {f['valor']}" for f in fatos)
+        partes.append(f"[MEMORIA DE LONGO PRAZO DO USUARIO]\n{bloco_fatos}")
+    if hist:
+        linhas_hist = []
+        for m in hist:
+            texto = (m["conteudo"] or "").strip()
+            if len(texto) > max_chars_msg:
+                texto = texto[:max_chars_msg].rstrip() + "..."
+            papel = "Usuario" if m["role"] == "user" else "Athena"
+            linhas_hist.append(f"{papel}: {texto}")
+        bloco_hist = "\n".join(linhas_hist)
+        partes.append(f"[ULTIMAS MENSAGENS DA CONVERSA]\n{bloco_hist}")
+    partes.append(f"[PEDIDO ATUAL DO USUARIO]\n{mensagem_atual}")
+    return "\n\n".join(partes)
+
+
+def _garantir_tabela_telemetria(c: sqlite3.Connection) -> None:
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS telemetria (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            data_hora TEXT NOT NULL,
+            modelo TEXT NOT NULL,
+            duracao_ms INTEGER NOT NULL,
+            tokens_in INTEGER NOT NULL DEFAULT 0,
+            tokens_out INTEGER NOT NULL DEFAULT 0,
+            agentes_usados TEXT DEFAULT '',
+            sucesso INTEGER NOT NULL DEFAULT 1
+        )
+        """
+    )
+
+
+def registrar_telemetria(
+    modelo: str,
+    duracao_ms: int,
+    tokens_in: int = 0,
+    tokens_out: int = 0,
+    agentes_usados: str = "",
+    sucesso: bool = True,
+) -> int:
+    """Registra uma execucao do chat na tabela `telemetria` do memoria.db."""
+    agora = datetime.now().isoformat(timespec="seconds")
+    with _conn() as c:
+        _garantir_tabela_telemetria(c)
+        cur = c.execute(
+            """
+            INSERT INTO telemetria
+                (data_hora, modelo, duracao_ms, tokens_in, tokens_out, agentes_usados, sucesso)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                agora,
+                (modelo or "").strip() or "desconhecido",
+                max(0, int(duracao_ms)),
+                max(0, int(tokens_in or 0)),
+                max(0, int(tokens_out or 0)),
+                (agentes_usados or "").strip()[:300],
+                1 if sucesso else 0,
+            ),
+        )
+        return int(cur.lastrowid or 0)
+
+
+def obter_resumo_telemetria(limite: int = 15) -> dict:
+    """Retorna metricas consolidadas de telemetria e as ultimas N execucoes."""
+    hoje_prefix = datetime.now().strftime("%Y-%m-%d")
+    lim = max(1, min(int(limite), 100))
+
+    with _conn() as c:
+        _garantir_tabela_telemetria(c)
+        tot_row = c.execute(
+            """
+            SELECT
+                COUNT(*),
+                COALESCE(AVG(duracao_ms), 0),
+                COALESCE(SUM(CASE WHEN sucesso = 1 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(tokens_in), 0),
+                COALESCE(SUM(tokens_out), 0)
+            FROM telemetria
+            """
+        ).fetchone()
+        hoje_row = c.execute(
+            """
+            SELECT
+                COUNT(*),
+                COALESCE(SUM(tokens_in), 0),
+                COALESCE(SUM(tokens_out), 0)
+            FROM telemetria
+            WHERE data_hora LIKE ?
+            """,
+            (f"{hoje_prefix}%",),
+        ).fetchone()
+        rows = c.execute(
+            """
+            SELECT id, data_hora, modelo, duracao_ms, tokens_in, tokens_out, agentes_usados, sucesso
+            FROM telemetria
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (lim,),
+        ).fetchall()
+
+    total_exec = int(tot_row[0] or 0)
+    tempo_medio_ms = int(round(float(tot_row[1] or 0.0)))
+    sucessos = int(tot_row[2] or 0)
+    tokens_total_in = int(tot_row[3] or 0)
+    tokens_total_out = int(tot_row[4] or 0)
+    taxa_sucesso = round((sucessos / total_exec) * 100.0, 1) if total_exec > 0 else 100.0
+
+    execucoes_hoje = int(hoje_row[0] or 0)
+    tokens_hoje_in = int(hoje_row[1] or 0)
+    tokens_hoje_out = int(hoje_row[2] or 0)
+
+    ultimas = [
+        {
+            "id": int(r[0]),
+            "data_hora": r[1],
+            "modelo": r[2],
+            "duracao_ms": int(r[3]),
+            "tokens_in": int(r[4]),
+            "tokens_out": int(r[5]),
+            "tokens_total": int(r[4]) + int(r[5]),
+            "agentes_usados": r[6] or "",
+            "sucesso": bool(r[7]),
+        }
+        for r in rows
+    ]
+
+    return {
+        "total_execucoes": total_exec,
+        "execucoes_hoje": execucoes_hoje,
+        "tempo_medio_ms": tempo_medio_ms,
+        "taxa_sucesso": taxa_sucesso,
+        "tokens_in": tokens_total_in,
+        "tokens_out": tokens_total_out,
+        "tokens_hoje": tokens_hoje_in + tokens_hoje_out,
+        "tokens_hoje_in": tokens_hoje_in,
+        "tokens_hoje_out": tokens_hoje_out,
+        "tokens_hoje_total": tokens_hoje_in + tokens_hoje_out,
+        "tokens_total": tokens_total_in + tokens_total_out,
+        "ultimas_execucoes": ultimas,
+    }
