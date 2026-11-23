@@ -2368,3 +2368,94 @@ def test_streaming_reset_stream_no_fallback_auto_e_ttft(monkeypatch, tmp_path):
     assert reg_final["resultado_final"]["resposta"] == "Resposta completa!"
     assert reg_final["resultado_final"]["modelo_usado"] == "gemini-3.8-flash"
     assert reg_final["resultado_final"]["telemetria"]["ttft_ms"] == reg_final["ttft_ms"]
+
+
+# ==============================================================================
+# 20. PRE-OTIMIZACAO MULTIMODAL DE IMAGENS E PDFS (otimizador_midia.py)
+# ==============================================================================
+
+
+def test_otimizador_midia_imagem_redimensiona_2560x1440_e_reduz_bytes():
+    import io
+
+    from PIL import Image
+
+    import otimizador_midia as om
+
+    # Gera uma imagem RGBA 2560x1440 com gradiente (PNG grande em memoria)
+    img = Image.new("RGBA", (2560, 1440))
+    px = img.load()
+    assert px is not None
+    for y in range(0, 1440, 8):
+        for x in range(0, 2560, 8):
+            r = (x * 255) // 2560
+            g = (y * 255) // 1440
+            b = ((x + y) * 127) // 4000
+            for dy in range(8):
+                for dx in range(8):
+                    px[x + dx, y + dy] = (r, g, b, 230)
+
+    buf_png = io.BytesIO()
+    img.save(buf_png, format="PNG")
+    dados_png = buf_png.getvalue()
+
+    dados_otim, mime_otim, stats = om.otimizar_imagem_para_llm(
+        dados_png,
+        nome_arquivo="captura_grande.png",
+        max_lado=1280,
+        qualidade=82,
+    )
+
+    assert mime_otim == "image/jpeg"
+    assert stats["bytes_antes"] == len(dados_png)
+    assert stats["bytes_depois"] == len(dados_otim)
+    assert stats["bytes_depois"] < stats["bytes_antes"]
+    assert stats["reducao_pct"] > 0.0
+    w, h = stats["dimensoes"]
+    assert w <= 1280 and h <= 720
+    assert (w, h) == (1280, 720)
+
+    with Image.open(io.BytesIO(dados_otim)) as verificada:
+        assert verificada.format == "JPEG"
+        assert verificada.mode == "RGB"
+        assert verificada.size == (1280, 720)
+
+
+def test_otimizador_midia_pdf_digital_vs_escaneado(monkeypatch):
+    import otimizador_midia as om
+
+    class _FakePage:
+        def __init__(self, texto: str):
+            self._texto = texto
+
+        def extract_text(self) -> str:
+            return self._texto
+
+    # 1) PDF digital (>= 200 caracteres uteis) -> modo="texto" compactado
+    class _FakeDigitalReader:
+        def __init__(self, _stream):
+            self.pages = [
+                _FakePage("Capitulo 1: Introducao a Calculo Diferencial e Integral. " + ("Derivadas e limites. " * 20)),
+                _FakePage("Capitulo 2: Aplicacoes em Fisica e Mecanica dos Solidos. " + ("Forca e equilibrio. " * 20)),
+            ]
+
+    monkeypatch.setattr(om, "PdfReader", _FakeDigitalReader)
+    res_dig = om.processar_pdf_para_llm(b"%PDF-1.4-fake-digital", nome_arquivo="aula01.pdf", max_chars=500)
+    assert res_dig["modo"] == "texto"
+    assert res_dig["paginas"] == 2
+    assert len(res_dig["conteudo"]) <= 500
+    assert "Capitulo 1" in res_dig["conteudo"]
+    assert "[... truncado para economia de tokens ...]" in res_dig["conteudo"]
+
+    # 2) PDF escaneado (sem texto extraivel) -> modo="binario" preservando bytes originais
+    class _FakeScannedReader:
+        def __init__(self, _stream):
+            self.pages = [_FakePage(""), _FakePage("   ")]
+
+    monkeypatch.setattr(om, "PdfReader", _FakeScannedReader)
+    bytes_scan = b"%PDF-1.4-fake-scanned-image-only"
+    res_scan = om.processar_pdf_para_llm(bytes_scan, nome_arquivo="prova_escaneada.pdf")
+    assert res_scan["modo"] == "binario"
+    assert res_scan["mime_type"] == "application/pdf"
+    assert res_scan["dados"] == bytes_scan
+    assert res_scan["paginas"] == 2

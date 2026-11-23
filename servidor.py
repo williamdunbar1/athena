@@ -117,6 +117,7 @@ from memoria import (
     salvar_mensagem,
 )
 from observabilidade import configurar_observabilidade
+from otimizador_midia import otimizar_imagem_para_llm, processar_pdf_para_llm
 from rag_qdrant import obter_estatisticas_rag, sincronizar_indice_vetorial
 from rotinas import (
     atualizar_rotina,
@@ -1870,6 +1871,7 @@ async def _preparar_uploads_stream(
 
     soma_bytes = 0
     conteudos_binarios: list[BinaryContent] = []
+    blocos_pdfs_texto: list[str] = []
     detalhes_prompt: list[str] = []
     caminhos_salvos_rel: list[str] = []
     nomes_exibicao: list[str] = []
@@ -1936,8 +1938,73 @@ async def _preparar_uploads_stream(
         (PASTA_UPLOADS / nome_disco).write_bytes(dados)
         caminhos_salvos_rel.append(f"sandbox_files/uploads/{nome_disco}")
         nomes_exibicao.append(nome_original)
-        detalhes_prompt.append(f"{nome_original} ({ctype}, copia em /workspace/uploads/{nome_disco})")
-        conteudos_binarios.append(BinaryContent(data=dados, media_type=ctype))
+
+        if ctype.startswith("image/"):
+            dados_envio, mime_envio, stats_img = await asyncio.to_thread(
+                otimizar_imagem_para_llm,
+                dados,
+                nome_original,
+            )
+            logger.info(
+                "midia_otimizada",
+                tipo="imagem",
+                arquivo=nome_original,
+                bytes_antes=stats_img["bytes_antes"],
+                bytes_depois=stats_img["bytes_depois"],
+                reducao_pct=stats_img["reducao_pct"],
+                dimensoes=list(stats_img["dimensoes"]),
+            )
+            detalhes_prompt.append(
+                f"{nome_original} ({mime_envio}, {stats_img['dimensoes'][0]}x{stats_img['dimensoes'][1]}, "
+                f"copia em /workspace/uploads/{nome_disco})"
+            )
+            conteudos_binarios.append(BinaryContent(data=dados_envio, media_type=mime_envio))
+        elif ctype == "application/pdf":
+            res_pdf = await asyncio.to_thread(processar_pdf_para_llm, dados, nome_original)
+            if res_pdf["modo"] == "texto":
+                conteudo_pdf = str(res_pdf.get("conteudo") or "")
+                paginas_pdf = int(res_pdf.get("paginas") or 0)
+                bytes_depois_pdf = len(conteudo_pdf.encode("utf-8"))
+                reducao_pdf = (
+                    round(((len(dados) - bytes_depois_pdf) / len(dados)) * 100.0, 1)
+                    if len(dados) > 0 and bytes_depois_pdf <= len(dados)
+                    else 0.0
+                )
+                logger.info(
+                    "midia_otimizada",
+                    tipo="pdf_texto",
+                    arquivo=nome_original,
+                    paginas=paginas_pdf,
+                    bytes_antes=len(dados),
+                    bytes_depois=bytes_depois_pdf,
+                    reducao_pct=reducao_pdf,
+                )
+                detalhes_prompt.append(
+                    f"{nome_original} (PDF digital extraido em texto, {paginas_pdf} pagina(s), "
+                    f"copia em /workspace/uploads/{nome_disco})"
+                )
+                blocos_pdfs_texto.append(
+                    f"[TEXTO EXTRAIDO DO PDF '{nome_original}' ({paginas_pdf} pagina(s))]\n{conteudo_pdf}"
+                )
+            else:
+                paginas_pdf = int(res_pdf.get("paginas") or 0)
+                logger.info(
+                    "midia_otimizada",
+                    tipo="pdf_binario",
+                    arquivo=nome_original,
+                    paginas=paginas_pdf,
+                    bytes_antes=len(dados),
+                    bytes_depois=len(dados),
+                    reducao_pct=0.0,
+                )
+                detalhes_prompt.append(
+                    f"{nome_original} (application/pdf escaneado, {paginas_pdf} pagina(s), "
+                    f"copia em /workspace/uploads/{nome_disco})"
+                )
+                conteudos_binarios.append(BinaryContent(data=res_pdf["dados"], media_type="application/pdf"))
+        else:
+            detalhes_prompt.append(f"{nome_original} ({ctype}, copia em /workspace/uploads/{nome_disco})")
+            conteudos_binarios.append(BinaryContent(data=dados, media_type=ctype))
 
     if len(nomes_exibicao) == 1:
         prefixo_hist = f"[Anexo: {nomes_exibicao[0]}]"
@@ -1951,8 +2018,11 @@ async def _preparar_uploads_stream(
         if texto_usuario
         else f"Analise detalhadamente os {len(nomes_exibicao)} arquivo(s) anexado(s) ({resumo_anexos}) e responda em portugues do Brasil."
     )
+    if blocos_pdfs_texto:
+        texto_prompt = texto_prompt + "\n\n" + "\n\n".join(blocos_pdfs_texto)
     prompt_completo = await _montar_prompt_com_compactacao(texto_prompt, conversa_id)
-    return None, [prompt_completo, *conteudos_binarios], msg_historico, nomes_exibicao, caminhos_salvos_rel
+    entrada_final: str | list = [prompt_completo, *conteudos_binarios] if conteudos_binarios else prompt_completo
+    return None, entrada_final, msg_historico, nomes_exibicao, caminhos_salvos_rel
 
 
 # ==============================================================================
