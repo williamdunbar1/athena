@@ -48,6 +48,11 @@ from agentes import (
     orquestrador,
     registrar_cooldown_modelo,
 )
+from compactador import (
+    agendar_extracao_memorias,
+    limpar_resumos_conversa,
+    preparar_historico_compactado,
+)
 from ferramentas_estudos import PASTA_PDFS, formatar_nome_materia
 from ferramentas_estudos import _conn as conn_estudos
 from ferramentas_faxina import (
@@ -774,6 +779,7 @@ def ver_historico():
 @app.delete("/api/historico")
 def resetar_chat():
     limpar_mensagens()
+    limpar_resumos_conversa()
     return {"ok": True}
 
 
@@ -1247,6 +1253,19 @@ async def _executar_orquestrador_auto_ou_manual(
     ) from ultimo_erro
 
 
+async def _montar_prompt_com_compactacao(mensagem_atual: str, conversa_id: str = "principal") -> str:
+    """Usa compactacao inteligente quando a conversa passa de 16 msgs, preservando as 8 recentes intactas."""
+    historico_total = listar_mensagens(limite=80)
+    resumo, recentes = await preparar_historico_compactado(conversa_id, historico_total)
+    # Em conversas curtas (sem compactacao), mantem a janela enxuta das ultimas 5 mensagens
+    msgs_para_prompt = recentes if resumo else recentes[-5:]
+    return montar_contexto_prompt(
+        mensagem_atual,
+        resumo_compactado=resumo,
+        historico_override=msgs_para_prompt,
+    )
+
+
 @app.post("/api/chat")
 async def conversar(pedido: PedidoChat):
     try:
@@ -1258,7 +1277,7 @@ async def conversar(pedido: PedidoChat):
 
     modelo_inicial = fila_modelos[0]
     CONFIG["modelo"] = modelo_config
-    prompt_completo = montar_contexto_prompt(pedido.mensagem)
+    prompt_completo = await _montar_prompt_com_compactacao(pedido.mensagem, CONVERSA_ID_PADRAO)
     salvar_mensagem("user", pedido.mensagem)
 
     ctx = ContextoMissao(
@@ -1301,6 +1320,7 @@ async def conversar(pedido: PedidoChat):
             "acoes_windows": list(ctx.acoes_windows),
         }
         salvar_mensagem("bot", resposta_final, ctx.trilha, meta=meta_msg)
+        agendar_extracao_memorias(pedido.mensagem, resposta_final)
         return {
             "ok": True,
             "resposta": resposta_final,
@@ -1518,7 +1538,7 @@ async def conversar_multimodal(
         }
 
     erro_up, entrada_modelo, msg_historico, nomes_exibicao, caminhos_salvos_rel = (
-        await _preparar_uploads_stream(texto_usuario, lista_arquivos, modelo_real)
+        await _preparar_uploads_stream(texto_usuario, lista_arquivos, modelo_real, conversa_id=cid)
     )
     if erro_up is not None:
         return erro_up
@@ -1591,9 +1611,11 @@ async def _preparar_uploads_stream(
     texto_usuario: str,
     lista_arquivos: list,
     modelo_escolhido: str,
+    conversa_id: str = "principal",
 ) -> tuple[dict | None, str | list, str, list[str], list[str]]:
     if not lista_arquivos:
-        return None, montar_contexto_prompt(texto_usuario), texto_usuario, [], []
+        prompt_comp = await _montar_prompt_com_compactacao(texto_usuario, conversa_id)
+        return None, prompt_comp, texto_usuario, [], []
 
     if len(lista_arquivos) > MAX_UPLOAD_ARQUIVOS:
         return (
@@ -1693,7 +1715,7 @@ async def _preparar_uploads_stream(
         if texto_usuario
         else f"Analise detalhadamente os {len(nomes_exibicao)} arquivo(s) anexado(s) ({resumo_anexos}) e responda em portugues do Brasil."
     )
-    prompt_completo = montar_contexto_prompt(texto_prompt)
+    prompt_completo = await _montar_prompt_com_compactacao(texto_prompt, conversa_id)
     return None, [prompt_completo, *conteudos_binarios], msg_historico, nomes_exibicao, caminhos_salvos_rel
 
 
@@ -2100,6 +2122,7 @@ def _iniciar_tarefa_chat_background(
                 tokens_out=tokens_out,
             )
             _publicar_evento_tarefa(registro, "done", payload_done)
+            agendar_extracao_memorias(msg_historico, texto_final)
         except asyncio.CancelledError:
             duracao_ms = max(1, int((time.perf_counter() - t0) * 1000))
             registro["cancelada"] = True
@@ -2289,7 +2312,7 @@ async def conversar_stream(request: Request):
         })
 
     erro_up, entrada_modelo, msg_historico, nomes_exibicao, caminhos_salvos_rel = (
-        await _preparar_uploads_stream(texto_usuario, lista_arquivos, modelo_real)
+        await _preparar_uploads_stream(texto_usuario, lista_arquivos, modelo_real, conversa_id=cid)
     )
     if erro_up is not None:
         return _stream_erro_imediato(erro_up)

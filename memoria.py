@@ -140,8 +140,8 @@ def salvar_mensagem(
         )
 
 
-def listar_mensagens(limite: int = 30) -> list[dict]:
-    with _conn() as c:
+def listar_mensagens(limite: int = 30, *, db_path: str | Path | None = None) -> list[dict]:
+    with _conn(db_path) as c:
         _garantir_coluna_meta_mensagens(c)
         rows = c.execute(
             "SELECT id, role, conteudo, trilha_json, criado_em, COALESCE(meta_json, '{}') FROM mensagens ORDER BY id DESC LIMIT ?",
@@ -167,14 +167,19 @@ def listar_mensagens(limite: int = 30) -> list[dict]:
     return out
 
 
-def limpar_mensagens():
-    with _conn() as c:
+def limpar_mensagens(*, db_path: str | Path | None = None):
+    with _conn(db_path) as c:
         c.execute("DELETE FROM mensagens")
+        existe_res = c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='resumos_conversa'"
+        ).fetchone()
+        if existe_res:
+            c.execute("DELETE FROM resumos_conversa")
 
 
-def guardar_fato(chave: str, valor: str):
+def guardar_fato(chave: str, valor: str, *, db_path: str | Path | None = None):
     agora = datetime.now().isoformat(timespec="seconds")
-    with _conn() as c:
+    with _conn(db_path) as c:
         c.execute(
             "INSERT INTO fatos (chave, valor, atualizado_em) VALUES (?, ?, ?) "
             "ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=excluded.atualizado_em",
@@ -182,25 +187,34 @@ def guardar_fato(chave: str, valor: str):
         )
 
 
-def listar_fatos() -> list[dict]:
-    with _conn() as c:
+def listar_fatos(*, db_path: str | Path | None = None) -> list[dict]:
+    with _conn(db_path) as c:
         rows = c.execute("SELECT chave, valor, atualizado_em FROM fatos ORDER BY atualizado_em DESC").fetchall()
     return [{"chave": r[0], "valor": r[1], "atualizado_em": r[2]} for r in rows]
 
 
-def apagar_fato(chave: str):
-    with _conn() as c:
+def apagar_fato(chave: str, *, db_path: str | Path | None = None):
+    with _conn(db_path) as c:
         c.execute("DELETE FROM fatos WHERE chave = ?", (chave,))
 
 
-def montar_contexto_prompt(mensagem_atual: str, ultimas: int = 5, max_chars_msg: int = 400) -> str:
+def montar_contexto_prompt(
+    mensagem_atual: str,
+    ultimas: int = 5,
+    max_chars_msg: int = 400,
+    *,
+    resumo_compactado: str = "",
+    historico_override: list[dict] | None = None,
+) -> str:
     fatos = listar_fatos()
-    hist = listar_mensagens(limite=ultimas)
+    hist = list(historico_override) if historico_override is not None else listar_mensagens(limite=ultimas)
 
     partes = []
     if fatos:
         bloco_fatos = "\n".join(f"- {f['chave']}: {f['valor']}" for f in fatos)
         partes.append(f"[MEMORIA DE LONGO PRAZO DO USUARIO]\n{bloco_fatos}")
+    if (resumo_compactado or "").strip():
+        partes.append(f"[RESUMO COMPACTADO DA CONVERSA ANTERIOR]\n{resumo_compactado.strip()}")
     if hist:
         linhas_hist = []
         for m in hist:

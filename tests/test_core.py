@@ -1078,9 +1078,9 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
 
     db_teste = tmp_path / "memoria_teste.db"
 
-    # 1) Primeira execucao em banco novo: cria schema completo e registra revisao
+    # 1) Primeira execucao em banco novo: cria schema completo (ate a migration 002) e registra revisao
     revisao_1 = memoria.executar_migrations(db_teste)
-    assert revisao_1 == "001_initial_schema"
+    assert revisao_1 == "002_resumos_conversa"
     assert db_teste.is_file()
 
     with sqlite3.connect(db_teste) as c:
@@ -1088,9 +1088,14 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
             r[0]
             for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
-        assert {"alembic_version", "mensagens", "fatos", "telemetria", "webauthn_credenciais"}.issubset(
-            tabelas
-        )
+        assert {
+            "alembic_version",
+            "mensagens",
+            "fatos",
+            "telemetria",
+            "webauthn_credenciais",
+            "resumos_conversa",
+        }.issubset(tabelas)
         # Insere dados para comprovar que rodar novamente nao apaga nem recria nada
         c.execute(
             "INSERT INTO fatos (chave, valor, atualizado_em) VALUES (?, ?, ?)",
@@ -1104,7 +1109,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
 
     # 2) Segunda execucao (idempotencia): mantem revisao e 100% dos dados intactos
     revisao_2 = memoria.executar_migrations(db_teste)
-    assert revisao_2 == "001_initial_schema"
+    assert revisao_2 == "002_resumos_conversa"
 
     with sqlite3.connect(db_teste) as c:
         fato = c.execute("SELECT valor FROM fatos WHERE chave = 'curso'").fetchone()
@@ -1112,7 +1117,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
         ver = c.execute("SELECT version_num FROM alembic_version").fetchone()
     assert fato == ("Engenharia",)
     assert msg == ("mensagem preservada",)
-    assert ver == ("001_initial_schema",)
+    assert ver == ("002_resumos_conversa",)
 
 
 # ==============================================================================
@@ -1253,3 +1258,117 @@ def test_fanout_paralelo_timeout_individual_nao_trava_demais(monkeypatch, tmp_pa
     assert "1/2 concluido(s) com sucesso" in relatorio
     assert "Pesquisa concluida rapido" in relatorio
     assert "ERRO PARCIAL (TIMEOUT)" in relatorio
+
+
+# ==============================================================================
+# 10. COMPACTACAO DE CONTEXTO E EXTRACAO AUTOMATICA DE MEMORIA (compactador.py)
+# ==============================================================================
+
+
+def test_compactador_mantem_recentes_e_usa_fallback_deterministico(monkeypatch, tmp_path):
+    import compactador as cp
+    import memoria
+
+    db_teste = tmp_path / "compactacao_teste.db"
+    assert memoria.executar_migrations(db_teste) == "002_resumos_conversa"
+
+    # 1) Conversa curta (<= 16 msgs): retorna sem compactar
+    msgs_curtas = [{"role": "user" if i % 2 == 0 else "bot", "conteudo": f"Msg curta {i}"} for i in range(10)]
+    res_curto, hist_curto = _executar_async_real_teste(
+        cp.preparar_historico_compactado("conv-curta", msgs_curtas, limite_msgs=16, manter_recentes=8, db_path=db_teste)
+    )
+    assert res_curto == ""
+    assert hist_curto == msgs_curtas
+
+    # 2) Conversa longa (> 16 msgs) com falha 503 na API -> fallback deterministico + persiste em resumos_conversa
+    chamadas_llm = {"n": 0}
+
+    async def _falhar_llm(_msgs, resumo_anterior=""):
+        chamadas_llm["n"] += 1
+        raise RuntimeError("503 UNAVAILABLE simulado")
+
+    monkeypatch.setattr(cp, "_resumir_com_llm", _falhar_llm)
+
+    msgs_longas = [
+        {"role": "user" if i % 2 == 0 else "bot", "conteudo": f"Mensagem numero {i} sobre plano A1"}
+        for i in range(20)
+    ]
+    resumo, recentes = _executar_async_real_teste(
+        cp.preparar_historico_compactado("conv-longa", msgs_longas, limite_msgs=16, manter_recentes=8, db_path=db_teste)
+    )
+    assert len(recentes) == 8
+    assert recentes == msgs_longas[-8:]
+    assert "Mensagem numero 0" in resumo
+    assert "Mensagem numero 11" in resumo
+    assert "Mensagem numero 19" not in resumo
+    assert chamadas_llm["n"] == 1
+
+    # Confirma persistencia em resumos_conversa e reaproveitamento em chamada repetida
+    salvo_txt, salvo_qtd = cp.obter_resumo_conversa("conv-longa", db_path=db_teste)
+    assert salvo_txt == resumo
+    assert salvo_qtd == 12
+
+    resumo_cache, recentes_cache = _executar_async_real_teste(
+        cp.preparar_historico_compactado("conv-longa", msgs_longas, limite_msgs=16, manter_recentes=8, db_path=db_teste)
+    )
+    assert resumo_cache == resumo
+    assert recentes_cache == recentes
+    assert chamadas_llm["n"] == 1  # nao rechamou LLM porque o cache ja cobre as 12 antigas
+
+
+def test_auto_memory_ignora_triviais_segredos_e_evita_duplicatas(monkeypatch, tmp_path):
+    import compactador as cp
+    import memoria
+
+    db_teste = tmp_path / "automem_teste.db"
+    memoria.executar_migrations(db_teste)
+    monkeypatch.setenv("ATHENA_AUTO_MEMORY", "true")
+
+    chamadas = {"n": 0}
+
+    async def _fake_extrair_llm(msg_u: str, resp_a: str):
+        chamadas["n"] += 1
+        return [
+            {"chave": "meta_estudos", "valor": "Revisar Fisica e Calculo toda terca a noite"},
+            {"chave": "senha_banco", "valor": "minha senha secreta 123456"},
+        ]
+
+    monkeypatch.setattr(cp, "_extrair_fatos_com_llm", _fake_extrair_llm)
+
+    # 1) Mensagens triviais / curtas sao ignoradas antes mesmo de chamar o LLM
+    for trivial in ("oi", "teste", "ok", "bom dia", "valeu demais"):
+        salvos_triv = _executar_async_real_teste(
+            cp.extrair_memorias_em_background(trivial, "Ola!", db_path=db_teste)
+        )
+        assert salvos_triv == []
+    assert chamadas["n"] == 0
+
+    # 2) Mensagem contendo segredo/token e bloqueada antes de chamar o LLM
+    salvos_seg = _executar_async_real_teste(
+        cp.extrair_memorias_em_background(
+            "Anota minha senha do portal e o token sk-1234567890abcdefghijklmnop por favor",
+            "Nao salvo senhas.",
+            db_path=db_teste,
+        )
+    )
+    assert salvos_seg == []
+    assert chamadas["n"] == 0
+
+    # 3) Mensagem duradoura valida salva apenas o fato seguro (filtra 'senha_banco')
+    msg_real = "Prefiro revisar Fisica e Calculo toda terca-feira a noite antes das provas A1."
+    salvos_1 = _executar_async_real_teste(
+        cp.extrair_memorias_em_background(msg_real, "Combinado!", db_path=db_teste)
+    )
+    assert len(salvos_1) == 1
+    assert salvos_1[0][0] == "meta_estudos"
+    assert chamadas["n"] == 1
+
+    # 4) Segunda execucao com o mesmo fato e ignorada pela verificacao anti-duplicata
+    salvos_2 = _executar_async_real_teste(
+        cp.extrair_memorias_em_background(msg_real, "Combinado de novo!", db_path=db_teste)
+    )
+    assert salvos_2 == []
+
+    fatos_db = memoria.listar_fatos(db_path=db_teste)
+    assert len(fatos_db) == 1
+    assert fatos_db[0]["chave"] == "meta_estudos"
