@@ -36,8 +36,8 @@ from webauthn.helpers.structs import (
 )
 
 from agentes import (
+    MODELO_OLLAMA_ID,
     MODELO_PADRAO,
-    MODELOS_DIRETOS,
     OPCOES_MODELO,
     ROTULOS_MODELO,
     TIMEOUT_TENTATIVA_AUTO_SEGUNDOS,
@@ -47,6 +47,8 @@ from agentes import (
     obter_modelo,
     orquestrador,
     registrar_cooldown_modelo,
+    resolver_modelo_execucao,
+    verificar_ollama_disponivel,
 )
 from compactador import (
     agendar_extracao_memorias,
@@ -693,6 +695,7 @@ def ver_config():
     return {
         **CONFIG,
         "modelos_disponiveis": list(OPCOES_MODELO),
+        "ollama": verificar_ollama_disponivel(),
     }
 
 
@@ -702,11 +705,24 @@ def salvar_config(cfg: ConfigApp):
         res_pasta = _aplicar_pasta_raiz(Path(cfg.pasta_raiz))
         if not res_pasta["ok"]:
             return res_pasta
+    aviso = ""
+    ollama_status = verificar_ollama_disponivel(forcar=(cfg.modelo == MODELO_OLLAMA_ID))
     if cfg.modelo is not None:
         if cfg.modelo not in OPCOES_MODELO:
             return {"ok": False, "erro": f"Modelo invalido: {cfg.modelo}"}
         CONFIG["modelo"] = cfg.modelo
-    return {"ok": True, "pasta_raiz": CONFIG["pasta_raiz"], "modelo": CONFIG["modelo"]}
+        if cfg.modelo == MODELO_OLLAMA_ID and not ollama_status.get("disponivel"):
+            aviso = (
+                "Ollama local esta desligado ou sem modelos instalados. "
+                "Inicie o Ollama na sua maquina para conversar 100% offline."
+            )
+    return {
+        "ok": True,
+        "pasta_raiz": CONFIG["pasta_raiz"],
+        "modelo": CONFIG["modelo"],
+        "ollama": ollama_status,
+        "aviso": aviso,
+    }
 
 
 @app.post("/api/escolher-pasta")
@@ -1089,6 +1105,8 @@ def _extrair_usage_tokens(resultado) -> tuple[int, int]:
 
 def _extrair_modelo_real(resultado, fallback: str) -> str:
     """Le o `model_name` real da ultima ModelResponse em `result.all_messages()` (captura fallbacks do FallbackModel)."""
+    if fallback == MODELO_OLLAMA_ID:
+        return MODELO_OLLAMA_ID
     if resultado is None:
         return fallback
     try:
@@ -1212,7 +1230,7 @@ async def _executar_orquestrador_auto_ou_manual(
     for idx, mid in enumerate(fila_modelos):
         ctx.modelo = mid
         ESTADO_EXECUCAO["modelo"] = mid
-        modelo_direto = MODELOS_DIRETOS[mid]
+        modelo_direto = resolver_modelo_execucao(mid, usar_fallback=False)
         rot_atual = ROTULOS_MODELO.get(mid, mid)
 
         try:
@@ -1965,7 +1983,7 @@ def _iniciar_tarefa_chat_background(
                     ctx.modelo = mid
                     ESTADO_EXECUCAO["modelo"] = mid
                     modelo_executado = mid
-                    modelo_direto = MODELOS_DIRETOS[mid]
+                    modelo_direto = resolver_modelo_execucao(mid, usar_fallback=False)
                     rot_atual = ROTULOS_MODELO.get(mid, mid)
 
                     partes_texto.clear()

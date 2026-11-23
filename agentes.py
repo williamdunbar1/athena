@@ -240,6 +240,7 @@ ROTULOS_MODELO: dict[str, str] = {
     "gemini-3.8-flash": "Flash 3.8",
     "gemini-4-hydrogen": "Hydrogen",
     "gemini-4-neon": "Neon",
+    "ollama-local": "Ollama (Local)",
 }
 
 OPCOES_MODELO: tuple[str, ...] = (
@@ -247,7 +248,122 @@ OPCOES_MODELO: tuple[str, ...] = (
     "gemini-3.5-flash-lite",
     "gemini-4-hydrogen",
     "gemini-4-neon",
+    "ollama-local",
 )
+
+MODELO_OLLAMA_ID = "ollama-local"
+OLLAMA_BASE_URL_PADRAO = "http://localhost:11434"
+OLLAMA_MODEL_PADRAO = "qwen2.5:7b"
+OLLAMA_CACHE_TTL_SEGUNDOS = 60.0
+OLLAMA_TIMEOUT_PROBE_SEGUNDOS = 0.8
+
+_OLLAMA_LOCK = threading.RLock()
+_OLLAMA_CACHE_EXPIRA: float = 0.0
+_OLLAMA_CACHE_DADOS: dict[str, Any] | None = None
+
+
+def _resolver_urls_ollama() -> tuple[str, str]:
+    bruta = (os.getenv("OLLAMA_BASE_URL", OLLAMA_BASE_URL_PADRAO) or OLLAMA_BASE_URL_PADRAO).strip().rstrip("/")
+    if not bruta.startswith(("http://", "https://")):
+        bruta = OLLAMA_BASE_URL_PADRAO
+    root = bruta[:-3] if bruta.endswith("/v1") else bruta
+    return root, f"{root}/v1"
+
+
+def limpar_cache_ollama() -> None:
+    """Invalida o cache em RAM do probe do Ollama (util em testes ou reconexao manual)."""
+    global _OLLAMA_CACHE_EXPIRA, _OLLAMA_CACHE_DADOS
+    with _OLLAMA_LOCK:
+        _OLLAMA_CACHE_EXPIRA = 0.0
+        _OLLAMA_CACHE_DADOS = None
+
+
+def verificar_ollama_disponivel(*, forcar: bool = False) -> dict[str, Any]:
+    """Verifica rapidamente (timeout 0.8s, cache 60s em RAM) se o Ollama local esta online em `/api/tags`.
+
+    Nunca levanta excecao nem atrasa o chat quando o Ollama estiver desligado ou ausente.
+    """
+    global _OLLAMA_CACHE_EXPIRA, _OLLAMA_CACHE_DADOS
+    agora = time.time()
+    if not forcar:
+        with _OLLAMA_LOCK:
+            if _OLLAMA_CACHE_DADOS is not None and agora < _OLLAMA_CACHE_EXPIRA:
+                return dict(_OLLAMA_CACHE_DADOS)
+
+    root_url, _v1_url = _resolver_urls_ollama()
+    preferido = (os.getenv("OLLAMA_MODEL", OLLAMA_MODEL_PADRAO) or OLLAMA_MODEL_PADRAO).strip() or OLLAMA_MODEL_PADRAO
+    resultado: dict[str, Any] = {
+        "disponivel": False,
+        "modelo": None,
+        "modelos": [],
+        "base_url": root_url,
+    }
+
+    try:
+        resp = httpx.get(f"{root_url}/api/tags", timeout=OLLAMA_TIMEOUT_PROBE_SEGUNDOS)
+        if resp.status_code == 200:
+            dados = resp.json()
+            itens = dados.get("models") if isinstance(dados, dict) else []
+            modelos: list[str] = []
+            for item in itens or []:
+                if isinstance(item, dict):
+                    nome_m = str(item.get("name") or item.get("model") or "").strip()
+                    if nome_m and nome_m not in modelos:
+                        modelos.append(nome_m)
+            if modelos:
+                escolhido: str | None = None
+                if preferido in modelos:
+                    escolhido = preferido
+                elif f"{preferido}:latest" in modelos:
+                    escolhido = f"{preferido}:latest"
+                else:
+                    pref_base = preferido.split(":", 1)[0].lower()
+                    escolhido = next(
+                        (m for m in modelos if m.split(":", 1)[0].lower() == pref_base),
+                        modelos[0],
+                    )
+                resultado = {
+                    "disponivel": True,
+                    "modelo": escolhido,
+                    "modelos": modelos,
+                    "base_url": root_url,
+                }
+    except Exception:
+        pass
+
+    with _OLLAMA_LOCK:
+        _OLLAMA_CACHE_DADOS = dict(resultado)
+        _OLLAMA_CACHE_EXPIRA = time.time() + OLLAMA_CACHE_TTL_SEGUNDOS
+    return resultado
+
+
+def criar_modelo_ollama(nome_modelo: str | None = None) -> Any:
+    """Instancia `OpenAIChatModel` + `OllamaProvider` nativos do Pydantic AI apontando para o Ollama local."""
+    status = verificar_ollama_disponivel()
+    alvo = (nome_modelo or status.get("modelo") or "").strip()
+    if not alvo:
+        raise RuntimeError(
+            "Ollama local esta desligado ou sem modelos instalados. "
+            "Inicie o Ollama (`ollama serve` e `ollama pull qwen2.5:7b`) para usar o modo offline."
+        )
+
+    try:
+        from pydantic_ai.models.openai import OpenAIChatModel
+        from pydantic_ai.providers.ollama import OllamaProvider
+    except ImportError as exc:
+        raise RuntimeError(
+            "Suporte a Ollama requer o extra `openai` do Pydantic AI (`uv sync`)."
+        ) from exc
+
+    _root_url, v1_url = _resolver_urls_ollama()
+    return OpenAIChatModel(model_name=alvo, provider=OllamaProvider(base_url=v1_url))
+
+
+def resolver_modelo_execucao(nome_modelo: str, *, usar_fallback: bool = True) -> Any:
+    """Resolve um `model_id` da Athena (nuvem ou `ollama-local`) para o objeto/string aceito pelo Pydantic AI."""
+    if nome_modelo == MODELO_OLLAMA_ID:
+        return criar_modelo_ollama()
+    return obter_modelo(nome_modelo, usar_fallback=usar_fallback)
 
 MODELO = MODELOS_DISPONIVEIS["gemini-3.5-flash-lite"]
 MODELO_RAPIDO = MODELOS_DISPONIVEIS["gemini-3.5-flash-lite"]
@@ -283,7 +399,9 @@ def _thinking_adaptativo(ctx: RunContext["ContextoMissao"]) -> Thinking | None:
     if ":" in nome_norm:
         nome_norm = nome_norm.split(":", 1)[1].strip()
 
-    if "flash-lite" in nome_norm:
+    if "flash-lite" in nome_norm or "ollama" in nome_norm or (
+        ctx.deps is not None and ctx.deps.modelo == MODELO_OLLAMA_ID
+    ):
         return None
 
     profile = getattr(modelo_ctx, "profile", None)
@@ -673,19 +791,29 @@ def obter_fila_modelos_auto(mensagem: str, qtd_anexos: int = 0) -> tuple[list[st
     if todos_gratuitos_em_503:
         limpar_cooldowns_503(MODELOS_GRATUITOS)
 
+    def _anexar_ollama_se_online(fila_nuvem: list[str]) -> list[str]:
+        st_ol = verificar_ollama_disponivel()
+        if st_ol.get("disponivel") and MODELO_OLLAMA_ID not in fila_nuvem:
+            return [*fila_nuvem, MODELO_OLLAMA_ID]
+        return fila_nuvem
+
     disponiveis = [m for m in fila_base if modelo_disponivel(m)]
     if disponiveis:
-        return (disponiveis, motivo)
+        return (_anexar_ollama_se_online(disponiveis), motivo)
 
     # Se toda a fila estiver em cooldown e houver entradas de 503, limpa os 503 e tenta novamente
     if limpar_cooldowns_503(fila_base) > 0:
         disponiveis_rec = [m for m in fila_base if modelo_disponivel(m)]
         if disponiveis_rec:
-            return (disponiveis_rec, f"{motivo} (recuperacao automatica de 503)")
+            return (_anexar_ollama_se_online(disponiveis_rec), f"{motivo} (recuperacao automatica de 503)")
 
-    # Ultimo recurso: tenta na ordem de quem expira mais cedo
+    # Todos os modelos de nuvem em cooldown (ex.: 429/cota esgotada): se Ollama local estiver online,
+    # inclui o Ollama como fallback offline final (prioritario quando nuvem esta bloqueada)
     with _COOLDOWN_LOCK:
         ordenados = sorted(fila_base, key=lambda m: MODEL_COOLDOWN.get(m, 0.0))
+    st_ol_fb = verificar_ollama_disponivel()
+    if st_ol_fb.get("disponivel"):
+        return ([*ordenados, MODELO_OLLAMA_ID], f"{motivo} (nuvem em cooldown, fallback Ollama local)")
     return (ordenados, f"{motivo} (todos em cooldown, tentando recuperacao)")
 
 
@@ -695,12 +823,14 @@ def escolher_modelo_automatico(mensagem: str, qtd_anexos: int = 0) -> tuple[str,
     return (fila[0], motivo)
 
 
-def obter_modelo(nome_modelo: str | None = None, *, usar_fallback: bool = True) -> FallbackModel | str:
+def obter_modelo(nome_modelo: str | None = None, *, usar_fallback: bool = True) -> Any:
     """Retorna `FallbackModel` apenas no modo Auto (`usar_fallback=True`) ou a string direta do modelo
-    (`"google:<modelo>"`) quando selecionado manualmente (`usar_fallback=False`), sem fallback silencioso.
+    (`"google:<modelo>"`) / `OpenAIChatModel` (`ollama-local`) quando selecionado manualmente (`usar_fallback=False`).
     """
     if not nome_modelo or nome_modelo == "auto":
         return MODELO
+    if nome_modelo == MODELO_OLLAMA_ID:
+        return criar_modelo_ollama()
     if nome_modelo not in MODELOS_DIRETOS:
         raise ValueError(f"Modelo invalido: {nome_modelo}")
     if not usar_fallback:
@@ -740,13 +870,16 @@ def obter_modelo_especialista(
     modelo_usuario: str | None = None,
     *,
     usar_fallback: bool = True,
-) -> FallbackModel | str:
+) -> Any:
     """Roteamento inteligente de modelos (Modo Turbo) com protecao contra 503 em TODOS os especialistas:
+    - Se `modelo_usuario == 'ollama-local'`: mantem tudo 100% offline no Ollama local.
     - `agente_analista` / `orquestrador`: usa o modelo ativo (com `FallbackModel` no Auto, ou string direta se manual).
     - Demais especialistas executores (Faxineiro, Pesquisador, Estudos, Investimentos, Sistema, Google):
       usam `FallbackModel` dinamico (`gemini-3.5-flash-lite` -> `gemini-3.8-flash` -> `gemini-4-hydrogen`,
       respeitando `MODEL_COOLDOWN`) para que um pico 503 no Flash-Lite nunca derrube a resposta.
     """
+    if modelo_usuario == MODELO_OLLAMA_ID:
+        return criar_modelo_ollama()
     if nome_agente in AGENTES_MODELO_USUARIO:
         if not usar_fallback and modelo_usuario and modelo_usuario in MODELOS_DIRETOS:
             return MODELOS_DIRETOS[modelo_usuario]

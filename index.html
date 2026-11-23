@@ -2345,6 +2345,13 @@
                         </span>
                         <svg class="ico ico-sm model-opt-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
                       </button>
+                      <button type="button" class="model-option" data-model="ollama-local" onclick="selecionarModelo('ollama-local')" role="menuitem">
+                        <span class="model-opt-info">
+                          <span class="model-opt-name">Ollama · Local <span id="ollama-status-pill" style="font-size:10px;opacity:0.75;margin-left:4px;">(verificando)</span></span>
+                          <span class="model-opt-desc" id="ollama-status-desc">100% offline na sua máquina</span>
+                        </span>
+                        <svg class="ico ico-sm model-opt-check" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                      </button>
                     </div>
                   </div>
 
@@ -2708,6 +2715,7 @@ const MODELO_ROTULOS = {
   "gemini-3.8-flash": "Flash 3.8",
   "gemini-4-hydrogen": "Hydrogen",
   "gemini-4-neon": "Neon",
+  "ollama-local": "Ollama (Local)",
 };
 
 let _toastTimer = null;
@@ -2948,6 +2956,21 @@ function fecharPopoverModelo() {
   if (btn) btn.setAttribute("aria-expanded", "false");
 }
 
+function atualizarStatusOllamaUI(info) {
+  const pill = document.getElementById("ollama-status-pill");
+  const desc = document.getElementById("ollama-status-desc");
+  const online = !!(info && info.disponivel);
+  if (pill) {
+    pill.textContent = online ? "• online" : "• offline";
+    pill.style.color = online ? "#34d399" : "var(--muted)";
+  }
+  if (desc) {
+    desc.textContent = online && info.modelo
+      ? `100% offline na sua máquina (${info.modelo})`
+      : "100% offline na sua máquina (Ollama desligado)";
+  }
+}
+
 async function selecionarModelo(modelo) {
   fecharPopoverModelo();
   if (modelo === _modeloAtual) return;
@@ -2960,7 +2983,12 @@ async function selecionarModelo(modelo) {
     }).then(x => x.json());
     if (r.ok) {
       atualizarUIModelo(r.modelo);
-      mostrarToast("Modelo ativo: " + (MODELO_ROTULOS[r.modelo] || r.modelo));
+      if (r.ollama) atualizarStatusOllamaUI(r.ollama);
+      if (r.aviso) {
+        mostrarToast(r.aviso, true);
+      } else {
+        mostrarToast("Modelo ativo: " + (MODELO_ROTULOS[r.modelo] || r.modelo));
+      }
     } else {
       mostrarToast("Erro: " + (r.erro || "Modelo inválido."), true);
       carregarConfig();
@@ -3001,6 +3029,7 @@ async function carregarConfig() {
     const r = await fetch("/api/config").then(x => x.json());
     if (r.pasta_raiz) atualizarLabelPasta(r.pasta_raiz);
     if (r.modelo) atualizarUIModelo(r.modelo);
+    if (r.ollama) atualizarStatusOllamaUI(r.ollama);
   } catch (e) {
     mostrarToast("Não foi possível carregar as configurações.", true);
   }

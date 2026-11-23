@@ -28,13 +28,20 @@ class _ErroFakeAPI(Exception):
 
 
 @pytest.fixture(autouse=True)
-def _limpar_cooldown_agentes():
-    """Garante isolamento total do Circuit Breaker entre testes."""
+def _limpar_cooldown_agentes(monkeypatch):
+    """Garante isolamento total do Circuit Breaker e do probe Ollama entre testes."""
     agentes.MODEL_COOLDOWN.clear()
     agentes.MODEL_COOLDOWN_MOTIVO.clear()
+    agentes.limpar_cache_ollama()
+
+    def _ollama_offline_default(*_args, **_kwargs):
+        raise OSError("Ollama offline nos testes deterministas por padrao")
+
+    monkeypatch.setattr(agentes.httpx, "get", _ollama_offline_default)
     yield
     agentes.MODEL_COOLDOWN.clear()
     agentes.MODEL_COOLDOWN_MOTIVO.clear()
+    agentes.limpar_cache_ollama()
 
 
 # ==============================================================================
@@ -1536,3 +1543,84 @@ def test_guardrails_detecta_prompt_injection_pt_en_e_preserva_texto_legitimo():
     assert pads_ok == []
     assert out_ok == legitimo
     assert "<conteudo_externo_nao_confiavel" not in out_ok
+
+
+# ==============================================================================
+# 13. OLLAMA LOCAL COMO FALLBACK OFFLINE NO AUTO E OPCAO MANUAL (agentes.py)
+# ==============================================================================
+
+
+def test_ollama_offline_nao_levanta_erro_e_auto_nao_inclui(monkeypatch):
+    import httpx
+
+    agentes.limpar_cache_ollama()
+    chamadas = {"n": 0}
+
+    def _conn_error(url: str, *, timeout: float = 0.8):
+        chamadas["n"] += 1
+        assert url.endswith("/api/tags")
+        assert timeout <= 1.0
+        raise httpx.ConnectError("Connection refused")
+
+    monkeypatch.setattr(agentes.httpx, "get", _conn_error)
+
+    st1 = agentes.verificar_ollama_disponivel(forcar=True)
+    assert st1["disponivel"] is False
+    assert st1["modelo"] is None
+    assert st1["modelos"] == []
+    assert chamadas["n"] == 1
+
+    # Cache em RAM de 60s evita nova requisicao no mesmo minuto
+    st2 = agentes.verificar_ollama_disponivel()
+    assert st2["disponivel"] is False
+    assert chamadas["n"] == 1
+
+    # Com Ollama offline, o modo Auto NAO inclui ollama-local na fila
+    fila, _motivo = agentes.obter_fila_modelos_auto("oi, tudo bem?")
+    assert agentes.MODELO_OLLAMA_ID not in fila
+
+
+def test_ollama_online_entra_como_fallback_final_no_auto_quando_nuvem_em_cooldown(monkeypatch):
+    from types import SimpleNamespace
+
+    agentes.limpar_cache_ollama()
+    monkeypatch.setenv("OLLAMA_MODEL", "qwen2.5:7b")
+
+    def _fake_tags_ok(url: str, *, timeout: float = 0.8):
+        assert url.endswith("/api/tags")
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {
+                "models": [
+                    {"name": "llama3.2:3b"},
+                    {"name": "qwen2.5:7b"},
+                ]
+            },
+        )
+
+    monkeypatch.setattr(agentes.httpx, "get", _fake_tags_ok)
+
+    st = agentes.verificar_ollama_disponivel(forcar=True)
+    assert st["disponivel"] is True
+    assert st["modelo"] == "qwen2.5:7b"
+    assert "qwen2.5:7b" in st["modelos"]
+
+    # Mesmo com nuvem saudavel, nuvem vem PRIMEIRO e Ollama fica apenas como ultimo recurso
+    fila_normal, _ = agentes.obter_fila_modelos_auto("oi")
+    assert fila_normal[0] == "gemini-3.5-flash-lite"
+    assert fila_normal[-1] == agentes.MODELO_OLLAMA_ID
+
+    # Com todos os modelos da nuvem em cooldown por 429, Auto inclui ollama-local como fallback final
+    err_429 = _ErroFakeAPI("429 RESOURCE_EXHAUSTED: Quota exceeded", status_code=429)
+    for m in ("gemini-4-neon", "gemini-4-hydrogen", "gemini-3.8-flash", "gemini-3.5-flash-lite"):
+        agentes.registrar_cooldown_modelo(m, err_429)
+
+    fila_cd, motivo_cd = agentes.obter_fila_modelos_auto("analise profunda da arquitetura")
+    assert fila_cd[-1] == agentes.MODELO_OLLAMA_ID
+    assert "ollama" in motivo_cd.lower()
+
+    # Fallback para o primeiro modelo da lista se OLLAMA_MODEL configurado nao existir no servidor
+    monkeypatch.setenv("OLLAMA_MODEL", "modelo-que-nao-existe:99b")
+    st_fb = agentes.verificar_ollama_disponivel(forcar=True)
+    assert st_fb["disponivel"] is True
+    assert st_fb["modelo"] == "llama3.2:3b"
