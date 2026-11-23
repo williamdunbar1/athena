@@ -21,6 +21,8 @@ from zoneinfo import ZoneInfo
 
 from logfire.query_client import LogfireQueryClient
 
+from eficiencia import compactar_saida_tool
+
 _FUSO_BRT = ZoneInfo("America/Sao_Paulo")
 MAX_CARACTERES_RETORNO = 3000
 _CABECALHO_SEGURANCA = (
@@ -98,26 +100,14 @@ def _cortar(texto: str, limite: int = 240) -> str:
 
 
 def _limitar_saida(linhas: list[str], limite_chars: int = MAX_CARACTERES_RETORNO) -> str:
-    """Garante retorno enxuto (<= `limite_chars`) sem cortar linhas ao meio sempre que possivel."""
-    texto_completo = "\n".join(linhas)
-    if len(texto_completo) <= limite_chars:
-        return texto_completo
+    """Garante retorno enxuto (<= `limite_chars`) usando `compactar_saida_tool`."""
+    texto_limpo = compactar_saida_tool("\n".join(linhas), max_chars=max(limite_chars, 12000))
+    if len(texto_limpo) <= limite_chars:
+        return texto_limpo
 
     aviso = "\n... (saida resumida em 3000 caracteres; refine filtro/minutos para ver mais)"
     teto = max(200, limite_chars - len(aviso))
-    selecionadas: list[str] = []
-    tamanho = 0
-    for ln in linhas:
-        extra = len(ln) + (1 if selecionadas else 0)
-        if tamanho + extra <= teto:
-            selecionadas.append(ln)
-            tamanho += extra
-        else:
-            break
-
-    if not selecionadas:
-        return texto_completo[:teto].rstrip() + aviso
-    return "\n".join(selecionadas) + aviso
+    return compactar_saida_tool(texto_limpo, max_chars=teto) + aviso
 
 
 def buscar_erros_logfire(minutos: int = 60, filtro: str = "", limite: int = 10) -> str:

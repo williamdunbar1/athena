@@ -14,6 +14,7 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 from cache_ttl import cache_ttl
+from eficiencia import compactar_saida_tool
 from guardrails import sanitizar_conteudo_externo
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -221,7 +222,7 @@ def buscar_emails(consulta: str, limite: int = 10) -> str:
                 f"  Trecho: {trecho}"
             )
         sanitizado, _susp, _pads = sanitizar_conteudo_externo("\n".join(linhas), origem="gmail:busca")
-        return sanitizado
+        return compactar_saida_tool(sanitizado)
     except GoogleNaoConectadoError as e:
         return str(e)
     except HttpError as e:
@@ -261,7 +262,7 @@ def ler_email(message_id: str) -> str:
             f"{corpo or '(sem conteudo textual)'}"
         )
         sanitizado, _susp, _pads = sanitizar_conteudo_externo(bruto, origem=f"gmail:{mid}")
-        return sanitizado
+        return compactar_saida_tool(sanitizado)
     except GoogleNaoConectadoError as e:
         return str(e)
     except HttpError as e:
@@ -453,7 +454,7 @@ def listar_proximos_eventos(dias: int = 7, forcar: bool = False) -> str:
                 bloco += f"\n  Link: {link}"
             linhas.append(bloco)
         sanitizado, _susp, _pads = sanitizar_conteudo_externo("\n".join(linhas), origem="google_agenda")
-        return sanitizado
+        return compactar_saida_tool(sanitizado)
     except GoogleNaoConectadoError as e:
         return str(e)
     except HttpError as e:
@@ -565,7 +566,7 @@ def buscar_arquivos_drive(consulta: str, limite: int = 10) -> str:
                 f"  Link: {link}"
             )
         sanitizado, _susp, _pads = sanitizar_conteudo_externo("\n".join(linhas), origem="google_drive")
-        return sanitizado
+        return compactar_saida_tool(sanitizado)
     except GoogleNaoConectadoError as e:
         return str(e)
     except HttpError as e:
@@ -715,12 +716,14 @@ def ler_google_doc(document_id: str) -> str:
         if len(conteudo) > 16000:
             conteudo = conteudo[:16000] + "\n...[conteudo truncado]"
         link = f"https://docs.google.com/document/d/{doc_id}/edit"
-        return (
+        bruto_doc = (
             f"=== GOOGLE DOC: {titulo} ===\n"
             f"ID: {doc_id}\n"
             f"Link: {link}\n\n"
             f"{conteudo or '(documento vazio)'}"
         )
+        sanitizado_doc, _susp, _pads = sanitizar_conteudo_externo(bruto_doc, origem=f"google_docs:{doc_id}")
+        return compactar_saida_tool(sanitizado_doc)
     except GoogleNaoConectadoError as e:
         return str(e)
     except HttpError as e:
@@ -861,7 +864,7 @@ def ler_google_sheet(spreadsheet_id: str, intervalo: str = "A1:Z100") -> str:
             if len(valores) > 120:
                 linhas.append(f"... e mais {len(valores) - 120} linha(s) omitida(s).")
         sanitizado, _susp, _pads = sanitizar_conteudo_externo("\n".join(linhas), origem=f"google_sheets:{sid}")
-        return sanitizado
+        return compactar_saida_tool(sanitizado)
     except GoogleNaoConectadoError as e:
         return str(e)
     except HttpError as e:
@@ -1006,7 +1009,7 @@ def listar_google_tasks(limite: int = 30) -> str:
             linhas.append(f"- {titulo}{due_txt} [ID: {tid}]{notas_txt}")
         linhas.append("\nLink: https://tasks.google.com/")
         sanitizado, _susp, _pads = sanitizar_conteudo_externo("\n".join(linhas), origem="google_tasks")
-        return sanitizado
+        return compactar_saida_tool(sanitizado)
     except GoogleNaoConectadoError as e:
         return str(e)
     except HttpError as e:

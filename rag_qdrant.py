@@ -27,6 +27,7 @@ from typing import Any
 from pypdf import PdfReader
 from qdrant_client import QdrantClient, models
 
+from eficiencia import compactar_saida_tool
 from ferramentas_estudos import PASTA_PDFS, formatar_nome_materia
 from ferramentas_obsidian import _iterar_notas_md, inicializar_vault
 
@@ -644,7 +645,7 @@ def buscar_semantico(
         texto = (p.get("texto") or "").strip()
         saida.append(f"\n{citacao} | {tipo_score}={score:.3f}\n{texto[:900]}")
 
-    return "\n\n---\n".join(saida)
+    return compactar_saida_tool("\n\n---\n".join(saida))
 
 
 # Aliases ergonomicos

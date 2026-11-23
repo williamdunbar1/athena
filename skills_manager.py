@@ -137,11 +137,13 @@ def _escanear_arquivos_skills(diretorio: Path | None = None) -> list[tuple[dict[
 
 
 def listar_skills(diretorio: Path | None = None) -> list[dict[str, str]]:
-    """Retorna metadados enxutos (`name`, `description`) de todas as skills validas em `skills/*/SKILL.md`."""
-    return [
+    """Retorna metadados enxutos (`name`, `description`) ordenados alfabeticamente por `name`."""
+    itens = [
         {"name": item["name"], "description": item["description"]}
         for item, _arq in _escanear_arquivos_skills(diretorio)
     ]
+    itens.sort(key=lambda s: s["name"].lower())
+    return itens
 
 
 def gerar_catalogo_skills(diretorio: Path | None = None) -> str:

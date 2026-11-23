@@ -8,6 +8,8 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
+from eficiencia import compactar_saida_tool
+
 PASTA_FACULDADE = Path(
     os.getenv("PASTA_FACULDADE", "").strip() or (Path.home() / "Documents" / "agente-faculdade")
 )
@@ -163,7 +165,7 @@ def listar_materias_e_aulas() -> str:
         for a in arqs:
             st = status_map.get((mat, a), "pendente")
             linhas.append(f"  - [{st}] {a}")
-    return "\n".join(linhas)
+    return compactar_saida_tool("\n".join(linhas))
 
 
 def pesquisar_pdfs(consulta: str, materia: str = "", limite: int = 8) -> str:
@@ -195,7 +197,7 @@ def pesquisar_pdfs(consulta: str, materia: str = "", limite: int = 8) -> str:
     saida = []
     for _score, mat, arq, pag, txt in ranqueados[:limite]:
         saida.append(f"[{mat} | {arq}, pag. {pag}]\n{txt[:750]}")
-    return "\n\n---\n\n".join(saida)
+    return compactar_saida_tool("\n\n---\n\n".join(saida))
 
 
 def ler_pdf_paginas(trecho_nome: str, pagina_inicial: int = 1, qtd_paginas: int = 5) -> str:
@@ -212,7 +214,7 @@ def ler_pdf_paginas(trecho_nome: str, pagina_inicial: int = 1, qtd_paginas: int 
         ).fetchall()
     if not rows:
         return f"Nenhuma pagina encontrada para arquivo contendo '{trecho_nome}'."
-    return "\n\n".join(f"[{m} | {a}, pag. {p}]\n{t[:1400]}" for m, a, p, t in rows)
+    return compactar_saida_tool("\n\n".join(f"[{m} | {a}, pag. {p}]\n{t[:1400]}" for m, a, p, t in rows))
 
 
 def salvar_prova(materia: str, titulo: str, data_iso: str, detalhes: str = "") -> str:
@@ -239,7 +241,7 @@ def listar_provas() -> str:
             tag = "sem data exata"
         extra = f" | {det}" if det else ""
         linhas.append(f"- [{dt} ({tag})] {mat}: {tit}{extra}")
-    return "\n".join(linhas)
+    return compactar_saida_tool("\n".join(linhas))
 
 
 def marcar_progresso(materia: str, arquivo: str, status: str) -> str:

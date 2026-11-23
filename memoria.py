@@ -206,7 +206,7 @@ def montar_contexto_prompt(
     resumo_compactado: str = "",
     historico_override: list[dict] | None = None,
 ) -> str:
-    fatos = listar_fatos()
+    fatos = sorted(listar_fatos(), key=lambda f: str(f.get("chave", "")).lower())
     hist = list(historico_override) if historico_override is not None else listar_mensagens(limite=ultimas)
 
     partes = []

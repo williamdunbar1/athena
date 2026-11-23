@@ -1678,3 +1678,121 @@ def test_graphrag_obsidian_multihop_hub_e_nota_orfa(tmp_path):
     assert "[[NotaOrfa]]" in txt_orfas
     assert "explorar_grafo_obsidian" in agentes.orquestrador._function_toolset.tools
     assert "explorar_grafo_obsidian" in agentes.agente_analista._function_toolset.tools
+
+
+# ==============================================================================
+# 15. OTIMIZACAO DE TOKENS: FILTRAGEM DE TOOLS, PROMPT CACHE E ORCAMENTO DE SAIDA
+# ==============================================================================
+
+
+def test_eficiencia_filtragem_dinamica_de_tools():
+    from pydantic_ai.tools import ToolDefinition
+
+    import eficiencia as ef
+
+    todas_tools = [
+        ToolDefinition(name=nome)
+        for nome in [
+            "solicitar_captura_tela",
+            "delegar_para_google",
+            "delegar_para_estudos",
+            "solicitar_abrir_url",
+            "delegar_para_investimentos",
+            "delegar_para_faxineiro",
+            "delegar_para_pesquisador",
+            "delegar_para_sistema",
+            "delegar_para_analista",
+            "consultar_especialistas_em_paralelo",
+            "solicitar_abrir_app",
+            "solicitar_abrir_arquivo_ou_pasta",
+            "buscar_erros_logfire",
+            "consultar_trace_logfire",
+            "explorar_grafo_obsidian",
+            "buscar_semantico",
+            "carregar_skill",
+            "guardar_na_memoria",
+        ]
+    ]
+
+    # 1) Saudacoes/conversas triviais curtas retornam 0 tools ([])
+    for saudacao in ("oi", "olá", "teste", "tudo bem?", "obrigado", "valeu", "bom dia"):
+        assert ef.selecionar_dominios_para_mensagem(saudacao) == set()
+        assert ef.filtrar_tool_definitions(saudacao, todas_tools) == []
+
+    # 2) Pedido focado no Windows libera APENAS tools de Windows em ordem alfabetica
+    dom_win = ef.selecionar_dominios_para_mensagem("abre uma aba do Brave")
+    assert dom_win == {"windows"}
+    nomes_win = [td.name for td in ef.filtrar_tool_definitions("abre uma aba do Brave", todas_tools)]
+    assert nomes_win == [
+        "solicitar_abrir_app",
+        "solicitar_abrir_arquivo_ou_pasta",
+        "solicitar_abrir_url",
+        "solicitar_captura_tela",
+    ]
+
+    # 3) Pedido multi-dominio libera estudos + investimentos + paralelo (ordenado alfabeticamente)
+    dom_multi = ef.selecionar_dominios_para_mensagem("resumo da faculdade e investimentos")
+    assert dom_multi == {"estudos", "investimentos", "paralelo"}
+    nomes_multi = [td.name for td in ef.filtrar_tool_definitions("resumo da faculdade e investimentos", todas_tools)]
+    assert nomes_multi == sorted(nomes_multi)
+    assert "delegar_para_estudos" in nomes_multi
+    assert "delegar_para_investimentos" in nomes_multi
+    assert "consultar_especialistas_em_paralelo" in nomes_multi
+    assert "solicitar_abrir_app" not in nomes_multi
+    assert "delegar_para_faxineiro" not in nomes_multi
+    assert "buscar_erros_logfire" not in nomes_multi
+
+    # 4) Mensagem aberta/ambigua faz fallback seguro liberando todas as tools ordenadas
+    assert ef.selecionar_dominios_para_mensagem("qual a diferenca filosofica entre etica e moral?") is None
+    nomes_todos = [
+        td.name for td in ef.filtrar_tool_definitions("qual a diferenca filosofica entre etica e moral?", todas_tools)
+    ]
+    assert len(nomes_todos) == len(todas_tools)
+    assert nomes_todos == sorted(nomes_todos)
+
+
+def test_eficiencia_compactar_saida_tool_e_higiene_prompt_cache(tmp_path):
+    import re
+    from types import SimpleNamespace
+
+    from pydantic_ai.capabilities import PrepareTools
+    from pydantic_ai.tools import ToolDefinition
+    from pydantic_ai.usage import RunUsage
+
+    import eficiencia as ef
+    import servidor
+
+    # 1) compactar_saida_tool limpa excesso de espacos e quebras de linha e impoe teto estrito
+    texto_sujo = "Cabecalho   com    espacos\n\n\n\n\nLinha   intermediaria\n\n\n\n" + ("conteudo longo " * 400) + "\nFIM_PRESERVADO"
+    compactado = ef.compactar_saida_tool(texto_sujo, max_chars=500)
+    assert len(compactado) <= 500
+    assert "\n\n\n" not in compactado
+    assert "   " not in compactado
+    assert compactado.startswith("Cabecalho com espacos")
+    assert "[... truncado para economia de tokens ...]" in compactado
+    assert "FIM_PRESERVADO" in compactado
+
+    # 2) PrepareTools registrado na Orquestradora usa ctx.deps.mensagem_atual corretamente
+    raiz = getattr(agentes.orquestrador, "_root_capability", None)
+    caps = list(getattr(raiz, "capabilities", []) or [])
+    assert any(isinstance(c, PrepareTools) for c in caps)
+
+    tds = [ToolDefinition(name="solicitar_abrir_app"), ToolDefinition(name="delegar_para_estudos")]
+    ctx_oi = SimpleNamespace(deps=agentes.ContextoMissao(pasta_raiz=tmp_path, mensagem_atual="oi"), prompt="ignorar")
+    assert agentes._preparar_tools_orquestrador(ctx_oi, tds) == []  # type: ignore[arg-type]
+
+    ctx_win = SimpleNamespace(
+        deps=agentes.ContextoMissao(pasta_raiz=tmp_path, mensagem_atual="abre o Brave"),
+        prompt="ignorar",
+    )
+    res_win = agentes._preparar_tools_orquestrador(ctx_win, tds)  # type: ignore[arg-type]
+    assert [t.name for t in res_win] == ["solicitar_abrir_app"]
+
+    # 3) Higiene de Prompt Cache: data arredondada apenas por dia (YYYY-MM-DD, sem HH:MM:SS)
+    bloco_din = agentes._instrucoes_contexto_dinamico(ctx_oi) or ""  # type: ignore[arg-type]
+    assert re.search(r"\b\d{4}-\d{2}-\d{2}\b", bloco_din)
+    assert not re.search(r"\b\d{2}:\d{2}(?::\d{2})?\b", bloco_din)
+
+    # 4) Extracao de cache_read_tokens / cache_write_tokens do RunUsage para structlog
+    fake_res = SimpleNamespace(usage=RunUsage(input_tokens=1000, output_tokens=150, cache_read_tokens=720, cache_write_tokens=100))
+    assert servidor._extrair_cache_tokens(fake_res) == (720, 100)

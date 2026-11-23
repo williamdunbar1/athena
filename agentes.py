@@ -7,8 +7,10 @@ import time
 import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 from pydantic_ai import Agent, RunContext
@@ -17,6 +19,7 @@ from pydantic_ai.capabilities import (
     DynamicCapability,
     FileUnderstanding,
     ImageGeneration,
+    PrepareTools,
     RetryOnModelErrors,
     Thinking,
     ToolSearch,
@@ -35,7 +38,9 @@ from pydantic_ai.exceptions import (
     ToolFailedError,
 )
 from pydantic_ai.models.fallback import FallbackModel
+from pydantic_ai.tools import ToolDefinition
 
+from eficiencia import extrair_mensagem_atual_prompt, filtrar_tool_definitions
 from ferramentas_estudos import (
     ler_pdf_paginas,
     listar_materias_e_aulas,
@@ -433,6 +438,27 @@ def _criar_retry_503(
     )
 
 
+def _preparar_tools_orquestrador(
+    ctx: RunContext["ContextoMissao"],
+    tool_defs: list[ToolDefinition],
+) -> list[ToolDefinition]:
+    """Filtra dinamicamente as tools da Orquestradora pelo turno atual e ordena por nome (Prompt Cache)."""
+    msg = ""
+    if ctx.deps is not None and (ctx.deps.mensagem_atual or "").strip():
+        msg = ctx.deps.mensagem_atual
+    else:
+        msg = extrair_mensagem_atual_prompt(getattr(ctx, "prompt", None))
+
+    filtradas = filtrar_tool_definitions(msg, tool_defs)
+    _log.debug(
+        "tools_filtradas_orquestrador",
+        total_antes=len(tool_defs),
+        total_depois=len(filtradas),
+        tools=[td.name for td in filtradas],
+    )
+    return filtradas
+
+
 def _criar_capabilities_orquestrador() -> list:
     # A instrumentacao OpenTelemetry/Logfire e aplicada globalmente via `logfire.instrument_pydantic_ai()`
     # em `observabilidade.py`, evitando spans duplicados ou TracerProvider NoOp capturado no import.
@@ -443,6 +469,7 @@ def _criar_capabilities_orquestrador() -> list:
         DynamicCapability(_thinking_adaptativo, id="thinking_adaptativo"),
         FileUnderstanding(fallback_subagent_model=MODELO_FALLBACK_ARQUIVOS),
         ImageGeneration(fallback_image_model=MODELO_IMAGEM_GEMINI),
+        PrepareTools(_preparar_tools_orquestrador),
     ]
 
 
@@ -897,6 +924,9 @@ class ContextoMissao:
     pasta_raiz: Path
     modelo: str = MODELO_PADRAO
     usar_fallback: bool = True
+    mensagem_atual: str = ""
+    memorias_contexto: str = ""
+    resumo_conversa: str = ""
     trilha: list[dict] = field(default_factory=list)
     on_evento: Callable[[dict], None] | None = None
     acoes_windows: list[dict] = field(default_factory=list)
@@ -1679,9 +1709,17 @@ _registrar_ferramenta_grafo_obsidian(orquestrador, "Athena")
 _registrar_ferramenta_grafo_obsidian(agente_analista, "Agente Analista")
 
 
+def _data_referencia_iso_dia() -> str:
+    """Retorna a data local arredondada apenas por dia (YYYY-MM-DD, sem HH:MM:SS) para estabilidade do Prompt Cache."""
+    try:
+        return datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d")
+    except Exception:
+        return date.today().isoformat()
+
+
 @orquestrador.instructions
 def _instrucoes_catalogo_skills() -> str:
-    """Injeta catalogo ultra enxuto (1 linha por skill) para progressive disclosure sem inflar tokens."""
+    """Bloco estatico do catalogo de skills ordenado alfabeticamente (logo apos o prefixo fixo)."""
     catalogo = gerar_catalogo_skills()
     if not catalogo:
         return ""
@@ -1690,6 +1728,22 @@ def _instrucoes_catalogo_skills() -> str:
         "APENAS quando a tarefa combinar com a skill):\n"
         f"{catalogo}"
     )
+
+
+@orquestrador.instructions
+def _instrucoes_contexto_dinamico(ctx: RunContext[ContextoMissao]) -> str:
+    """Bloco dinamico posicionado SEMPRE no final das instrucoes (higiene de Prompt Cache).
+
+    Contem apenas data arredondada por dia (YYYY-MM-DD, sem horas/minutos/segundos) e,
+    quando fornecidos em `ctx.deps`, memorias recuperadas e resumo compactado da conversa.
+    """
+    partes = [f"CONTEXTO TEMPORAL: Data atual (America/Sao_Paulo): {_data_referencia_iso_dia()}"]
+    if ctx.deps is not None:
+        if (ctx.deps.memorias_contexto or "").strip():
+            partes.append(f"[MEMORIAS RECUPERADAS]\n{ctx.deps.memorias_contexto.strip()}")
+        if (ctx.deps.resumo_conversa or "").strip():
+            partes.append(f"[RESUMO COMPACTADO DA CONVERSA]\n{ctx.deps.resumo_conversa.strip()}")
+    return "\n\n".join(partes)
 
 
 @orquestrador.tool

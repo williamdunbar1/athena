@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
+from eficiencia import compactar_saida_tool
 from guardrails import sanitizar_conteudo_externo
 
 PASTA_PRINTS = Path(__file__).resolve().parent / "sandbox_files" / "prints"
@@ -130,7 +131,7 @@ def _abrir_e_ler_pagina_sync(url: str) -> str:
             f"{bloco_links}"
         )
         sanitizado, _susp, _pads = sanitizar_conteudo_externo(bruto, origem=f"web:{url_final}")
-        return sanitizado
+        return compactar_saida_tool(sanitizado)
     except Exception as e:
         return f"Erro ao abrir e ler pagina ({url_valida}): {e}"
 
@@ -288,7 +289,7 @@ def _buscar_no_site_sync(url: str, texto_busca: str) -> str:
             )
         bruto = "\n".join(partes)
         sanitizado, _susp, _pads = sanitizar_conteudo_externo(bruto, origem=f"web:{url_final}")
-        return sanitizado
+        return compactar_saida_tool(sanitizado)
     except Exception as e:
         return f"Erro ao buscar '{termo}' em ({url_valida}): {e}"
 

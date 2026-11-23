@@ -19,6 +19,7 @@ from typing import Any
 
 import networkx as nx
 
+from eficiencia import compactar_saida_tool
 from ferramentas_obsidian import PASTAS_OCULTAS_IGNORAR, obter_pasta_vault
 
 _RE_BLOCO_CODIGO = re.compile(r"```[\s\S]*?```")
@@ -357,7 +358,7 @@ def buscar_contexto_grafo(
                 linhas_st.append(f"- [[{o['nota']}]] ({o['caminho']})")
         else:
             linhas_st.append("\nNenhuma nota orfa encontrada — todas as notas possuem conexoes.")
-        return "\n".join(linhas_st)
+        return compactar_saida_tool("\n".join(linhas_st))
 
     tokens = [t for t in _RE_PALAVRA.findall(consulta_norm) if t not in _STOPWORDS_PT]
     if not tokens and consulta_norm:
@@ -421,4 +422,4 @@ def buscar_contexto_grafo(
             linhas.append(f"   Tags: {tags_txt}")
         linhas.append(f"   Resumo: {attrs.get('resumo', '')}")
 
-    return "\n".join(linhas)
+    return compactar_saida_tool("\n".join(linhas))

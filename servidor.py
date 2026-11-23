@@ -1110,6 +1110,31 @@ def _extrair_usage_tokens(resultado) -> tuple[int, int]:
         return 0, 0
 
 
+def _extrair_cache_tokens(resultado) -> tuple[int, int]:
+    """Extrai `(cache_read_tokens, cache_write_tokens)` do `RunUsage` para telemetria de Prompt Cache."""
+    if resultado is None:
+        return 0, 0
+    try:
+        usage_attr = getattr(resultado, "usage", resultado)
+        u = (
+            usage_attr
+            if hasattr(usage_attr, "input_tokens") or hasattr(usage_attr, "cache_read_tokens")
+            else (usage_attr() if callable(usage_attr) else usage_attr)
+        )
+        if u is None:
+            return 0, 0
+        details = getattr(u, "details", None)
+        cache_read = getattr(u, "cache_read_tokens", None) or getattr(u, "cached_tokens", None) or 0
+        if not cache_read and isinstance(details, dict):
+            cache_read = details.get("cached_tokens") or details.get("cache_read_tokens") or 0
+        cache_write = getattr(u, "cache_write_tokens", None) or 0
+        if not cache_write and isinstance(details, dict):
+            cache_write = details.get("cache_write_tokens") or 0
+        return max(0, int(cache_read or 0)), max(0, int(cache_write or 0))
+    except Exception:
+        return 0, 0
+
+
 def _extrair_modelo_real(resultado, fallback: str) -> str:
     """Le o `model_name` real da ultima ModelResponse em `result.all_messages()` (captura fallbacks do FallbackModel)."""
     if fallback == MODELO_OLLAMA_ID:
@@ -1311,6 +1336,7 @@ async def conversar(pedido: PedidoChat):
         pasta_raiz=Path(CONFIG["pasta_raiz"]),
         modelo=modelo_inicial,
         usar_fallback=eh_auto,
+        mensagem_atual=pedido.mensagem,
     )
     ESTADO_EXECUCAO["ativo"] = True
     ESTADO_EXECUCAO["modelo"] = modelo_inicial
@@ -1326,8 +1352,22 @@ async def conversar(pedido: PedidoChat):
         )
         duracao_ms = max(1, int((time.perf_counter() - t0) * 1000))
         tokens_in, tokens_out = _extrair_usage_tokens(res)
+        cache_read_tokens, cache_write_tokens = _extrair_cache_tokens(res)
+        cache_hit_pct = round((cache_read_tokens / tokens_in) * 100.0, 1) if tokens_in > 0 else 0.0
         imagens_geradas = _extrair_e_salvar_imagens_geradas(res)
         resposta_final = _anexar_imagens_no_markdown(res.output or "", imagens_geradas)
+        logger.info(
+            "chat_concluido",
+            conversa_id=CONVERSA_ID_PADRAO,
+            modelo=modelo_executado,
+            modo_auto=eh_auto,
+            latencia_ms=duracao_ms,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cache_read_tokens=cache_read_tokens,
+            cache_write_tokens=cache_write_tokens,
+            cache_hit_pct=cache_hit_pct,
+        )
         registrar_telemetria(
             modelo=modelo_executado,
             duracao_ms=duracao_ms,
@@ -1607,6 +1647,7 @@ async def conversar_multimodal(
         conversa_id=cid,
         entrada_modelo=entrada_modelo,
         msg_historico=msg_historico,
+        mensagem_atual=texto_usuario,
         modelo_config=modelo_config,
         fila_modelos=fila_modelos,
         motivo_auto=motivo_auto,
@@ -1832,6 +1873,7 @@ def _iniciar_tarefa_chat_background(
     conversa_id: str,
     entrada_modelo,
     msg_historico: str,
+    mensagem_atual: str = "",
     modelo_config: str,
     fila_modelos: list[str],
     motivo_auto: str,
@@ -1896,6 +1938,7 @@ def _iniciar_tarefa_chat_background(
         pasta_raiz=Path(CONFIG["pasta_raiz"]),
         modelo=modelo_real,
         usar_fallback=eh_auto,
+        mensagem_atual=(mensagem_atual or msg_historico),
         on_evento=_enfileirar_status,
         on_permissao_windows=_enfileirar_permissao_windows,
     )
@@ -2154,6 +2197,8 @@ def _iniciar_tarefa_chat_background(
                     "tokens_out": tokens_out,
                 },
             }
+            cache_read_tokens, cache_write_tokens = _extrair_cache_tokens(resultado_final_obj)
+            cache_hit_pct = round((cache_read_tokens / tokens_in) * 100.0, 1) if tokens_in > 0 else 0.0
             registro["resultado_final"] = payload_done
             registro["status"] = "done"
             logger.info(
@@ -2164,6 +2209,9 @@ def _iniciar_tarefa_chat_background(
                 latencia_ms=duracao_ms,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
+                cache_read_tokens=cache_read_tokens,
+                cache_write_tokens=cache_write_tokens,
+                cache_hit_pct=cache_hit_pct,
             )
             _publicar_evento_tarefa(registro, "done", payload_done)
             agendar_extracao_memorias(msg_historico, texto_final)
@@ -2381,6 +2429,7 @@ async def conversar_stream(request: Request):
         conversa_id=cid,
         entrada_modelo=entrada_modelo,
         msg_historico=msg_historico,
+        mensagem_atual=texto_usuario,
         modelo_config=modelo_config,
         fila_modelos=fila_modelos,
         motivo_auto=motivo_auto,
