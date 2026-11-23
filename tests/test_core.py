@@ -1372,3 +1372,85 @@ def test_auto_memory_ignora_triviais_segredos_e_evita_duplicatas(monkeypatch, tm
     fatos_db = memoria.listar_fatos(db_path=db_teste)
     assert len(fatos_db) == 1
     assert fatos_db[0]["chave"] == "meta_estudos"
+
+
+# ==============================================================================
+# 11. VISAO DE TELA SOB DEMANDA (mss + Pillow com consentimento explicito)
+# ==============================================================================
+
+
+def test_visao_tela_solicitar_cria_pendente_sem_capturar_e_nunca_whitelist(ambiente_windows, monkeypatch):
+    _tmp, _fake_app, _fake_db, _executados = ambiente_windows
+
+    capturas_feitas: list[int] = []
+
+    def _fake_captura():
+        capturas_feitas.append(1)
+        return {
+            "arquivo": "tela_mock.jpg",
+            "caminho": str(_tmp / "tela_mock.jpg"),
+            "url": "/api/arquivos/prints/tela_mock.jpg",
+        }
+
+    monkeypatch.setattr(fw, "capturar_tela_atual", _fake_captura)
+    assert "solicitar_captura_tela" in agentes.orquestrador._function_toolset.tools
+
+    # 1) Solicitar captura NUNCA captura a tela antes da aprovacao explicita
+    res = fw.solicitar_captura_tela_dados("Diagnosticar erro no terminal")
+    assert res["ok"] is True
+    assert res["auto_executada"] is False
+    assert res["acao"]["tipo"] == "capturar_tela"
+    assert res["acao"]["risco"] == "medio"
+    assert res["acao"]["status"] == "pendente"
+    assert capturas_feitas == []
+
+    # 2) Aprovar captura executa capturar_tela_atual e NUNCA grava em 'Sempre permitir'
+    res_ap = fw.aprovar_acao_windows(res["acao"]["id"], sempre_permitir=True)
+    assert res_ap["ok"] is True
+    assert res_ap["sempre_permitir"] is False
+    assert res_ap["acao"]["status"] == "executada"
+    assert res_ap["captura"]["url"] == "/api/arquivos/prints/tela_mock.jpg"
+    assert len(capturas_feitas) == 1
+    assert fw.listar_whitelist() == []
+
+
+def test_capturar_tela_atual_com_mss_mockado_gera_jpeg_redimensionado(tmp_path, monkeypatch):
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from PIL import Image
+
+    # Frame sintetico 2560x1440 (deve ser redimensionado proporcionalmente para 1440x810 em JPEG)
+    img_orig = Image.new("RGB", (2560, 1440), color=(24, 120, 210))
+    rgb_bytes = img_orig.tobytes()
+
+    class _FakeSct:
+        monitors = [
+            {"left": 0, "top": 0, "width": 2560, "height": 1440},
+            {"left": 0, "top": 0, "width": 2560, "height": 1440},
+        ]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def grab(self, monitor):
+            assert monitor == self.monitors[1]
+            return SimpleNamespace(size=(2560, 1440), rgb=rgb_bytes)
+
+    fake_mss_mod = SimpleNamespace(mss=lambda: _FakeSct())
+    monkeypatch.setattr(fw.importlib, "import_module", lambda nome: fake_mss_mod if nome == "mss" else None)
+
+    info = fw.capturar_tela_atual(pasta_prints=tmp_path)
+    assert info["arquivo"].startswith("tela_") and info["arquivo"].endswith(".jpg")
+    assert info["url"] == f"/api/arquivos/prints/{info['arquivo']}"
+
+    arq = Path(info["caminho"])
+    assert arq.is_file()
+    assert arq.parent == tmp_path.resolve()
+
+    with Image.open(arq) as salva:
+        assert salva.format == "JPEG"
+        assert salva.size == (1440, 810)

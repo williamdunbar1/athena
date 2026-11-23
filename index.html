@@ -2352,6 +2352,9 @@
                     <button type="button" id="btn-anexar" class="composer-icon-btn" onclick="abrirSeletorArquivo()" title="Anexar fotos ou PDFs (até 6 arquivos · máx. 18 MB)" aria-label="Anexar arquivos">
                       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                     </button>
+                    <button type="button" id="btn-capturar-tela" class="composer-icon-btn" onclick="capturarTelaParaChat()" title="Capturar tela atual e anexar à mensagem" aria-label="Capturar tela">
+                      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                    </button>
                     <button type="button" id="btn-mic" class="composer-icon-btn" onclick="alternarMicrofone()" title="Falar mensagem (microfone pt-BR)" aria-label="Microfone">
                       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
                     </button>
@@ -2729,6 +2732,7 @@ let _ttsAbort = null;
 let _authProtegido = false;
 let _biometriaDisponivel = false;
 let _appInicializada = false;
+let _ultimaPerguntaUsuario = "";
 
 function mostrarToast(texto, erro = false) {
   const el = document.getElementById("toast");
@@ -3336,6 +3340,35 @@ function selecionarArquivo(ev) {
     adicionarAnexos(files, false);
   }
   if (ev.target) ev.target.value = "";
+}
+
+async function _baixarCapturaComoFile(url, nomeArquivo) {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const blob = await resp.blob();
+  return new File([blob], nomeArquivo || "captura_tela.jpg", { type: "image/jpeg" });
+}
+
+async function capturarTelaParaChat() {
+  const btn = document.getElementById("btn-capturar-tela");
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch("/api/windows/capturar-tela", { method: "POST" }).then(x => x.json());
+    if (!r || !r.ok || !r.url) {
+      throw new Error((r && r.erro) || "Falha ao capturar tela.");
+    }
+    const file = await _baixarCapturaComoFile(r.url, r.arquivo);
+    const qtd = adicionarAnexos([file], false);
+    if (qtd > 0) {
+      mostrarToast("Tela capturada e anexada à mensagem!");
+      const inp = document.getElementById("entrada");
+      if (inp) inp.focus();
+    }
+  } catch (err) {
+    mostrarToast("Não foi possível capturar a tela: " + (err && err.message ? err.message : "erro"), true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 function colarArquivoChat(ev) {
@@ -3955,7 +3988,35 @@ async function responderPermissaoWindows(acaoId, aprovar, semprePermitir, btn) {
         const acaoAtual = r.acao || { id: acaoId, status: aprovar ? "executada" : "recusada" };
         boxAcoes.innerHTML = criarHtmlAcoesCardWindows(acaoAtual);
       }
-      mostrarToast(r.mensagem || (aprovar ? "Executado no Windows ✓" : "Solicitação recusada."));
+      if (aprovar && r.captura && r.captura.url) {
+        if (card && !card.querySelector(".win-perm-preview")) {
+          const prev = document.createElement("div");
+          prev.className = "win-perm-preview";
+          prev.style.marginTop = "8px";
+          prev.innerHTML = `<img src="${escHtml(r.captura.url)}" alt="Captura de tela autorizada" style="max-width:260px;max-height:150px;border-radius:8px;border:1px solid var(--border);display:block;" />`;
+          card.appendChild(prev);
+        }
+        mostrarToast("Tela capturada ✓ Enviando para a Athena analisar...");
+        try {
+          const file = await _baixarCapturaComoFile(r.captura.url, r.captura.arquivo);
+          adicionarAnexos([file], false);
+          const inp = document.getElementById("entrada");
+          if (inp && !inp.value.trim()) {
+            const perguntaOrig = (_ultimaPerguntaUsuario || "").trim();
+            inp.value = perguntaOrig
+              ? `Aqui está a captura de tela autorizada referente ao meu pedido: "${perguntaOrig}". Analise a imagem e me responda.`
+              : "Aqui está a captura de tela autorizada. Analise a imagem e me ajude com o que aparece na tela.";
+            ajustarTextarea(inp);
+          }
+          if (!_enviando) {
+            await enviar();
+          }
+        } catch (errCap) {
+          mostrarToast("Captura salva, mas falhou ao anexar automaticamente.", true);
+        }
+      } else {
+        mostrarToast(r.mensagem || (aprovar ? "Executado no Windows ✓" : "Solicitação recusada."));
+      }
     } else {
       const msgErro = (r && r.erro) ? r.erro : "Não foi possível concluir a ação.";
       if (card) {
@@ -4186,6 +4247,7 @@ async function enviar() {
   const msg = inp.value.trim();
   const anexos = _arquivosSelecionados.slice();
   if (!msg && !anexos.length) return;
+  if (msg) _ultimaPerguntaUsuario = msg;
 
   const cid = obterOuCriarConversaId();
   const modelo = _modeloAtual;

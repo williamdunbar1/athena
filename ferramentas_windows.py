@@ -13,6 +13,7 @@ Seguranca:
 
 from __future__ import annotations
 
+import importlib
 import os
 import re
 import shlex
@@ -27,6 +28,10 @@ from urllib.parse import urlparse
 
 from ferramentas_estudos import PASTA_PDFS
 from ferramentas_faxina import obter_pasta_desktop
+
+PASTA_PRINTS = Path(__file__).resolve().parent / "sandbox_files" / "prints"
+MAX_LARGURA_TELA_PX = 1440
+QUALIDADE_JPEG_TELA = 85
 
 DB_PATH = Path(__file__).resolve().parent / "memoria.db"
 HOME = Path.home().resolve()
@@ -841,6 +846,80 @@ def solicitar_abrir_arquivo_ou_pasta_dados(caminho: str) -> dict:
     }
 
 
+def capturar_tela_atual(pasta_prints: Path | None = None) -> dict[str, str]:
+    """Captura o monitor principal via `mss` (lazy import) e salva JPEG otimizado (max 1440px, q=85).
+
+    Salva em `sandbox_files/prints/tela_<timestamp>.jpg` (ou em `pasta_prints` nos testes).
+    """
+    try:
+        mss_mod = importlib.import_module("mss")
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Pacote 'mss' nao instalado. Instale com `uv sync --extra vision`."
+        ) from exc
+
+    from PIL import Image
+
+    destino_dir = (pasta_prints or PASTA_PRINTS).resolve()
+    destino_dir.mkdir(parents=True, exist_ok=True)
+
+    with mss_mod.mss() as sct:
+        monitores = getattr(sct, "monitors", None) or []
+        if not monitores:
+            raise RuntimeError("Nenhum monitor detectado para captura de tela.")
+        monitor_alvo = monitores[1] if len(monitores) > 1 else monitores[0]
+        sct_img = sct.grab(monitor_alvo)
+        largura_orig, altura_orig = sct_img.size
+        img = Image.frombytes("RGB", (int(largura_orig), int(altura_orig)), sct_img.rgb)
+
+    if img.width > MAX_LARGURA_TELA_PX:
+        nova_altura = max(1, int(round(img.height * (MAX_LARGURA_TELA_PX / img.width))))
+        img = img.resize((MAX_LARGURA_TELA_PX, nova_altura), Image.Resampling.LANCZOS)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    nome = f"tela_{ts}.jpg"
+    caminho = destino_dir / nome
+    img.convert("RGB").save(caminho, format="JPEG", quality=QUALIDADE_JPEG_TELA, optimize=True)
+
+    return {
+        "arquivo": nome,
+        "caminho": str(caminho),
+        "url": f"/api/arquivos/prints/{nome}",
+    }
+
+
+def solicitar_captura_tela_dados(motivo: str) -> dict:
+    """Cria solicitacao PENDENTE de captura de tela (NUNCA captura sozinha e NUNCA permite whitelist)."""
+    motivo_limpo = " ".join(str(motivo or "").split())[:220] or "Analisar o conteudo visivel na tela"
+    descricao = f"Capturar tela principal ({motivo_limpo})"
+    acao = _inserir_acao(
+        tipo="capturar_tela",
+        chave_whitelist="",
+        alvo="Monitor principal (JPEG otimizado ate 1440px)",
+        argumentos=motivo_limpo,
+        descricao=descricao,
+        risco="medio",
+        status="pendente",
+    )
+    acao["auto_executada"] = False
+    return {
+        "ok": True,
+        "auto_executada": False,
+        "acao": acao,
+        "mensagem": (
+            f"Solicitacao #{acao['id']} criada como PENDENTE (a tela ainda NAO foi capturada por privacidade).\n"
+            f"- Acao: {descricao}\n"
+            f"- Risco: medio (nunca entra em 'Sempre permitir')\n"
+            "Aguarde o usuario clicar em 'Permitir' ou 'Recusar' no card exibido no chat."
+        ),
+    }
+
+
+def solicitar_captura_tela(motivo: str) -> str:
+    res = solicitar_captura_tela_dados(motivo)
+    return res["mensagem"] if res.get("ok") else f"Bloqueado/erro: {res.get('erro')}"
+
+
 def solicitar_abrir_app(nome_app: str, args: str = "") -> str:
     res = solicitar_abrir_app_dados(nome_app, args)
     return res["mensagem"] if res.get("ok") else f"Bloqueado/erro: {res.get('erro')}"
@@ -876,8 +955,12 @@ def aprovar_acao_windows(acao_id: int, sempre_permitir: bool = False) -> dict:
     if acao["status"] != "pendente":
         return {"ok": False, "id": acao_id, "erro": f"Solicitacao #{acao_id} nao esta pendente (status: {acao['status']})."}
 
+    captura_info: dict[str, str] | None = None
     try:
-        _executar_acao_no_windows(acao["tipo"], acao["alvo"], acao["argumentos"])
+        if acao["tipo"] == "capturar_tela":
+            captura_info = capturar_tela_atual()
+        else:
+            _executar_acao_no_windows(acao["tipo"], acao["alvo"], acao["argumentos"])
     except Exception as e:
         with _conn() as c:
             c.execute("UPDATE acoes_windows SET erro = ? WHERE id = ?", (str(e), acao_id))
@@ -885,15 +968,27 @@ def aprovar_acao_windows(acao_id: int, sempre_permitir: bool = False) -> dict:
 
     agora = datetime.now().isoformat(timespec="seconds")
     whitelist_add = False
-    if sempre_permitir and acao["tipo"] == "abrir_app" and acao["risco"] == "baixo" and acao["chave_whitelist"]:
+    # Captura de tela NUNCA pode ser adicionada em 'Sempre permitir' por privacidade
+    if (
+        sempre_permitir
+        and acao["tipo"] == "abrir_app"
+        and acao["risco"] == "baixo"
+        and acao["chave_whitelist"]
+    ):
         adicionar_whitelist(acao["chave_whitelist"])
         whitelist_add = True
 
     with _conn() as c:
-        c.execute(
-            "UPDATE acoes_windows SET status = 'executada', erro = '', executado_em = ? WHERE id = ?",
-            (agora, acao_id),
-        )
+        if captura_info is not None:
+            c.execute(
+                "UPDATE acoes_windows SET status = 'executada', erro = '', alvo = ?, executado_em = ? WHERE id = ?",
+                (captura_info["caminho"], agora, acao_id),
+            )
+        else:
+            c.execute(
+                "UPDATE acoes_windows SET status = 'executada', erro = '', executado_em = ? WHERE id = ?",
+                (agora, acao_id),
+            )
         row_att = c.execute(
             """
             SELECT id, tipo, chave_whitelist, alvo, argumentos, descricao, risco, status, erro, criado_em, executado_em
@@ -906,12 +1001,15 @@ def aprovar_acao_windows(acao_id: int, sempre_permitir: bool = False) -> dict:
     msg = f"Executado: {acao_att['descricao']}"
     if whitelist_add:
         msg += " (adicionado a 'Sempre permitir')."
-    return {
+    resp: dict = {
         "ok": True,
         "acao": acao_att,
         "sempre_permitir": whitelist_add,
         "mensagem": msg,
     }
+    if captura_info is not None:
+        resp["captura"] = captura_info
+    return resp
 
 
 def recusar_acao_windows(acao_id: int) -> dict:

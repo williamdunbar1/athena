@@ -74,7 +74,9 @@ from ferramentas_investimentos import (
     salvar_ativo_real_estruturado,
 )
 from ferramentas_windows import (
+    PASTA_PRINTS,
     aprovar_acao_windows,
+    capturar_tela_atual,
     obter_status_acoes_windows,
     recusar_acao_windows,
 )
@@ -1504,6 +1506,23 @@ def servir_imagem_gerada(nome_arquivo: str):
     return FileResponse(alvo, media_type=mime, headers={"Cache-Control": "private, max-age=3600"})
 
 
+@app.get("/api/arquivos/prints/{nome_arquivo}")
+def servir_print_tela(nome_arquivo: str):
+    """Serve capturas de tela autorizadas salvas em `sandbox_files/prints/`."""
+    nome_seguro = Path(nome_arquivo or "").name
+    if not nome_seguro or nome_seguro != nome_arquivo or "/" in nome_arquivo or "\\" in nome_arquivo:
+        raise HTTPException(status_code=400, detail="Nome de arquivo invalido.")
+    base_res = PASTA_PRINTS.resolve()
+    alvo = (base_res / nome_seguro).resolve()
+    if base_res not in alvo.parents or not alvo.is_file():
+        raise HTTPException(status_code=404, detail="Captura de tela nao encontrada.")
+    ext = alvo.suffix.lower()
+    mime = EXT_PARA_MIME_IMAGEM.get(ext)
+    if not mime:
+        raise HTTPException(status_code=403, detail="Formato de arquivo nao permitido.")
+    return FileResponse(alvo, media_type=mime, headers={"Cache-Control": "private, max-age=300"})
+
+
 @app.post("/api/chat-multimodal")
 async def conversar_multimodal(
     mensagem: str = Form(""),
@@ -2420,14 +2439,25 @@ class AprovarWindowsPayload(BaseModel):
     sempre_permitir: bool = False
 
 
+@app.post("/api/windows/capturar-tela")
+async def api_windows_capturar_tela():
+    """Captura o monitor principal mediante clique explicito do usuario no botao de tela do chat."""
+    try:
+        dados = await asyncio.to_thread(capturar_tela_atual)
+        return {"ok": True, **dados}
+    except Exception as exc:
+        _logar_erro_execucao("windows/capturar-tela", "mss", exc)
+        return {"ok": False, "erro": f"Nao foi possivel capturar a tela: {exc}"}
+
+
 @app.post("/api/windows/aprovar/{acao_id}")
-def api_windows_aprovar(
+async def api_windows_aprovar(
     acao_id: int,
     payload: AprovarWindowsPayload | None = Body(default=None),
 ):
-    """Executa no Windows 11 uma acao previamente solicitada pela Athena (com opcao 'Sempre permitir')."""
+    """Executa no Windows 11 uma acao previamente solicitada pela Athena (com opcao 'Sempre permitir' apenas para apps)."""
     sempre = bool(payload.sempre_permitir) if payload is not None else False
-    return aprovar_acao_windows(acao_id, sempre_permitir=sempre)
+    return await asyncio.to_thread(aprovar_acao_windows, acao_id, sempre_permitir=sempre)
 
 
 @app.post("/api/windows/recusar/{acao_id}")
