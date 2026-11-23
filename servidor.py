@@ -18,7 +18,14 @@ import httpx
 from fastapi import Body, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
-from pydantic_ai import BinaryContent
+from pydantic_ai import (
+    AgentRunResultEvent,
+    BinaryContent,
+    PartDeltaEvent,
+    PartStartEvent,
+    TextPart,
+    TextPartDelta,
+)
 from pydantic_ai.exceptions import ModelHTTPError, ToolFailedError
 from webauthn import (
     base64url_to_bytes,
@@ -1118,7 +1125,11 @@ def _extrair_usage_tokens(resultado) -> tuple[int, int]:
         return 0, 0
     try:
         usage_attr = getattr(resultado, "usage", resultado)
-        u = usage_attr() if callable(usage_attr) else usage_attr
+        u = (
+            usage_attr
+            if hasattr(usage_attr, "input_tokens") or hasattr(usage_attr, "request_tokens")
+            else (usage_attr() if callable(usage_attr) else usage_attr)
+        )
         if u is None:
             return 0, 0
         tokens_in = getattr(u, "input_tokens", None) or getattr(u, "request_tokens", 0) or 0
@@ -1977,13 +1988,19 @@ def _limpar_tarefas_expiradas() -> None:
 
 
 def _publicar_evento_tarefa(registro: dict, tipo: str, payload: dict) -> None:
-    registro["eventos"].append((tipo, payload))
-    if tipo == "status":
-        registro["ultimo_status"] = payload
-    elif tipo == "chunk":
+    if tipo == "chunk":
         delta = str(payload.get("delta") or "")
         if delta:
+            payload = {"tipo": "chunk", **payload}
             registro["partes_texto"].append(delta)
+            registro["texto_parcial"] = str(registro.get("texto_parcial") or "") + delta
+    elif tipo == "reset_stream":
+        payload = {"tipo": "reset_stream", **payload}
+        registro["partes_texto"].clear()
+        registro["texto_parcial"] = ""
+    elif tipo == "status":
+        registro["ultimo_status"] = payload
+    registro["eventos"].append((tipo, payload))
     for q in list(registro["subscribers"]):
         with suppress(Exception):
             q.put_nowait((tipo, payload))
@@ -2045,6 +2062,8 @@ def _iniciar_tarefa_chat_background(
         "finalizada_em": 0.0,
         "ultimo_status": None,
         "partes_texto": [],
+        "texto_parcial": "",
+        "ttft_ms": None,
         "resultado_final": None,
         "cancelada": False,
         "modelo_config": modelo_config,
@@ -2095,33 +2114,61 @@ def _iniciar_tarefa_chat_background(
         texto_final = ""
         tokens_in = 0
         tokens_out = 0
+        ttft_ms: int | None = None
         modelo_executado = modelo_real
         resultado_final_obj = None
         t0 = time.perf_counter()
+
         def _novo_estado_stream_ollama(modelo_id: str) -> dict:
             eh_ol = modelo_id == MODELO_OLLAMA_ID or "ollama" in (modelo_id or "").lower()
             return {"eh_ollama": eh_ol, "retendo": eh_ol, "buffer": ""}
 
         def _processar_delta_stream(delta: str, estado_st: dict) -> None:
+            nonlocal ttft_ms
+            if not delta:
+                return
+            if ttft_ms is None:
+                ttft_ms = max(1, int((time.perf_counter() - t0) * 1000))
+                registro["ttft_ms"] = ttft_ms
             partes_texto.append(delta)
             if not estado_st["retendo"]:
-                _publicar_evento_tarefa(registro, "chunk", {"delta": delta})
+                _publicar_evento_tarefa(registro, "chunk", {"tipo": "chunk", "delta": delta})
                 return
             estado_st["buffer"] += delta
             inicio_limpo = estado_st["buffer"].lstrip()
             if inicio_limpo and not inicio_limpo.startswith(("{", "[", "`")):
                 estado_st["retendo"] = False
-                _publicar_evento_tarefa(registro, "chunk", {"delta": estado_st["buffer"]})
+                _publicar_evento_tarefa(registro, "chunk", {"tipo": "chunk", "delta": estado_st["buffer"]})
                 estado_st["buffer"] = ""
 
-        def _finalizar_stream_ollama(modelo_exec: str, estado_st: dict) -> str:
-            bruto = "".join(partes_texto).strip()
+        def _finalizar_stream_ollama(modelo_exec: str, estado_st: dict, fallback_output: str = "") -> str:
+            bruto = "".join(partes_texto).strip() or (fallback_output or "").strip()
             limpo = sanitizar_resposta_ollama_offline(bruto, modelo_exec)
             if estado_st["retendo"] and limpo:
-                _publicar_evento_tarefa(registro, "chunk", {"delta": limpo})
+                _publicar_evento_tarefa(registro, "chunk", {"tipo": "chunk", "delta": limpo})
                 estado_st["buffer"] = ""
                 estado_st["retendo"] = False
+            elif not partes_texto and limpo:
+                _publicar_evento_tarefa(registro, "chunk", {"tipo": "chunk", "delta": limpo})
             return limpo
+
+        async def _consumir_stream_eventos(modelo_obj, estado_st: dict, *, retries_override: int | None = None):
+            """Itera `orquestrador.run_stream_events(...)` emitindo cada TextPartDelta sem quebrar tool-calls."""
+            kwargs_ev: dict = {"deps": ctx, "model": modelo_obj}
+            if retries_override is not None:
+                kwargs_ev["retries"] = retries_override
+            resultado_ev = None
+            async with orquestrador.run_stream_events(entrada_modelo, **kwargs_ev) as eventos:
+                async for evento in eventos:
+                    if isinstance(evento, PartStartEvent):
+                        if isinstance(evento.part, TextPart) and evento.part.content:
+                            _processar_delta_stream(evento.part.content, estado_st)
+                    elif isinstance(evento, PartDeltaEvent):
+                        if isinstance(evento.delta, TextPartDelta) and evento.delta.content_delta:
+                            _processar_delta_stream(evento.delta.content_delta, estado_st)
+                    elif isinstance(evento, AgentRunResultEvent):
+                        resultado_ev = evento.result
+            return resultado_ev
 
         try:
             # Fast-Path deterministico (Zero-LLM) apenas para mensagens de texto sem anexos multimodais
@@ -2281,24 +2328,16 @@ def _iniciar_tarefa_chat_background(
                 if texto_final:
                     _publicar_evento_tarefa(registro, "chunk", {"delta": texto_final})
             elif not eh_auto:
-                # Modo manual forcado: string direta sem cooldown e sem fallback silencioso
+                # Modo manual forcado: streaming real via run_stream_events (suporta tools + deltas token-a-token)
                 modelo_obj = obter_modelo(modelo_real, usar_fallback=False)
                 estado_st = _novo_estado_stream_ollama(modelo_real)
                 try:
-                    stream_result = None
-                    async with orquestrador.run_stream(
-                        entrada_modelo,
-                        deps=ctx,
-                        model=modelo_obj,
-                    ) as result:
-                        stream_result = result
-                        async for delta in result.stream_text(delta=True, debounce_by=0.04):
-                            if delta:
-                                _processar_delta_stream(delta, estado_st)
+                    stream_result = await _consumir_stream_eventos(modelo_obj, estado_st)
                     resultado_final_obj = stream_result
                     tokens_in, tokens_out = _extrair_usage_tokens(stream_result)
                     modelo_executado = _extrair_modelo_real(stream_result, modelo_real)
-                    texto_final = _finalizar_stream_ollama(modelo_executado, estado_st)
+                    fallback_out = str(getattr(stream_result, "output", "") or "")
+                    texto_final = _finalizar_stream_ollama(modelo_executado, estado_st, fallback_output=fallback_out)
                     if not texto_final:
                         res_fb = await orquestrador.run(
                             entrada_modelo,
@@ -2312,7 +2351,7 @@ def _iniciar_tarefa_chat_background(
                         modelo_executado = _extrair_modelo_real(res_fb, modelo_executado)
                         texto_final = sanitizar_resposta_ollama_offline((res_fb.output or "").strip(), modelo_executado)
                         if texto_final:
-                            _publicar_evento_tarefa(registro, "chunk", {"delta": texto_final})
+                            _publicar_evento_tarefa(registro, "chunk", {"tipo": "chunk", "delta": texto_final})
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc_stream:
@@ -2329,12 +2368,12 @@ def _iniciar_tarefa_chat_background(
                         modelo_executado = _extrair_modelo_real(res_fb, modelo_real)
                         texto_final = sanitizar_resposta_ollama_offline((res_fb.output or "").strip(), modelo_executado)
                         if texto_final:
-                            _publicar_evento_tarefa(registro, "chunk", {"delta": texto_final})
+                            _publicar_evento_tarefa(registro, "chunk", {"tipo": "chunk", "delta": texto_final})
                     else:
                         raise exc_stream
             else:
                 # Modo Auto: RetryOnModelErrors faz backoff 2s/4s/6s por request no mesmo modelo;
-                # se o 503 persistir apos os retries, alterna imediatamente para o proximo modelo da fila.
+                # se o 503/429 persistir, emite reset_stream (se houve delta parcial) e alterna para o proximo modelo.
                 erros_tentativas: list[str] = []
                 ultimo_erro: Exception | None = None
                 sucesso_auto = False
@@ -2352,20 +2391,16 @@ def _iniciar_tarefa_chat_background(
                     stream_result = None
                     try:
                         async with asyncio.timeout(TIMEOUT_TENTATIVA_AUTO_SEGUNDOS):
-                            async with orquestrador.run_stream(
-                                entrada_modelo,
-                                deps=ctx,
-                                model=modelo_direto,
-                                retries=0,
-                            ) as result:
-                                stream_result = result
-                                async for delta in result.stream_text(delta=True, debounce_by=0.04):
-                                    if delta:
-                                        _processar_delta_stream(delta, estado_st)
+                            stream_result = await _consumir_stream_eventos(
+                                modelo_direto,
+                                estado_st,
+                                retries_override=0,
+                            )
                         resultado_final_obj = stream_result
                         tokens_in, tokens_out = _extrair_usage_tokens(stream_result)
                         modelo_executado = _extrair_modelo_real(stream_result, mid)
-                        texto_final = _finalizar_stream_ollama(modelo_executado, estado_st)
+                        fallback_out = str(getattr(stream_result, "output", "") or "")
+                        texto_final = _finalizar_stream_ollama(modelo_executado, estado_st, fallback_output=fallback_out)
                         if not texto_final:
                             async with asyncio.timeout(TIMEOUT_TENTATIVA_AUTO_SEGUNDOS):
                                 res_fb = await orquestrador.run(
@@ -2383,7 +2418,7 @@ def _iniciar_tarefa_chat_background(
                                 (res_fb.output or "").strip(), modelo_executado
                             )
                             if texto_final:
-                                _publicar_evento_tarefa(registro, "chunk", {"delta": texto_final})
+                                _publicar_evento_tarefa(registro, "chunk", {"tipo": "chunk", "delta": texto_final})
                         modelo_atual_ref[0] = modelo_executado
                         sucesso_auto = True
                         break
@@ -2410,7 +2445,7 @@ def _iniciar_tarefa_chat_background(
                                     (res_fb.output or "").strip(), modelo_executado
                                 )
                                 if texto_final:
-                                    _publicar_evento_tarefa(registro, "chunk", {"delta": texto_final})
+                                    _publicar_evento_tarefa(registro, "chunk", {"tipo": "chunk", "delta": texto_final})
                                 sucesso_auto = True
                                 break
                             except asyncio.CancelledError:
@@ -2430,8 +2465,15 @@ def _iniciar_tarefa_chat_background(
                             eh_erro_503(exc_tentativa) and len(texto_emitido) < 300
                         )
                         if pode_alternar and idx + 1 < len(fila_modelos):
-                            if texto_emitido:
-                                _publicar_evento_tarefa(registro, "chunk", {"delta": "\n\n"})
+                            if texto_emitido or registro.get("texto_parcial"):
+                                partes_texto.clear()
+                                ttft_ms = None
+                                registro["ttft_ms"] = None
+                                _publicar_evento_tarefa(
+                                    registro,
+                                    "reset_stream",
+                                    {"tipo": "reset_stream", "conversa_id": cid, "motivo": motivo_err},
+                                )
                             prox = fila_modelos[idx + 1]
                             rot_prox = ROTULOS_MODELO.get(prox, prox)
                             modelo_atual_ref[0] = prox
@@ -2508,6 +2550,7 @@ def _iniciar_tarefa_chat_background(
                 "fatos": listar_fatos(),
                 "telemetria": {
                     "duracao_ms": duracao_ms,
+                    "ttft_ms": ttft_ms,
                     "tokens_in": tokens_in,
                     "tokens_out": tokens_out,
                 },
@@ -2522,6 +2565,7 @@ def _iniciar_tarefa_chat_background(
                 modelo=modelo_executado,
                 modo_auto=eh_auto,
                 latencia_ms=duracao_ms,
+                ttft_ms=ttft_ms,
                 tokens_in=tokens_in,
                 tokens_out=tokens_out,
                 cache_read_tokens=cache_read_tokens,
@@ -2623,9 +2667,9 @@ async def _assinar_tarefa_sse(registro: dict, *, replay_compacto: bool = False):
         for tipo_ev, payload_ev in registro.get("eventos") or []:
             if tipo_ev == "permissao_windows":
                 eventos_iniciais.append((tipo_ev, payload_ev))
-        texto_acum = "".join(registro.get("partes_texto") or [])
+        texto_acum = str(registro.get("texto_parcial") or "") or "".join(registro.get("partes_texto") or [])
         if texto_acum:
-            eventos_iniciais.append(("chunk", {"delta": texto_acum}))
+            eventos_iniciais.append(("snapshot", {"tipo": "snapshot", "texto": texto_acum}))
         if ja_finalizada:
             for tipo_ev, payload_ev in reversed(registro.get("eventos") or []):
                 if tipo_ev in ("done", "error"):

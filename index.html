@@ -4158,7 +4158,19 @@ async function consumirFluxoSSEChat(resp, { bubbleInicial = null, modeloInicial 
         const boxTrilha = document.getElementById("trilha");
         if (boxTrilha) boxTrilha.scrollTop = boxTrilha.scrollHeight;
       }
-    } else if (evTipo === "chunk") {
+    } else if (evTipo === "snapshot" || payload.tipo === "snapshot") {
+      const snapTxt = String(payload.texto || "");
+      garantirBolhaBot();
+      textoAcumulado = snapTxt;
+      recebeuChunk = Boolean(snapTxt);
+      if (snapTxt) agendarRenderLive();
+    } else if (evTipo === "reset_stream" || payload.tipo === "reset_stream") {
+      textoAcumulado = "";
+      recebeuChunk = false;
+      const alvoReset = garantirBolhaBot("Alternando modelo automaticamente...");
+      alvoReset.innerHTML = '<span class="thinking"><span class="thinking-dot"></span><span class="thinking-text">Alternando modelo automaticamente...</span></span>';
+      rolarSePertoDoFim();
+    } else if (evTipo === "chunk" || payload.tipo === "chunk") {
       const delta = String(payload.delta || "");
       if (delta) {
         garantirBolhaBot();

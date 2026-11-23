@@ -2229,3 +2229,142 @@ def test_flat_tool_architecture_filtragem_por_dominio_e_execucao_sem_subagente(m
     assert "AGENDA(7d)" in out_agenda
     assert "<conteudo_externo_nao_confiavel" in out_emails
     assert "VAULT(athena)" in out_obs
+
+
+# ==============================================================================
+# 19. STREAMING REAL TOKEN-A-TOKEN (run_stream_events, TTFT, snapshot, reset_stream)
+# ==============================================================================
+
+
+def test_streaming_texto_parcial_e_snapshot_no_reattach():
+    import json
+
+    import servidor
+
+    registro = {
+        "conversa_id": "conv-snap",
+        "status": "running",
+        "eventos": [],
+        "subscribers": [],
+        "ultimo_status": {"passo": "Athena escrevendo..."},
+        "partes_texto": [],
+        "texto_parcial": "",
+        "ttft_ms": 42,
+    }
+
+    servidor._publicar_evento_tarefa(registro, "chunk", {"delta": "Olá, "})
+    servidor._publicar_evento_tarefa(registro, "chunk", {"delta": "William! "})
+    servidor._publicar_evento_tarefa(registro, "chunk", {"delta": "Tudo bem?"})
+    assert registro["texto_parcial"] == "Olá, William! Tudo bem?"
+
+    async def _consumir_reattach():
+        recebidos: list[tuple[str, dict]] = []
+        gen = servidor._assinar_tarefa_sse(registro, replay_compacto=True)
+
+        # 1) Primeiro evento: status; 2) Segundo evento: snapshot unico consolidado (sem 3 mini-chunks)
+        ev1 = await gen.__anext__()
+        ev2 = await gen.__anext__()
+        # Publica 1 chunk ao vivo depois da reconexao e encerra subscribers
+        servidor._publicar_evento_tarefa(registro, "chunk", {"delta": " Pronto."})
+        servidor._encerrar_subscribers_tarefa(registro)
+        ev3 = await gen.__anext__()
+        with pytest.raises(StopAsyncIteration):
+            await gen.__anext__()
+
+        for bruto in (ev1, ev2, ev3):
+            linhas = [ln for ln in bruto.strip().splitlines() if ln]
+            tipo = linhas[0].replace("event:", "").strip()
+            dados = json.loads(linhas[1].replace("data:", "").strip())
+            recebidos.append((tipo, dados))
+        return recebidos
+
+    eventos = _executar_async_real_teste(_consumir_reattach())
+    assert eventos[0][0] == "status"
+    assert eventos[1] == ("snapshot", {"tipo": "snapshot", "texto": "Olá, William! Tudo bem?"})
+    assert eventos[2] == ("chunk", {"tipo": "chunk", "delta": " Pronto."})
+
+
+def test_streaming_reset_stream_no_fallback_auto_e_ttft(monkeypatch, tmp_path):
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    from pydantic_ai import (
+        AgentRunResultEvent,
+        PartDeltaEvent,
+        PartStartEvent,
+        TextPart,
+        TextPartDelta,
+    )
+    from pydantic_ai.exceptions import ModelUnavailableError
+    from pydantic_ai.usage import RunUsage
+
+    import memoria
+    import servidor
+
+    db_teste = tmp_path / "stream_fallback.db"
+    memoria.executar_migrations(db_teste)
+    monkeypatch.setenv("ATHENA_DB_PATH", str(db_teste))
+
+    class _FakeRunResult:
+        def __init__(self, output: str, model_name: str):
+            self.output = output
+            self.usage = RunUsage(input_tokens=120, output_tokens=30, cache_read_tokens=80)
+            self._model_name = model_name
+
+        def all_messages(self):
+            return [SimpleNamespace(model_name=self._model_name, parts=[])]
+
+    @asynccontextmanager
+    async def _fake_run_stream_events(_entrada, *, deps, model, retries=None, **kwargs):
+        async def _iter():
+            if "gemini-3.5-flash-lite" in str(model):
+                yield PartDeltaEvent(index=0, delta=TextPartDelta("Texto parcial quebrado..."))
+                raise ModelUnavailableError("gemini-3.5-flash-lite", "503 UNAVAILABLE")
+            yield PartStartEvent(index=0, part=TextPart(content="Resposta "))
+            yield PartDeltaEvent(index=0, delta=TextPartDelta("completa!"))
+            yield AgentRunResultEvent(result=_FakeRunResult("Resposta completa!", "gemini-3.8-flash"))  # type: ignore[arg-type]
+
+        yield _iter()
+
+    async def _inline_to_thread(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    @asynccontextmanager
+    async def _timeout_noop(_seg):
+        yield
+
+    monkeypatch.setattr(servidor.asyncio, "to_thread", _inline_to_thread)
+    monkeypatch.setattr(servidor.asyncio, "timeout", _timeout_noop)
+    monkeypatch.setattr(servidor.orquestrador, "run_stream_events", _fake_run_stream_events)
+    monkeypatch.setattr(servidor, "tentar_fast_path", lambda _m: None)
+    monkeypatch.setattr(servidor, "consultar_cache_semantico", lambda _m: None)
+    monkeypatch.setattr(servidor, "salvar_cache_semantico", lambda _m, _r: False)
+    monkeypatch.setattr(servidor, "agendar_extracao_memorias", lambda *_a, **_kw: None)
+    monkeypatch.setattr(servidor, "_agendar_limpeza_tarefa", lambda *_a, **_kw: None)
+
+    async def _rodar():
+        reg, err = servidor._iniciar_tarefa_chat_background(
+            conversa_id="conv-reset-teste",
+            entrada_modelo="explique a teoria da relatividade",
+            msg_historico="explique a teoria da relatividade",
+            mensagem_atual="explique a teoria da relatividade",
+            modelo_config="auto",
+            fila_modelos=["gemini-3.5-flash-lite", "gemini-3.8-flash"],
+            motivo_auto="teste fallback stream",
+            eh_auto=True,
+            nomes_exibicao=[],
+            caminhos_salvos_rel=[],
+            usar_stream=True,
+        )
+        assert err is None and reg is not None
+        await reg["task"]
+        return reg
+
+    reg_final = _executar_async_real_teste(_rodar())
+    tipos_ev = [t for t, _p in reg_final["eventos"]]
+    assert "reset_stream" in tipos_ev
+    assert reg_final["texto_parcial"] == "Resposta completa!"
+    assert isinstance(reg_final["ttft_ms"], int) and reg_final["ttft_ms"] >= 1
+    assert reg_final["resultado_final"]["resposta"] == "Resposta completa!"
+    assert reg_final["resultado_final"]["modelo_usado"] == "gemini-3.8-flash"
+    assert reg_final["resultado_final"]["telemetria"]["ttft_ms"] == reg_final["ttft_ms"]
