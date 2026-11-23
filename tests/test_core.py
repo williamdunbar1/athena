@@ -2033,3 +2033,85 @@ def test_fast_path_integrado_no_chat_nao_chama_llm(monkeypatch, tmp_path):
     assert res["tokens_in"] == 0
     assert res["tokens_out"] == 0
     assert "diagnostico-athena" in res["resposta"]
+
+
+# ==============================================================================
+# 17. CACHE SEMANTICO LOCAL (semantic_cache.py com embedder mockado offline)
+# ==============================================================================
+
+
+def test_semantic_cache_hit_ttl_e_regras_nao_cacheaveis():
+    import semantic_cache as sc
+
+    tempo_atual = [1000.0]
+
+    def _embedder_mock(texto: str) -> list[float]:
+        low = texto.lower()
+        if "cadeia" in low or "derivada composta" in low:
+            # Vetores muito proximos (cosseno ~ 0.996 >= 0.94)
+            return [0.99, 0.08, 0.01] if "cadeia" in low else [0.985, 0.12, 0.01]
+        if "integral" in low:
+            return [0.05, 0.99, 0.02]
+        return [0.01, 0.02, 0.99]
+
+    cache = sc.SemanticCache(
+        max_itens=50,
+        limiar_similaridade=0.94,
+        ttl_segundos=900.0,
+        embedder=_embedder_mock,
+        relogio=lambda: tempo_atual[0],
+    )
+
+    # 1) Pergunta conceitual e salva e uma formulacao equivalente dentro do TTL da hit com tokens=0
+    salvou = cache.salvar(
+        "como funciona a regra da cadeia em calculo diferencial?",
+        "A regra da cadeia deriva funcoes compostas fazendo f'(g(x)) * g'(x).",
+    )
+    assert salvou is True
+
+    hit = cache.consultar("qual e a formula da derivada composta no calculo?")
+    assert hit is not None
+    assert hit["modelo"] == "Cache Semântico (Local)"
+    assert hit["tokens"] == 0
+    assert hit["similaridade"] >= 0.94
+    assert "f'(g(x)) * g'(x)" in hit["resposta"]
+
+    # Pergunta de outro assunto da miss
+    assert cache.consultar("como calcular uma integral por partes passo a passo?") is None
+
+    st = cache.estatisticas()
+    assert st["hits"] == 1
+    assert st["misses"] == 1
+    assert st["itens_ativos"] == 1
+
+    # 2) Apos expirar o TTL (> 900s), a mesma pergunta retorna None (miss)
+    tempo_atual[0] += 901.0
+    assert cache.consultar("como funciona a regra da cadeia em calculo diferencial?") is None
+    assert cache.estatisticas()["itens_ativos"] == 0
+
+    # 3) Comandos de acao, tempo real e mensagens curtas/contextuais NUNCA sao cacheados
+    nao_cacheaveis = (
+        "organiza minha area de trabalho",
+        "qual a cotacao do dolar agora",
+        "quais erros no logfire na ultima hora",
+        "abre o brave para mim por favor",
+        "qual o preco atual de petr4 hoje",
+        "oi",
+        "explica melhor esse ponto",
+        "e qual seria a segunda opcao?",
+    )
+    for msg_bloq in nao_cacheaveis:
+        assert sc.eh_cacheavel(msg_bloq) is False, f"'{msg_bloq}' nao deveria ser cacheavel"
+        assert cache.salvar(msg_bloq, "Resposta qualquer valida.") is False
+    assert cache.estatisticas()["itens_ativos"] == 0
+
+
+def test_semantic_cache_endpoints_servidor():
+    import servidor
+
+    res_limpar = servidor.resetar_cache_semantico()
+    assert res_limpar["ok"] is True
+    stats = servidor.ver_stats_cache_semantico()
+    assert stats["hits"] == 0
+    assert stats["misses"] == 0
+    assert stats["itens_ativos"] == 0

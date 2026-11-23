@@ -118,6 +118,13 @@ from rotinas import (
     iniciar_agendador,
     listar_rotinas,
 )
+from semantic_cache import (
+    MODELO_CACHE_SEMANTICO,
+    consultar_cache_semantico,
+    estatisticas_cache_semantico,
+    limpar_cache_semantico,
+    salvar_cache_semantico,
+)
 from skills_manager import listar_skills
 from ulife_v2 import obter_dados_ulife_estruturados, sincronizar_ulife
 from voz import (
@@ -959,6 +966,19 @@ async def ver_grafo_obsidian():
     return await asyncio.to_thread(estatisticas_grafo)
 
 
+@app.get("/api/cache/semantico/stats")
+def ver_stats_cache_semantico():
+    """Retorna metricas do Cache Semantico local (`hits`, `misses`, `itens_ativos`)."""
+    return estatisticas_cache_semantico()
+
+
+@app.post("/api/cache/semantico/limpar")
+def resetar_cache_semantico():
+    """Limpa todas as entradas e contadores do Cache Semantico local."""
+    removidos = limpar_cache_semantico()
+    return {"ok": True, "removidos": removidos, "stats": estatisticas_cache_semantico()}
+
+
 class PedidoVozFalar(BaseModel):
     texto: str
     voz: str = ""
@@ -1407,6 +1427,61 @@ async def conversar(pedido: PedidoChat):
                 "telemetria": {"duracao_ms": duracao_ms, "tokens_in": 0, "tokens_out": 0},
             }
 
+        res_cache = await asyncio.to_thread(consultar_cache_semantico, pedido.mensagem)
+        if res_cache is not None:
+            duracao_ms = max(1, int((time.perf_counter() - t0) * 1000))
+            modelo_cache = str(res_cache.get("modelo") or MODELO_CACHE_SEMANTICO)
+            similaridade = float(res_cache.get("similaridade") or 0.0)
+            ESTADO_EXECUCAO["modelo"] = modelo_cache
+            ctx.registrar("Athena", modelo_cache, "ferramenta", f"hit sim={similaridade:.3f} ({duracao_ms} ms · 0 tokens)")
+            resposta_final = str(res_cache.get("resposta") or "").strip()
+            registrar_telemetria(
+                modelo=modelo_cache,
+                duracao_ms=duracao_ms,
+                tokens_in=0,
+                tokens_out=0,
+                agentes_usados=modelo_cache,
+                sucesso=True,
+            )
+            meta_msg = {
+                "modelo_usado": modelo_cache,
+                "modo_auto": False,
+                "motivo_modelo": f"Cache Semântico (sim={similaridade:.2f})",
+                "duracao_ms": duracao_ms,
+                "tokens_in": 0,
+                "tokens_out": 0,
+                "semantic_cache": True,
+                "similaridade": similaridade,
+                "imagens": [],
+                "acoes_windows": [],
+            }
+            salvar_mensagem("bot", resposta_final, ctx.trilha, meta=meta_msg)
+            logger.info(
+                "semantic_cache_hit",
+                conversa_id=CONVERSA_ID_PADRAO,
+                similaridade=similaridade,
+                latencia_ms=duracao_ms,
+                tokens=0,
+            )
+            return {
+                "ok": True,
+                "resposta": resposta_final,
+                "modelo": modelo_config,
+                "modelo_usado": modelo_cache,
+                "modo_auto": False,
+                "motivo_modelo": f"Cache Semântico (sim={similaridade:.2f})",
+                "semantic_cache": True,
+                "similaridade": similaridade,
+                "duracao_ms": duracao_ms,
+                "tokens_in": 0,
+                "tokens_out": 0,
+                "imagens": [],
+                "acoes_windows": [],
+                "trilha": ctx.trilha,
+                "fatos": listar_fatos(),
+                "telemetria": {"duracao_ms": duracao_ms, "tokens_in": 0, "tokens_out": 0},
+            }
+
         res, modelo_executado = await _executar_orquestrador_auto_ou_manual(
             prompt_completo, ctx, fila_modelos, eh_auto
         )
@@ -1448,6 +1523,10 @@ async def conversar(pedido: PedidoChat):
             "acoes_windows": list(ctx.acoes_windows),
         }
         salvar_mensagem("bot", resposta_final, ctx.trilha, meta=meta_msg)
+        agentes_turno = _extrair_agentes_trilha(ctx.trilha)
+        if not ctx.acoes_windows and "Agente Faxineiro" not in agentes_turno and not imagens_geradas:
+            with suppress(Exception):
+                await asyncio.to_thread(salvar_cache_semantico, pedido.mensagem, resposta_final)
         agendar_extracao_memorias(pedido.mensagem, resposta_final)
         return {
             "ok": True,
@@ -2118,6 +2197,79 @@ def _iniciar_tarefa_chat_background(
                     _publicar_evento_tarefa(registro, "done", payload_done_fp)
                     return
 
+                res_cache = await asyncio.to_thread(consultar_cache_semantico, ctx.mensagem_atual)
+                if res_cache is not None:
+                    modelo_executado = str(res_cache.get("modelo") or MODELO_CACHE_SEMANTICO)
+                    similaridade = float(res_cache.get("similaridade") or 0.0)
+                    modelo_atual_ref[0] = modelo_executado
+                    ESTADO_EXECUCAO["modelo"] = modelo_executado
+                    duracao_ms = max(1, int((time.perf_counter() - t0) * 1000))
+                    ctx.registrar(
+                        "Athena",
+                        modelo_executado,
+                        "ferramenta",
+                        f"hit sim={similaridade:.3f} ({duracao_ms} ms · 0 tokens)",
+                    )
+                    texto_final = str(res_cache.get("resposta") or "").strip()
+                    if texto_final:
+                        _publicar_evento_tarefa(registro, "chunk", {"delta": texto_final})
+                    with suppress(Exception):
+                        registrar_telemetria(
+                            modelo=modelo_executado,
+                            duracao_ms=duracao_ms,
+                            tokens_in=0,
+                            tokens_out=0,
+                            agentes_usados=modelo_executado,
+                            sucesso=True,
+                        )
+                    meta_sc = {
+                        "modelo_usado": modelo_executado,
+                        "modo_auto": False,
+                        "motivo_modelo": f"Cache Semântico (sim={similaridade:.2f})",
+                        "duracao_ms": duracao_ms,
+                        "tokens_in": 0,
+                        "tokens_out": 0,
+                        "semantic_cache": True,
+                        "similaridade": similaridade,
+                        "imagens": [],
+                        "acoes_windows": [],
+                    }
+                    salvar_mensagem("bot", texto_final, ctx.trilha, meta=meta_sc)
+                    payload_done_sc = {
+                        "ok": True,
+                        "conversa_id": cid,
+                        "resposta": texto_final,
+                        "modelo": modelo_config,
+                        "modelo_usado": modelo_executado,
+                        "modo_auto": False,
+                        "motivo_modelo": f"Cache Semântico (sim={similaridade:.2f})",
+                        "semantic_cache": True,
+                        "similaridade": similaridade,
+                        "duracao_ms": duracao_ms,
+                        "tokens_in": 0,
+                        "tokens_out": 0,
+                        "imagens": [],
+                        "acoes_windows": [],
+                        "anexo": "",
+                        "anexos": [],
+                        "caminho_upload": "",
+                        "caminhos_upload": [],
+                        "trilha": list(ctx.trilha),
+                        "fatos": listar_fatos(),
+                        "telemetria": {"duracao_ms": duracao_ms, "tokens_in": 0, "tokens_out": 0},
+                    }
+                    registro["resultado_final"] = payload_done_sc
+                    registro["status"] = "done"
+                    logger.info(
+                        "semantic_cache_hit",
+                        conversa_id=cid,
+                        similaridade=similaridade,
+                        latencia_ms=duracao_ms,
+                        tokens=0,
+                    )
+                    _publicar_evento_tarefa(registro, "done", payload_done_sc)
+                    return
+
             if not usar_stream:
                 res, modelo_executado = await _executar_orquestrador_auto_ou_manual(
                     entrada_modelo, ctx, fila_modelos, eh_auto
@@ -2377,6 +2529,15 @@ def _iniciar_tarefa_chat_background(
                 cache_hit_pct=cache_hit_pct,
             )
             _publicar_evento_tarefa(registro, "done", payload_done)
+            agentes_turno = _extrair_agentes_trilha(ctx.trilha)
+            if (
+                not nomes_exibicao
+                and not ctx.acoes_windows
+                and "Agente Faxineiro" not in agentes_turno
+                and not imagens_geradas
+            ):
+                with suppress(Exception):
+                    await asyncio.to_thread(salvar_cache_semantico, ctx.mensagem_atual, texto_final)
             agendar_extracao_memorias(msg_historico, texto_final)
         except asyncio.CancelledError:
             duracao_ms = max(1, int((time.perf_counter() - t0) * 1000))
