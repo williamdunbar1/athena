@@ -813,3 +813,210 @@ def test_auto_fallback_503_apos_retry_nao_aborta_no_flash_lite(monkeypatch, tmp_
     ]
     assert agentes.modelo_disponivel("gemini-3.5-flash-lite") is False
     assert agentes.modelo_disponivel("gemini-3.8-flash") is False
+
+
+# ==============================================================================
+# 6. AGENT SKILLS NATIVAS (skills_manager.py + skills/*/SKILL.md)
+# ==============================================================================
+
+
+def test_skills_descoberta_catalogo_e_carregamento():
+    import skills_manager as sm
+
+    skills = sm.listar_skills()
+    nomes = {s["name"] for s in skills}
+    assert {"plano-estudo-prova", "analise-financeira", "diagnostico-athena"}.issubset(nomes)
+    for s in skills:
+        assert s["description"]
+        assert "\n" not in s["description"]
+
+    # Catalogo ultra enxuto (1 linha por skill, sem vazar corpo completo)
+    catalogo = sm.gerar_catalogo_skills()
+    linhas = [ln for ln in catalogo.splitlines() if ln.strip()]
+    assert len(linhas) == len(skills)
+    assert "- plano-estudo-prova:" in catalogo
+    assert "- analise-financeira:" in catalogo
+    assert "- diagnostico-athena:" in catalogo
+    assert "## 1." not in catalogo
+
+    # Carregamento completo sob demanda
+    corpo = sm.carregar_skill("diagnostico-athena")
+    assert "[SKILL CARREGADA: diagnostico-athena]" in corpo
+    assert "buscar_erros_logfire" in corpo
+    assert "consultar_trace_logfire" in corpo
+
+    # Skill inexistente retorna mensagem amigavel listando disponiveis
+    nao_existe = sm.carregar_skill("skill-inexistente-xyz")
+    assert "nao encontrada" in nao_existe.lower()
+    assert "diagnostico-athena" in nao_existe
+
+
+@pytest.mark.parametrize(
+    "nome_malicioso",
+    [
+        "../.env",
+        "..\\..\\Windows\\win.ini",
+        "plano-estudo-prova/../../.env",
+        "/etc/passwd",
+        "C:\\Users\\test\\.env",
+        "skill\x00invalida",
+        "..",
+        "   ",
+    ],
+)
+def test_skills_bloqueia_path_traversal(nome_malicioso, tmp_path):
+    import skills_manager as sm
+
+    # Cria um arquivo sensivel fora da pasta skills para provar que nunca e lido
+    segredo_fora = tmp_path / ".env"
+    segredo_fora.write_text("SEGREDO_FORA=NAO_LER", encoding="utf-8")
+    pasta_skills = tmp_path / "skills"
+    (pasta_skills / "demo").mkdir(parents=True)
+    (pasta_skills / "demo" / "SKILL.md").write_text(
+        "---\nname: demo\ndescription: Skill de teste\n---\nCorpo seguro.",
+        encoding="utf-8",
+    )
+
+    out = sm.carregar_skill(nome_malicioso, diretorio=pasta_skills)
+    assert "SEGREDO_FORA" not in out
+    assert "erro" in out.lower() or "bloqueado" in out.lower() or "invalido" in out.lower()
+
+    # Confirma que a skill legitima no mesmo tmp_path funciona normalmente
+    ok_out = sm.carregar_skill("demo", diretorio=pasta_skills)
+    assert "[SKILL CARREGADA: demo]" in ok_out
+    assert "Corpo seguro." in ok_out
+
+
+def test_skills_registrada_no_orquestrador_e_endpoint():
+    import servidor
+
+    assert "carregar_skill" in agentes.orquestrador._function_toolset.tools
+    resp = servidor.ver_skills()
+    assert isinstance(resp, dict)
+    nomes = {item["name"] for item in resp["skills"]}
+    assert {"plano-estudo-prova", "analise-financeira", "diagnostico-athena"}.issubset(nomes)
+
+
+# ==============================================================================
+# 7. VOZ NEURAL OFFLINE (voz.py + endpoints /api/voz/* com mocks, sem baixar Whisper)
+# ==============================================================================
+
+
+def test_voz_limpar_texto_para_fala():
+    import voz
+
+    bruto = (
+        "## 🚀 Resumo do Plano\n\n"
+        "Confira o **guia completo** em [Obsidian Vault](https://exemplo.com/nota) "
+        "ou acesse https://site.invalid/teste.\n\n"
+        "```python\nprint('segredo tecnico')\n```\n\n"
+        "- Item `codigo_inline` com *enfase* e ~~tachado~~ 🔥✨\n"
+        "> Citacao importante\n"
+    )
+    limpo = voz.limpar_texto_para_fala(bruto)
+    assert "```" not in limpo
+    assert "segredo tecnico" not in limpo
+    assert "trecho de código omitido" in limpo
+    assert "Obsidian Vault" in limpo
+    assert "https://" not in limpo
+    assert "**" not in limpo and "~~" not in limpo and "##" not in limpo
+    assert "🚀" not in limpo and "🔥" not in limpo and "✨" not in limpo
+    assert "codigo inline" in limpo
+    assert "Citacao importante" in limpo
+
+
+def test_voz_transcrever_e_sintetizar_com_mocks_e_fallback_sem_extras(monkeypatch):
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    import voz
+
+    caminhos_recebidos: list[Path] = []
+
+    class _FakeWhisper:
+        def transcribe(self, caminho: str, *, language: str = "pt", vad_filter: bool = True):
+            p = Path(caminho)
+            caminhos_recebidos.append(p)
+            assert p.is_file()
+            assert language == "pt"
+            assert vad_filter is True
+            return [SimpleNamespace(text="Ola Athena,"), SimpleNamespace(text="tudo bem?")], None
+
+    monkeypatch.setattr(voz, "_WHISPER_MODEL", _FakeWhisper())
+    texto = voz.transcrever_audio(b"WEBM-FAKE-BYTES", extensao="audio/webm;codecs=opus")
+    assert texto == "Ola Athena, tudo bem?"
+    # Garante que o arquivo temporario foi removido apos transcrever
+    assert caminhos_recebidos and not caminhos_recebidos[0].exists()
+
+    # Testa sintetizar_fala com mock do edge_tts sem rede
+    class _FakeCommunicate:
+        def __init__(self, text: str, *, voice: str):
+            self.text = text
+            self.voice = voice
+
+        async def stream(self):
+            assert "**" not in self.text
+            assert self.voice == "pt-BR-FranciscaNeural"
+            yield {"type": "audio", "data": b"ID3-MP3-CHUNK-1"}
+            yield {"type": "WordBoundary", "text": "Ola"}
+            yield {"type": "audio", "data": b"-CHUNK-2"}
+
+    fake_edge_mod = SimpleNamespace(Communicate=_FakeCommunicate)
+    monkeypatch.setattr(voz.importlib, "import_module", lambda nome: fake_edge_mod if nome == "edge_tts" else None)
+
+    audio_mp3 = _executar_coro_sync(voz.sintetizar_fala("**Olá** mundo 🚀!"))
+    assert audio_mp3 == b"ID3-MP3-CHUNK-1-CHUNK-2"
+
+    # Fallback seguro (VozIndisponivelError) quando extra opcional nao esta instalado
+    def _faltando(_nome: str):
+        raise ModuleNotFoundError("no module")
+
+    monkeypatch.setattr(voz, "_WHISPER_MODEL", None)
+    monkeypatch.setattr(voz.importlib, "import_module", _faltando)
+    with pytest.raises(voz.VozIndisponivelError):
+        voz.transcrever_audio(b"abc", extensao="webm")
+    with pytest.raises(voz.VozIndisponivelError):
+        _executar_coro_sync(voz.sintetizar_fala("teste"))
+
+
+def test_endpoints_voz_servidor_com_mocks(monkeypatch):
+    from fastapi import HTTPException
+
+    import servidor
+    import voz as mod_voz
+
+    # 1) /api/voz/transcrever com UploadFile fake + mock de asyncio.to_thread
+    class _FakeUpload:
+        filename = "mensagem.webm"
+        content_type = "audio/webm"
+
+        async def read(self) -> bytes:
+            return b"FAKE-AUDIO-BYTES"
+
+    async def _fake_to_thread(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr(servidor.asyncio, "to_thread", _fake_to_thread)
+    monkeypatch.setattr(servidor, "transcrever_audio", lambda dados, ext: f"transcrito({len(dados)},{ext})")
+
+    res_stt = _executar_coro_sync(servidor.transcrever_voz(_FakeUpload()))  # type: ignore[arg-type]
+    assert res_stt == {"texto": "transcrito(16,webm)"}
+
+    # 2) /api/voz/falar retorna audio/mpeg
+    async def _fake_tts(texto: str, voz: str = ""):
+        assert texto == "Ola Athena"
+        return b"FAKE-MP3-DATA"
+
+    monkeypatch.setattr(servidor, "sintetizar_fala", _fake_tts)
+    resp_tts = _executar_coro_sync(servidor.falar_voz(servidor.PedidoVozFalar(texto="Ola Athena")))
+    assert resp_tts.media_type == "audio/mpeg"
+    assert resp_tts.body == b"FAKE-MP3-DATA"
+
+    # 3) Quando extra voice nao esta instalado -> HTTP 503 limpo (aciona fallback no front)
+    async def _fake_tts_indisp(texto: str, voz: str = ""):
+        raise mod_voz.VozIndisponivelError("edge-tts ausente")
+
+    monkeypatch.setattr(servidor, "sintetizar_fala", _fake_tts_indisp)
+    with pytest.raises(HTTPException) as exc_info:
+        _executar_coro_sync(servidor.falar_voz(servidor.PedidoVozFalar(texto="Oi")))
+    assert exc_info.value.status_code == 503

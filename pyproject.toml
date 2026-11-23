@@ -29,6 +29,12 @@ dependencies = [
     "yfinance>=1.8.0",
 ]
 
+[project.optional-dependencies]
+voice = [
+    "edge-tts>=7.0.0",
+    "faster-whisper>=1.1.0",
+]
+
 [dependency-groups]
 dev = [
     "pydantic-evals>=2.71.0",

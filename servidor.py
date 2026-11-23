@@ -105,7 +105,15 @@ from rotinas import (
     iniciar_agendador,
     listar_rotinas,
 )
+from skills_manager import listar_skills
 from ulife_v2 import obter_dados_ulife_estruturados, sincronizar_ulife
+from voz import (
+    MAX_AUDIO_BYTES,
+    VOZ_TTS_PADRAO,
+    VozIndisponivelError,
+    sintetizar_fala,
+    transcrever_audio,
+)
 
 init_db()
 
@@ -900,6 +908,68 @@ async def sincronizar_rag():
 @app.get("/api/mcp/servidores")
 def ver_servidores_mcp():
     return {"servidores": listar_servidores_mcp()}
+
+
+@app.get("/api/skills")
+def ver_skills():
+    return {"skills": listar_skills()}
+
+
+class PedidoVozFalar(BaseModel):
+    texto: str
+    voz: str = ""
+
+
+@app.post("/api/voz/transcrever")
+async def transcrever_voz(audio: UploadFile = File(...)):
+    dados = await audio.read()
+    if not dados:
+        raise HTTPException(status_code=400, detail="Arquivo de audio vazio.")
+    if len(dados) > MAX_AUDIO_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio excede o limite de {MAX_AUDIO_BYTES // (1024 * 1024)} MB.",
+        )
+
+    ext = Path(audio.filename or "").suffix.lstrip(".")
+    if not ext and audio.content_type:
+        ext = audio.content_type
+
+    try:
+        texto = await asyncio.to_thread(transcrever_audio, dados, ext or "webm")
+    except VozIndisponivelError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        _logar_erro_execucao("voz/transcrever", "faster-whisper", exc)
+        raise HTTPException(status_code=500, detail=f"Falha ao transcrever audio: {exc}") from exc
+
+    return {"texto": texto}
+
+
+@app.post("/api/voz/falar")
+async def falar_voz(pedido: PedidoVozFalar):
+    texto = (pedido.texto or "").strip()
+    if not texto:
+        raise HTTPException(status_code=400, detail="Texto vazio.")
+
+    voz_escolhida = (pedido.voz or "").strip() or VOZ_TTS_PADRAO
+    try:
+        audio_mp3 = await sintetizar_fala(texto, voz=voz_escolhida)
+    except VozIndisponivelError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        _logar_erro_execucao("voz/falar", "edge-tts", exc)
+        raise HTTPException(status_code=502, detail=f"Falha ao sintetizar voz neural: {exc}") from exc
+
+    return Response(
+        content=audio_mp3,
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.get("/api/painel/estudos/ulife")

@@ -1314,6 +1314,45 @@
     min-height: 48px;
   }
 
+  .skills-bar {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: flex-start;
+    max-height: 92px;
+    overflow-y: auto;
+  }
+  .skill-pill {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: 11px;
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 100%;
+    cursor: default;
+  }
+  .skill-pill::before {
+    content: "";
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--accent);
+    flex-shrink: 0;
+  }
+  .skill-count {
+    margin-left: auto;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--muted);
+    opacity: 0.85;
+  }
+
   .pill {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -2339,6 +2378,12 @@
               </h2>
               <div id="fatos" class="mem-bar"></div>
               <h2 class="side-section-title">
+                <svg class="ico ico-sm ico-accent" viewBox="0 0 24 24" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                <span>Agent Skills</span>
+                <span id="skills-count" class="skill-count">0</span>
+              </h2>
+              <div id="skills-lista" class="skills-bar"></div>
+              <h2 class="side-section-title">
                 <svg class="ico ico-sm ico-accent" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
                 <span>Conversa entre Agentes</span>
               </h2>
@@ -2671,9 +2716,16 @@ let _arquivosSelecionados = [];
 let _anexoSeq = 0;
 let _dragDepth = 0;
 let _recognition = null;
+let _mediaRecorder = null;
+let _mediaStream = null;
+let _audioChunks = [];
+let _transcrevendoMic = false;
 let _ouvindoMic = false;
 let _textoAntesMic = "";
 let _btnFalandoAtual = null;
+let _audioAtual = null;
+let _audioUrlAtual = null;
+let _ttsAbort = null;
 let _authProtegido = false;
 let _biometriaDisponivel = false;
 let _appInicializada = false;
@@ -2991,6 +3043,23 @@ function limparMarkdownParaVoz(txt) {
 }
 
 function pararLeituraVoz() {
+  if (_ttsAbort) {
+    try { _ttsAbort.abort(); } catch (_) {}
+    _ttsAbort = null;
+  }
+  if (_audioAtual) {
+    try {
+      _audioAtual.onended = null;
+      _audioAtual.onerror = null;
+      _audioAtual.pause();
+      _audioAtual.src = "";
+    } catch (_) {}
+    _audioAtual = null;
+  }
+  if (_audioUrlAtual) {
+    try { URL.revokeObjectURL(_audioUrlAtual); } catch (_) {}
+    _audioUrlAtual = null;
+  }
   if (window.speechSynthesis) {
     try { window.speechSynthesis.cancel(); } catch (_) {}
   }
@@ -3001,18 +3070,17 @@ function pararLeituraVoz() {
   }
 }
 
-function alternarLeituraResposta(btn, textoBruto) {
+function _falarComSpeechSynthesisFallback(btn, textoBruto) {
   if (!window.speechSynthesis) {
-    mostrarToast("Seu navegador não suporta leitura por voz (speechSynthesis).", true);
+    pararLeituraVoz();
+    mostrarToast("Voz neural indisponível e navegador sem speechSynthesis.", true);
     return;
   }
-  const eraOMesmo = _btnFalandoAtual === btn;
-  pararLeituraVoz();
-  if (eraOMesmo) return;
-
   const limpo = limparMarkdownParaVoz(textoBruto);
-  if (!limpo) return;
-
+  if (!limpo) {
+    pararLeituraVoz();
+    return;
+  }
   const utt = new SpeechSynthesisUtterance(limpo);
   utt.lang = "pt-BR";
   utt.rate = 1.04;
@@ -3027,6 +3095,56 @@ function alternarLeituraResposta(btn, textoBruto) {
   utt.onend = () => { if (_btnFalandoAtual === btn) pararLeituraVoz(); };
   utt.onerror = () => { if (_btnFalandoAtual === btn) pararLeituraVoz(); };
   window.speechSynthesis.speak(utt);
+}
+
+async function alternarLeituraResposta(btn, textoBruto) {
+  const eraOMesmo = _btnFalandoAtual === btn;
+  pararLeituraVoz();
+  if (eraOMesmo) return;
+
+  const limpo = limparMarkdownParaVoz(textoBruto);
+  if (!limpo) return;
+
+  btn.classList.add("speaking");
+  btn.innerHTML = '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg><span>Parar</span>';
+  _btnFalandoAtual = btn;
+
+  const ctrl = new AbortController();
+  _ttsAbort = ctrl;
+
+  try {
+    const resp = await fetch("/api/voz/falar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texto: textoBruto }),
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status}`);
+    }
+    const blob = await resp.blob();
+    if (_btnFalandoAtual !== btn || ctrl.signal.aborted) return;
+    if (!blob || !blob.size) {
+      throw new Error("Áudio vazio");
+    }
+
+    const url = URL.createObjectURL(blob);
+    _audioUrlAtual = url;
+    const audio = new Audio(url);
+    _audioAtual = audio;
+    audio.onended = () => { if (_btnFalandoAtual === btn) pararLeituraVoz(); };
+    audio.onerror = () => {
+      if (_btnFalandoAtual === btn) {
+        pararLeituraVoz();
+        _falarComSpeechSynthesisFallback(btn, textoBruto);
+      }
+    };
+    await audio.play();
+  } catch (err) {
+    if (err && err.name === "AbortError") return;
+    if (_btnFalandoAtual !== btn) return;
+    _falarComSpeechSynthesisFallback(btn, textoBruto);
+  }
 }
 
 function formatarLatenciaChat(ms) {
@@ -3327,30 +3445,33 @@ function initDragAndDropChat() {
   });
 }
 
-function atualizarEstadoMic(ativo) {
+function atualizarEstadoMic(ativo, transcrevendo = false) {
   _ouvindoMic = ativo;
+  _transcrevendoMic = transcrevendo;
   const btn = document.getElementById("btn-mic");
   if (btn) {
     btn.classList.toggle("mic-listening", ativo);
-    btn.title = ativo ? "Parar gravação de voz" : "Falar mensagem (microfone pt-BR)";
+    btn.disabled = !!transcrevendo;
+    btn.style.opacity = transcrevendo ? "0.6" : "";
+    btn.title = transcrevendo
+      ? "Transcrevendo áudio com Whisper local..."
+      : (ativo ? "Parar gravação e transcrever" : "Falar mensagem (microfone neural pt-BR)");
   }
 }
 
-function alternarMicrofone() {
-  if (_ouvindoMic && _recognition) {
-    try { _recognition.stop(); } catch (_) {}
-    atualizarEstadoMic(false);
-    return;
+function _liberarStreamMic() {
+  if (_mediaStream) {
+    try { _mediaStream.getTracks().forEach(t => t.stop()); } catch (_) {}
+    _mediaStream = null;
   }
+  _mediaRecorder = null;
+  _audioChunks = [];
+}
 
+function _iniciarMicrofoneWebSpeech() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SR) {
     mostrarToast("Reconhecimento de voz não disponível neste navegador (use Chrome/Edge).", true);
-    return;
-  }
-
-  if (!window.isSecureContext) {
-    mostrarToast("O navegador bloqueia o microfone em HTTP. Ative HTTPS com `tailscale serve` para falar pelo celular.", true);
     return;
   }
 
@@ -3398,6 +3519,108 @@ function alternarMicrofone() {
   } catch (e) {
     atualizarEstadoMic(false);
     mostrarToast("Não foi possível iniciar o microfone. Em acesso remoto, use HTTPS via `tailscale serve`.", true);
+  }
+}
+
+async function alternarMicrofone() {
+  if (_transcrevendoMic) return;
+
+  if (_ouvindoMic && _mediaRecorder && _mediaRecorder.state !== "inactive") {
+    try { _mediaRecorder.stop(); } catch (_) {}
+    atualizarEstadoMic(false, true);
+    return;
+  }
+
+  if (_ouvindoMic && _recognition) {
+    try { _recognition.stop(); } catch (_) {}
+    atualizarEstadoMic(false);
+    return;
+  }
+
+  if (!window.isSecureContext) {
+    mostrarToast("O navegador bloqueia o microfone em HTTP. Ative HTTPS com `tailscale serve` para falar pelo celular.", true);
+    return;
+  }
+
+  const suportaMediaRecorder = !!(
+    navigator.mediaDevices &&
+    navigator.mediaDevices.getUserMedia &&
+    typeof window.MediaRecorder !== "undefined"
+  );
+  if (!suportaMediaRecorder) {
+    _iniciarMicrofoneWebSpeech();
+    return;
+  }
+
+  const inp = document.getElementById("entrada");
+  _textoAntesMic = (inp.value || "").trim();
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    _mediaStream = stream;
+    _audioChunks = [];
+
+    const mimes = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg;codecs=opus", "audio/mp4"];
+    const mimeEscolhido = mimes.find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || "";
+    const rec = mimeEscolhido ? new MediaRecorder(stream, { mimeType: mimeEscolhido }) : new MediaRecorder(stream);
+    _mediaRecorder = rec;
+
+    rec.ondataavailable = (ev) => {
+      if (ev.data && ev.data.size > 0) _audioChunks.push(ev.data);
+    };
+
+    rec.onstop = async () => {
+      const mimeFinal = rec.mimeType || mimeEscolhido || "audio/webm";
+      const blob = new Blob(_audioChunks, { type: mimeFinal });
+      _liberarStreamMic();
+      if (!blob.size) {
+        atualizarEstadoMic(false, false);
+        return;
+      }
+
+      atualizarEstadoMic(false, true);
+      const ext = mimeFinal.includes("ogg") ? "ogg" : (mimeFinal.includes("mp4") ? "m4a" : "webm");
+      const form = new FormData();
+      form.append("audio", blob, `gravacao.${ext}`);
+
+      try {
+        const resp = await fetch("/api/voz/transcrever", { method: "POST", body: form });
+        if (!resp.ok) {
+          const det = await resp.json().catch(() => ({}));
+          throw new Error(det.detail || `HTTP ${resp.status}`);
+        }
+        const dados = await resp.json();
+        const transcrito = (dados.texto || "").trim();
+        if (transcrito) {
+          inp.value = _textoAntesMic ? `${_textoAntesMic} ${transcrito}` : transcrito;
+          ajustarTextarea(inp);
+        } else {
+          mostrarToast("Nenhuma fala detectada no áudio gravado.");
+        }
+      } catch (err) {
+        mostrarToast("Transcrição local indisponível: " + (err && err.message ? err.message : "erro"), true);
+      } finally {
+        atualizarEstadoMic(false, false);
+        inp.focus();
+      }
+    };
+
+    rec.onerror = () => {
+      _liberarStreamMic();
+      atualizarEstadoMic(false, false);
+      _iniciarMicrofoneWebSpeech();
+    };
+
+    rec.start();
+    atualizarEstadoMic(true, false);
+  } catch (err) {
+    _liberarStreamMic();
+    atualizarEstadoMic(false, false);
+    if (err && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")) {
+      mostrarToast("Permissão do microfone negada no navegador.", true);
+    } else {
+      _iniciarMicrofoneWebSpeech();
+    }
   }
 }
 
@@ -3949,9 +4172,14 @@ async function reconectarConversaAtiva() {
 async function enviar() {
   if (_enviando) return;
   fecharPopoverModelo();
+  if (_ouvindoMic && _mediaRecorder && _mediaRecorder.state !== "inactive") {
+    try { _mediaRecorder.onstop = null; _mediaRecorder.stop(); } catch (_) {}
+    _liberarStreamMic();
+    atualizarEstadoMic(false, false);
+  }
   if (_ouvindoMic && _recognition) {
     try { _recognition.stop(); } catch (_) {}
-    atualizarEstadoMic(false);
+    atualizarEstadoMic(false, false);
   }
 
   const inp = document.getElementById("entrada");
@@ -5180,12 +5408,36 @@ async function bloquearPainel() {
   mostrarTelaBloqueio(true);
 }
 
+function renderSkills(skills) {
+  const box = document.getElementById("skills-lista");
+  const badge = document.getElementById("skills-count");
+  if (!box) return;
+  const lista = Array.isArray(skills) ? skills : [];
+  if (badge) badge.textContent = String(lista.length);
+  if (!lista.length) {
+    box.innerHTML = '<span class="empty-note" style="font-size:11px;">Nenhuma skill ativa.</span>';
+    return;
+  }
+  box.innerHTML = lista
+    .map(s => `<span class="skill-pill" title="${escHtml(s.description || s.name || "")}">${escHtml(s.name || "")}</span>`)
+    .join("");
+}
+
+async function carregarSkills() {
+  try {
+    const r = await fetch("/api/skills").then(x => x.json());
+    renderSkills(r.skills || []);
+  } catch (_) {
+    renderSkills([]);
+  }
+}
+
 async function carregarDadosIniciaisApp() {
   if (_appInicializada) return;
   _appInicializada = true;
   obterOuCriarConversaId();
   atualizarBotoesAuthUI();
-  await Promise.all([carregarConfig(), carregarHistorico()]);
+  await Promise.all([carregarConfig(), carregarHistorico(), carregarSkills()]);
   reconectarConversaAtiva();
 }
 
