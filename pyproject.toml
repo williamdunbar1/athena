@@ -8,6 +8,7 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.14.0",
     "apscheduler>=3.11.3",
     "fastapi>=0.165.0",
     "fastmcp>=4.2.4",
@@ -24,6 +25,8 @@ dependencies = [
     "python-multipart>=0.0.34",
     "qdrant-client[fastembed]>=1.20.0",
     "send2trash>=2.2.0",
+    "sqlalchemy>=2.0.36",
+    "structlog>=25.1.0",
     "uvicorn>=0.54.0",
     "webauthn>=3.0.1",
     "yfinance>=1.8.0",
@@ -58,6 +61,9 @@ exclude = [".venv", "qdrant_db", "sandbox_files", ".logfire", "__pycache__", ".p
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+known-third-party = ["alembic"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = ["fastapi.Body", "fastapi.Depends", "fastapi.File", "fastapi.Form", "fastapi.Query"]

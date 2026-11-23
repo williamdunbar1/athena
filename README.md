@@ -28,10 +28,10 @@ flowchart TB
     end
 
     subgraph Dados["Memoria, Conhecimento e Observabilidade"]
-        DB[("SQLite WAL (memoria.db)\nHistorico, Telemetria, Filas")]
+        DB[("SQLite WAL (memoria.db) + Alembic\nMigrations, Historico, Telemetria")]
         RAG[("Qdrant Local + FastEmbed\nDense + BM25 + RRF + CrossEncoder")]
         VAULT[("Obsidian Vault\nSegundo Cerebro (.md)")]
-        LF["Pydantic Logfire\nTraces OTel + Query API (somente leitura)"]
+        LF["Pydantic Logfire + structlog\nTraces OTel + Logs JSON/Console"]
     end
 
     UI <--> API
@@ -57,9 +57,12 @@ flowchart TB
   - **Faxina local e Ações Windows**: nenhuma exclusão permanente (`send2trash`) e nenhuma execução de app/URL sem aprovação explícita no card interativo (com suporte a whitelist *"Sempre permitir"*).
   - **Sandbox Linux**: comandos de terminal e escrita livre ficam isolados no container Podman (`sandbox-agentes`).
   - **Proteção contra Indirect Prompt Injection**: dados lidos de logs/traces externos são marcados explicitamente como diagnóstico passivo.
-- **Observabilidade Completa com OpenTelemetry + Pydantic Logfire**:
+- **Observabilidade Completa com OpenTelemetry + Pydantic Logfire + structlog**:
   - Instrumentação unificada (`observabilidade.py`) para Pydantic AI, FastAPI, FastMCP e HTTPX com *scrubbing* automático de segredos (`athena_pin`, `cookie`, `authorization`, `token`, `credentials`, etc.).
+  - Logs estruturados (`logging_config.py`) com **`structlog`** correlacionados automaticamente com `trace_id` e `span_id` do OpenTelemetry (`ATHENA_LOG_FORMAT=console` ou `json`).
   - Ferramentas enxutas de autodiagnóstico somente leitura (`buscar_erros_logfire` e `consultar_trace_logfire`) via `LogfireQueryClient`, com saída limitada a 3.000 caracteres.
+- **Migrations Versionadas com Alembic**:
+  - Evolução segura e idempotente do schema do `memoria.db` (`alembic/` + `executar_migrations()`), preservando 100% dos dados históricos existentes no boot.
 - **Interface PWA Mobile + Desktop**:
   - Streaming SSE em tempo real com trilha de agentes ao vivo, upload multimodal (imagens/PDFs), entrada por voz (`SpeechRecognition`) e síntese de fala (`speechSynthesis`) em `pt-BR`.
   - Rotinas agendadas via `APScheduler` (ex.: sincronização silenciosa do Ulife e *briefing* diário salvo no Obsidian).
@@ -71,10 +74,10 @@ flowchart TB
 | Camada | Tecnologias |
 | --- | --- |
 | **Agentes & IA** | Python 3.12, Pydantic AI v2, Google Gemini API, FastMCP |
-| **Backend & Agendamento** | FastAPI, Uvicorn, SSE (`StreamingResponse`), APScheduler, SQLite (WAL) |
+| **Backend & Agendamento** | FastAPI, Uvicorn, SSE (`StreamingResponse`), APScheduler, SQLite (WAL), Alembic, SQLAlchemy |
 | **Busca Semântica (RAG)** | Qdrant Local, FastEmbed (Dense + BM25 + CrossEncoder Reranker), PyPDF |
 | **Integrações** | Google Workspace APIs (OAuth2), Obsidian Vault, Ulife API v2, Banco Central (SGS), yfinance, Playwright |
-| **Observabilidade & Qualidade** | Pydantic Logfire, OpenTelemetry, Pytest, Pydantic Evals, Ruff, Pyright, Gitleaks |
+| **Observabilidade & Qualidade** | Pydantic Logfire, OpenTelemetry, structlog, Pytest, Pydantic Evals, Ruff, Pyright, Gitleaks |
 
 ---
 

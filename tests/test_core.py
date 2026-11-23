@@ -1020,3 +1020,96 @@ def test_endpoints_voz_servidor_com_mocks(monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         _executar_coro_sync(servidor.falar_voz(servidor.PedidoVozFalar(texto="Oi")))
     assert exc_info.value.status_code == 503
+
+
+# ==============================================================================
+# 8. LOGS ESTRUTURADOS (structlog + OTel) E MIGRATIONS ALEMBIC (memoria.db)
+# ==============================================================================
+
+
+def test_structlog_emite_json_valido_com_campos_e_otel(monkeypatch):
+    import io
+    import json
+    from types import SimpleNamespace
+
+    import opentelemetry.trace as otel_trace
+
+    import logging_config as lc
+
+    buf = io.StringIO()
+    try:
+        fmt = lc.configurar_logging("json", stream=buf, forcar=True)
+        assert fmt == "json"
+
+        fake_ctx = SimpleNamespace(
+            is_valid=True,
+            trace_id=0x1234567890ABCDEF1234567890ABCDEF,
+            span_id=0x0102030405060708,
+        )
+        fake_span = SimpleNamespace(get_span_context=lambda: fake_ctx)
+        monkeypatch.setattr(otel_trace, "get_current_span", lambda: fake_span)
+
+        log = lc.obter_logger("teste_athena")
+        log.info(
+            "chat_concluido",
+            conversa_id="conv-123",
+            modelo="gemini-3.5-flash-lite",
+            latencia_ms=412,
+        )
+
+        linhas = [ln for ln in buf.getvalue().splitlines() if ln.strip()]
+        assert len(linhas) == 1
+        registro = json.loads(linhas[0])
+        assert registro["event"] == "chat_concluido"
+        assert registro["level"] == "info"
+        assert registro["componente"] == "teste_athena"
+        assert registro["conversa_id"] == "conv-123"
+        assert registro["modelo"] == "gemini-3.5-flash-lite"
+        assert registro["latencia_ms"] == 412
+        assert registro["trace_id"] == "1234567890abcdef1234567890abcdef"
+        assert registro["span_id"] == "0102030405060708"
+        assert "timestamp" in registro
+    finally:
+        lc.configurar_logging("console", forcar=True)
+
+
+def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
+    import memoria
+
+    db_teste = tmp_path / "memoria_teste.db"
+
+    # 1) Primeira execucao em banco novo: cria schema completo e registra revisao
+    revisao_1 = memoria.executar_migrations(db_teste)
+    assert revisao_1 == "001_initial_schema"
+    assert db_teste.is_file()
+
+    with sqlite3.connect(db_teste) as c:
+        tabelas = {
+            r[0]
+            for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        }
+        assert {"alembic_version", "mensagens", "fatos", "telemetria", "webauthn_credenciais"}.issubset(
+            tabelas
+        )
+        # Insere dados para comprovar que rodar novamente nao apaga nem recria nada
+        c.execute(
+            "INSERT INTO fatos (chave, valor, atualizado_em) VALUES (?, ?, ?)",
+            ("curso", "Engenharia", "2026-11-23T13:00:00"),
+        )
+        c.execute(
+            "INSERT INTO mensagens (role, conteudo, trilha_json, criado_em, meta_json) VALUES (?, ?, ?, ?, ?)",
+            ("user", "mensagem preservada", "[]", "2026-11-23T13:00:00", "{}"),
+        )
+        c.commit()
+
+    # 2) Segunda execucao (idempotencia): mantem revisao e 100% dos dados intactos
+    revisao_2 = memoria.executar_migrations(db_teste)
+    assert revisao_2 == "001_initial_schema"
+
+    with sqlite3.connect(db_teste) as c:
+        fato = c.execute("SELECT valor FROM fatos WHERE chave = 'curso'").fetchone()
+        msg = c.execute("SELECT conteudo FROM mensagens").fetchone()
+        ver = c.execute("SELECT version_num FROM alembic_version").fetchone()
+    assert fato == ("Engenharia",)
+    assert msg == ("mensagem preservada",)
+    assert ver == ("001_initial_schema",)

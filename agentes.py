@@ -184,6 +184,7 @@ from ferramentas_windows import (
 from ferramentas_windows import (
     solicitar_abrir_url_dados as _solicitar_abrir_url_dados,
 )
+from logging_config import obter_logger
 from mcp_manager import obter_toolsets_mcp
 from memoria import guardar_fato
 from rag_qdrant import buscar_semantico as _buscar_semantico
@@ -197,6 +198,7 @@ from ulife_v2 import (
 )
 
 MODELO_PADRAO = "auto"
+_log = obter_logger("agentes")
 
 MODELOS_DISPONIVEIS: dict[str, FallbackModel] = {
     "gemini-3.5-flash-lite": FallbackModel(
@@ -392,6 +394,8 @@ def limpar_cooldowns_503(modelos: tuple[str, ...] | list[str] | None = None) -> 
                 MODEL_COOLDOWN.pop(mid, None)
                 MODEL_COOLDOWN_MOTIVO.pop(mid, None)
                 removidos += 1
+    if removidos > 0:
+        _log.info("cooldown_503_limpo", removidos=removidos)
     return removidos
 
 
@@ -574,6 +578,14 @@ def registrar_cooldown_modelo(model_id: str, exc: BaseException) -> tuple[bool, 
         with _COOLDOWN_LOCK:
             MODEL_COOLDOWN[model_id] = time.time() + cooldown_seg
             MODEL_COOLDOWN_MOTIVO[model_id] = tipo_cd
+        _log.warning(
+            "modelo_cooldown_registrado",
+            modelo=model_id,
+            motivo=motivo,
+            tipo_cooldown=tipo_cd,
+            cooldown_segundos=cooldown_seg,
+            erro=str(exc),
+        )
     return (elegivel, cooldown_seg, motivo)
 
 _PALAVRAS_NEON: tuple[str, ...] = (

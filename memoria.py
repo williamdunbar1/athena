@@ -1,15 +1,35 @@
 import json
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-DB_PATH = Path(__file__).resolve().parent / "memoria.db"
+from logging_config import obter_logger
+
+BASE_DIR = Path(__file__).resolve().parent
+DB_PATH = BASE_DIR / "memoria.db"
+ALEMBIC_INI_PATH = BASE_DIR / "alembic.ini"
+ALEMBIC_DIR_PATH = BASE_DIR / "alembic"
+
+_log = obter_logger("memoria")
+
+
+def obter_db_path(db_path: str | Path | None = None) -> Path:
+    """Resolve o caminho do SQLite (parametro explicito > `ATHENA_DB_PATH` > `DB_PATH`)."""
+    if db_path is not None:
+        return Path(db_path).resolve()
+    env_db = (os.getenv("ATHENA_DB_PATH") or "").strip()
+    if env_db:
+        return Path(env_db).resolve()
+    return DB_PATH.resolve()
 
 
 @contextmanager
-def _conn():
-    c = sqlite3.connect(DB_PATH, timeout=5.0)
+def _conn(db_path: str | Path | None = None):
+    alvo = obter_db_path(db_path)
+    alvo.parent.mkdir(parents=True, exist_ok=True)
+    c = sqlite3.connect(alvo, timeout=5.0)
     try:
         c.execute("PRAGMA journal_mode=WAL;")
         c.execute("PRAGMA busy_timeout=5000;")
@@ -28,8 +48,44 @@ def _garantir_coluna_meta_mensagens(c: sqlite3.Connection) -> None:
         c.execute("ALTER TABLE mensagens ADD COLUMN meta_json TEXT DEFAULT '{}'")
 
 
-def init_db():
-    with _conn() as c:
+def executar_migrations(db_path: str | Path | None = None) -> str:
+    """Executa `alembic upgrade head` no banco SQLite de forma segura e idempotente.
+
+    Preserva 100% dos dados existentes em bancos antigos e cria o schema completo em bancos novos.
+    Retorna o identificador da revisao ativa registrada em `alembic_version`.
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    alvo = obter_db_path(db_path)
+    alvo.parent.mkdir(parents=True, exist_ok=True)
+    url_sqlite = f"sqlite:///{alvo.as_posix()}"
+
+    cfg = Config(str(ALEMBIC_INI_PATH)) if ALEMBIC_INI_PATH.is_file() else Config()
+    cfg.set_main_option("script_location", str(ALEMBIC_DIR_PATH))
+    cfg.set_main_option("sqlalchemy.url", url_sqlite)
+    cfg.attributes["programmatic"] = True
+    cfg.attributes["db_url"] = url_sqlite
+
+    command.upgrade(cfg, "head")
+
+    versao = ""
+    with _conn(alvo) as c:
+        row = c.execute("SELECT version_num FROM alembic_version LIMIT 1").fetchone()
+        if row:
+            versao = str(row[0])
+
+    _log.info("alembic_migrations_aplicadas", db=str(alvo), revisao=versao or "head")
+    return versao
+
+
+def init_db(db_path: str | Path | None = None):
+    """Inicializa o banco aplicando as migrations Alembic (com fallback seguro se necessario)."""
+    if ALEMBIC_DIR_PATH.is_dir():
+        executar_migrations(db_path)
+        return
+
+    with _conn(db_path) as c:
         c.execute(
             """
             CREATE TABLE IF NOT EXISTS mensagens (

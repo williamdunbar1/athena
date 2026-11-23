@@ -10,7 +10,6 @@ import sqlite3
 import subprocess
 import sys
 import time
-import traceback
 from contextlib import asynccontextmanager, contextmanager, suppress
 from datetime import date, datetime
 from pathlib import Path
@@ -80,6 +79,7 @@ from ferramentas_windows import (
 from ferramentas_windows import (
     remover_whitelist as remover_whitelist_windows,
 )
+from logging_config import configurar_logging, obter_logger
 from mcp_manager import (
     encerrar_conexoes_mcp,
     iniciar_conexoes_mcp,
@@ -87,6 +87,7 @@ from mcp_manager import (
 )
 from memoria import (
     apagar_fato,
+    executar_migrations,
     init_db,
     limpar_mensagens,
     listar_fatos,
@@ -115,6 +116,9 @@ from voz import (
     transcrever_audio,
 )
 
+configurar_logging()
+logger = obter_logger("servidor")
+executar_migrations()
 init_db()
 
 
@@ -141,10 +145,17 @@ def _silenciar_log_status_atual() -> None:
 async def lifespan(_app: FastAPI):
     _silenciar_log_status_atual()
     iniciar_agendador()
-    await iniciar_conexoes_mcp()
+    servidores_mcp = await iniciar_conexoes_mcp()
+    logger.info(
+        "athena_iniciada",
+        mcp_ativos=sum(1 for s in servidores_mcp if s.get("status") == "ativo"),
+        skills_ativas=len(listar_skills()),
+        pin_ativo=_pin_ativo(),
+    )
     try:
         yield
     finally:
+        logger.info("athena_encerrando", tarefas_ativas=len(TAREFAS_ATIVAS))
         for reg in list(TAREFAS_ATIVAS.values()):
             t = reg.get("task")
             if t is not None and not t.done():
@@ -1119,15 +1130,23 @@ def _resolver_modelo_chat(
     return (modelo_config, [modelo_config], "", False)
 
 
-def _logar_erro_execucao(origem: str, modelo: str, exc: BaseException) -> None:
-    """Imprime e registra o traceback real no terminal para nunca mascarar falhas de MCP/tool/schema."""
-    logger_srv = logging.getLogger("uvicorn.error")
-    msg = f"[Athena:{origem}] Erro em {modelo} ({type(exc).__name__}): {exc}"
-    if logger_srv.handlers:
-        logger_srv.error(msg, exc_info=(type(exc), exc, exc.__traceback__))
-    else:
-        print(msg, file=sys.stderr, flush=True)
-        traceback.print_exception(type(exc), exc, exc.__traceback__, file=sys.stderr)
+def _logar_erro_execucao(
+    origem: str,
+    modelo: str,
+    exc: BaseException,
+    *,
+    conversa_id: str = "",
+) -> None:
+    """Registra erro estruturado com traceback real via structlog para nunca mascarar falhas de MCP/tool/schema."""
+    logger.error(
+        "erro_execucao",
+        origem=origem,
+        modelo=modelo,
+        conversa_id=conversa_id or None,
+        tipo_erro=type(exc).__name__,
+        erro=str(exc),
+        exc_info=(type(exc), exc, exc.__traceback__),
+    )
 
 
 def _deve_tentar_fallback_run_apos_stream(exc: BaseException) -> bool:
@@ -1207,6 +1226,14 @@ async def _executar_orquestrador_auto_ou_manual(
             if idx + 1 < len(fila_modelos):
                 prox = fila_modelos[idx + 1]
                 rot_prox = ROTULOS_MODELO.get(prox, prox)
+                logger.warning(
+                    "roteador_auto_fallback",
+                    origem="chat",
+                    modelo=mid,
+                    proximo_modelo=prox,
+                    motivo=motivo_err,
+                    erro=str(exc),
+                )
                 ctx.registrar(
                     "Athena",
                     "Roteador",
@@ -1970,7 +1997,7 @@ def _iniciar_tarefa_chat_background(
 
                         ultimo_erro = exc_tentativa
                         if not elegivel:
-                            _logar_erro_execucao("chat-stream-auto", mid, exc_tentativa)
+                            _logar_erro_execucao("chat-stream-auto", mid, exc_tentativa, conversa_id=cid)
                             raise exc_tentativa
 
                         erros_tentativas.append(f"{rot_atual}: {motivo_err or exc_tentativa}")
@@ -1984,6 +2011,15 @@ def _iniciar_tarefa_chat_background(
                             prox = fila_modelos[idx + 1]
                             rot_prox = ROTULOS_MODELO.get(prox, prox)
                             modelo_atual_ref[0] = prox
+                            logger.warning(
+                                "roteador_auto_fallback",
+                                origem="chat-stream",
+                                conversa_id=cid,
+                                modelo=mid,
+                                proximo_modelo=prox,
+                                motivo=motivo_err,
+                                erro=str(exc_tentativa),
+                            )
                             ctx.registrar(
                                 "Athena",
                                 "Roteador",
@@ -2054,11 +2090,26 @@ def _iniciar_tarefa_chat_background(
             }
             registro["resultado_final"] = payload_done
             registro["status"] = "done"
+            logger.info(
+                "chat_concluido",
+                conversa_id=cid,
+                modelo=modelo_executado,
+                modo_auto=eh_auto,
+                latencia_ms=duracao_ms,
+                tokens_in=tokens_in,
+                tokens_out=tokens_out,
+            )
             _publicar_evento_tarefa(registro, "done", payload_done)
         except asyncio.CancelledError:
             duracao_ms = max(1, int((time.perf_counter() - t0) * 1000))
             registro["cancelada"] = True
             registro["status"] = "error"
+            logger.warning(
+                "chat_cancelado",
+                conversa_id=cid,
+                modelo=modelo_executado,
+                latencia_ms=duracao_ms,
+            )
             with suppress(Exception):
                 registrar_telemetria(
                     modelo=modelo_executado,
