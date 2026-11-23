@@ -1711,6 +1711,7 @@ def test_eficiencia_filtragem_dinamica_de_tools():
             "buscar_semantico",
             "carregar_skill",
             "guardar_na_memoria",
+            "gerar_imagem",
         ]
     ]
 
@@ -1718,6 +1719,15 @@ def test_eficiencia_filtragem_dinamica_de_tools():
     for saudacao in ("oi", "olá", "teste", "tudo bem?", "obrigado", "valeu", "bom dia"):
         assert ef.selecionar_dominios_para_mensagem(saudacao) == set()
         assert ef.filtrar_tool_definitions(saudacao, todas_tools) == []
+
+    # 1b) Pedido de imagem carrega apenas gerar_imagem (e nunca em "oi")
+    for pedido_img in (
+        "gera uma imagem de um gato espacial",
+        "desenha um icone minimalista",
+        "cria uma ilustracao de logo em arte vetorial",
+    ):
+        assert ef.selecionar_dominios_para_mensagem(pedido_img) == {"imagem"}
+        assert [td.name for td in ef.filtrar_tool_definitions(pedido_img, todas_tools)] == ["gerar_imagem"]
 
     # 2) Pedido focado no Windows libera APENAS tools de Windows em ordem alfabetica
     dom_win = ef.selecionar_dominios_para_mensagem("abre uma aba do Brave")
@@ -1773,11 +1783,20 @@ def test_eficiencia_compactar_saida_tool_e_higiene_prompt_cache(tmp_path):
     assert "FIM_PRESERVADO" in compactado
 
     # 2) PrepareTools registrado na Orquestradora usa ctx.deps.mensagem_atual corretamente
+    #    e ImageGeneration global NAO esta nas capabilities (evita UserError em Flash-Lite/Ollama)
+    from pydantic_ai.capabilities import ImageGeneration
+
     raiz = getattr(agentes.orquestrador, "_root_capability", None)
     caps = list(getattr(raiz, "capabilities", []) or [])
     assert any(isinstance(c, PrepareTools) for c in caps)
+    assert not any(isinstance(c, ImageGeneration) for c in caps)
+    assert "gerar_imagem" in agentes.orquestrador._function_toolset.tools
 
-    tds = [ToolDefinition(name="solicitar_abrir_app"), ToolDefinition(name="delegar_para_estudos")]
+    tds = [
+        ToolDefinition(name="solicitar_abrir_app"),
+        ToolDefinition(name="delegar_para_estudos"),
+        ToolDefinition(name="gerar_imagem"),
+    ]
     ctx_oi = SimpleNamespace(deps=agentes.ContextoMissao(pasta_raiz=tmp_path, mensagem_atual="oi"), prompt="ignorar")
     assert agentes._preparar_tools_orquestrador(ctx_oi, tds) == []  # type: ignore[arg-type]
 
@@ -1788,6 +1807,13 @@ def test_eficiencia_compactar_saida_tool_e_higiene_prompt_cache(tmp_path):
     res_win = agentes._preparar_tools_orquestrador(ctx_win, tds)  # type: ignore[arg-type]
     assert [t.name for t in res_win] == ["solicitar_abrir_app"]
 
+    ctx_img = SimpleNamespace(
+        deps=agentes.ContextoMissao(pasta_raiz=tmp_path, mensagem_atual="desenha um logo da Athena"),
+        prompt="ignorar",
+    )
+    res_img = agentes._preparar_tools_orquestrador(ctx_img, tds)  # type: ignore[arg-type]
+    assert [t.name for t in res_img] == ["gerar_imagem"]
+
     # 3) Higiene de Prompt Cache: data arredondada apenas por dia (YYYY-MM-DD, sem HH:MM:SS)
     bloco_din = agentes._instrucoes_contexto_dinamico(ctx_oi) or ""  # type: ignore[arg-type]
     assert re.search(r"\b\d{4}-\d{2}-\d{2}\b", bloco_din)
@@ -1796,3 +1822,214 @@ def test_eficiencia_compactar_saida_tool_e_higiene_prompt_cache(tmp_path):
     # 4) Extracao de cache_read_tokens / cache_write_tokens do RunUsage para structlog
     fake_res = SimpleNamespace(usage=RunUsage(input_tokens=1000, output_tokens=150, cache_read_tokens=720, cache_write_tokens=100))
     assert servidor._extrair_cache_tokens(fake_res) == (720, 100)
+
+
+def test_cooldown_nunca_ativa_em_user_error_ou_validacao_e_ativa_em_429_403_400_pago_503():
+    from pydantic import BaseModel, ValidationError
+    from pydantic_ai.exceptions import ModelHTTPError, UnexpectedModelBehavior, UserError
+
+    class _ModeloDummy(BaseModel):
+        numero: int
+
+    try:
+        _ModeloDummy(numero="invalido")  # type: ignore[arg-type]
+    except ValidationError as exc_val:
+        erro_validacao = exc_val
+
+    erros_nao_elegiveis = [
+        UserError("ImageGenerationTool is not supported by model 'gemini-3.5-flash-lite'"),
+        UnexpectedModelBehavior("Exceeded max retries for output validation"),
+        erro_validacao,
+        ValueError("Argumento invalido no codigo"),
+        TypeError("NoneType object is not subscriptable"),
+        ModelHTTPError(400, "gemini-3.5-flash-lite", body="Bad Request: validation error unknown field"),
+        ModelHTTPError(400, "gemini-4-hydrogen", body="INVALID_ARGUMENT: function_declarations schema"),
+    ]
+    modelos_nuvem = (
+        "gemini-3.5-flash-lite",
+        "gemini-3.8-flash",
+        "gemini-4-hydrogen",
+        "gemini-4-neon",
+    )
+
+    for mid in modelos_nuvem:
+        for exc in erros_nao_elegiveis:
+            eleg, cd, _ = agentes.registrar_cooldown_modelo(mid, exc)
+            assert eleg is False and cd == 0.0, f"{type(exc).__name__} nao deveria ativar cooldown em {mid}"
+            assert agentes.modelo_disponivel(mid) is True
+
+    # Apenas 429, 403/400 de plano pago e 503 real ativam cooldown
+    eleg_429, cd_429, _ = agentes.registrar_cooldown_modelo(
+        "gemini-4-neon", ModelHTTPError(429, "gemini-4-neon", body="RESOURCE_EXHAUSTED")
+    )
+    assert eleg_429 is True and cd_429 == float(agentes.COOLDOWN_COTA_SEGUNDOS)
+
+    eleg_403, cd_403, _ = agentes.registrar_cooldown_modelo(
+        "gemini-4-hydrogen", ModelHTTPError(403, "gemini-4-hydrogen", body="PERMISSION_DENIED: paid tier required")
+    )
+    assert eleg_403 is True and cd_403 == float(agentes.COOLDOWN_COTA_SEGUNDOS)
+
+    eleg_400_pago, cd_400_pago, _ = agentes.registrar_cooldown_modelo(
+        "gemini-3.8-flash", ModelHTTPError(400, "gemini-3.8-flash", body="Model requires billing / paid plan")
+    )
+    assert eleg_400_pago is True and cd_400_pago == float(agentes.COOLDOWN_COTA_SEGUNDOS)
+
+    eleg_503, cd_503, _ = agentes.registrar_cooldown_modelo(
+        "gemini-3.5-flash-lite", ModelHTTPError(503, "gemini-3.5-flash-lite", body="UNAVAILABLE")
+    )
+    assert eleg_503 is True and cd_503 == float(agentes.COOLDOWN_503_SEGUNDOS)
+
+
+def test_ollama_offline_desativa_tools_e_intercepta_json_cru(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    from pydantic_ai.tools import ToolDefinition
+
+    monkeypatch.delenv("ATHENA_OLLAMA_TOOLS", raising=False)
+
+    # 1) No modo offline (Ollama local), tools sao desativadas e o prompt instrui modo offline natural
+    ctx_ollama = SimpleNamespace(
+        deps=agentes.ContextoMissao(
+            pasta_raiz=tmp_path,
+            modelo=agentes.MODELO_OLLAMA_ID,
+            mensagem_atual="verifique minhas notas da faculdade no Ulife",
+        ),
+        prompt="verifique minhas notas da faculdade no Ulife",
+    )
+    tds = [ToolDefinition(name="delegar_para_estudos"), ToolDefinition(name="solicitar_abrir_app")]
+    assert agentes._preparar_tools_orquestrador(ctx_ollama, tds) == []  # type: ignore[arg-type]
+
+    inst_ollama = agentes._instrucoes_contexto_dinamico(ctx_ollama) or ""  # type: ignore[arg-type]
+    assert "MODO OFFLINE" in inst_ollama
+
+    # 2) Mesmo se o Ollama cuspir JSON cru de tool-call (puro ou em bloco markdown), e interceptado
+    json_cru_1 = '{"name": "delegar_para_estudos", "arguments": {"tarefa": "consultar notas"}}'
+    json_cru_2 = '```json\n{"name": "solicitar_abrir_url", "parameters": {"url": "https://ulife.com.br"}}\n```'
+    for bruto in (json_cru_1, json_cru_2):
+        assert agentes.eh_json_tool_call_cru(bruto) is True
+        limpo = agentes.sanitizar_resposta_ollama_offline(bruto, agentes.MODELO_OLLAMA_ID)
+        assert "modo offline (Ollama local)" in limpo
+        assert '"arguments"' not in limpo
+        assert '"parameters"' not in limpo
+
+    # 3) Resposta natural em portugues ou JSON comum nao-tool-call passa intacta
+    normal = "Olá! No momento estou respondendo pelo modelo local. Como posso te ajudar?"
+    assert agentes.eh_json_tool_call_cru(normal) is False
+    assert agentes.sanitizar_resposta_ollama_offline(normal, agentes.MODELO_OLLAMA_ID) == normal
+
+    json_comum = '{"cidade": "Sao Paulo", "temperatura": 24}'
+    assert agentes.eh_json_tool_call_cru(json_comum) is False
+    assert agentes.sanitizar_resposta_ollama_offline(json_comum, agentes.MODELO_OLLAMA_ID) == json_comum
+
+
+# ==============================================================================
+# 16. ROTEADOR FAST-PATH DETERMINISTICO (ZERO-LLM, 0 TOKENS)
+# ==============================================================================
+
+
+def test_fast_path_windows_app_skills_e_fallback_composto(ambiente_windows, monkeypatch):
+    import fast_path as fp
+
+    _tmp, fake_app, _fake_db, _executados = ambiente_windows
+    monkeypatch.setitem(
+        fw.CATALOGO_APPS,
+        "brave",
+        {
+            "nome": "Brave",
+            "aliases": ("brave", "brave browser"),
+            "exes": (fake_app.name,),
+            "atalhos": (),
+            "caminhos": (fake_app,),
+        },
+    )
+
+    # 1) "abre o Brave" aciona Fast-Path (rota="windows_app", tokens=0) e gera solicitacao pendente
+    res_app = fp.tentar_fast_path("abre o Brave")
+    assert res_app is not None
+    assert res_app["rota"] == "windows_app"
+    assert res_app["modelo"] == "Fast-Path (Local)"
+    assert res_app["tokens"] == 0
+    assert isinstance(res_app["acao_windows"], dict)
+    assert res_app["acao_windows"]["status"] == "pendente"
+    assert res_app["acao_windows"]["tipo"] == "abrir_app"
+
+    # 1b) Abrir URL / site conhecido tambem aciona Fast-Path com card de permissao
+    res_url = fp.tentar_fast_path("abre github.com")
+    assert res_url is not None
+    assert res_url["rota"] == "windows_url"
+    assert res_url["tokens"] == 0
+    assert res_url["acao_windows"]["alvo"] == "https://github.com"
+
+    # 2) "quais skills voce tem" aciona Fast-Path e lista as skills reais da pasta skills/
+    res_skills = fp.tentar_fast_path("quais skills voce tem")
+    assert res_skills is not None
+    assert res_skills["rota"] == "skills_lista"
+    assert res_skills["tokens"] == 0
+    assert res_skills["acao_windows"] is None
+    assert "plano-estudo-prova" in res_skills["resposta"]
+    assert "analise-financeira" in res_skills["resposta"]
+    assert "diagnostico-athena" in res_skills["resposta"]
+
+    # 2b) Status rapido do PC e estatisticas do Obsidian
+    res_pc = fp.tentar_fast_path("status do pc")
+    assert res_pc is not None
+    assert res_pc["rota"] == "status_pc"
+    assert res_pc["tokens"] == 0
+    assert "CPU" in res_pc["resposta"] and "RAM" in res_pc["resposta"]
+
+    # 2c) Cache Ulife vazio retorna None para a LLM sincronizar; com cache valido responde direto
+    monkeypatch.setattr(fp, "obter_dados_ulife_estruturados", lambda _sec="tudo": {"sincronizado": False})
+    assert fp.tentar_fast_path("quais minhas notas") is None
+
+    monkeypatch.setattr(
+        fp,
+        "obter_dados_ulife_estruturados",
+        lambda _sec="tudo": {
+            "sincronizado": True,
+            "atualizado_em": "2026-11-23 08:00",
+            "notas_faltas": [{"disciplina": "Calculo I", "nota_total": 8.5, "peso_total": 10.0, "faltas": 2}],
+            "atividades": [],
+        },
+    )
+    res_ulife = fp.tentar_fast_path("minhas notas da faculdade")
+    assert res_ulife is not None
+    assert res_ulife["rota"] == "estudos_ulife"
+    assert "Calculo I" in res_ulife["resposta"]
+    assert "8.5/10" in res_ulife["resposta"]
+
+    # 3) Perguntas compostas, analiticas ou abertas retornam None e vao para a LLM normal
+    for msg_llm in (
+        "abre o brave e faz um resumo comparando selic com fii",
+        "abre o obsidian e depois analise minhas notas de fisica",
+        "explique como funciona o algoritmo de Dijkstra passo a passo",
+        "sincronize o ulife agora e monte um plano de estudos",
+    ):
+        assert fp.tentar_fast_path(msg_llm) is None
+
+
+def test_fast_path_integrado_no_chat_nao_chama_llm(monkeypatch, tmp_path):
+    import memoria
+    import servidor
+
+    db_teste = tmp_path / "fastpath_srv.db"
+    memoria.executar_migrations(db_teste)
+    monkeypatch.setenv("ATHENA_DB_PATH", str(db_teste))
+
+    async def _proibido_chamar_llm(*_args, **_kwargs):
+        raise AssertionError("LLM nao deveria ser chamada quando Fast-Path atende a mensagem!")
+
+    async def _inline_to_thread(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr(servidor.asyncio, "to_thread", _inline_to_thread)
+    monkeypatch.setattr(servidor.orquestrador, "run", _proibido_chamar_llm)
+    monkeypatch.setattr(servidor.orquestrador, "run_stream", _proibido_chamar_llm)
+
+    res = _executar_async_real_teste(servidor.conversar(servidor.PedidoChat(mensagem="quais skills voce tem")))
+    assert res["ok"] is True
+    assert res["modelo_usado"] == "Fast-Path (Local)"
+    assert res["fast_path"] is True
+    assert res["rota_fast_path"] == "skills_lista"
+    assert res["tokens_in"] == 0
+    assert res["tokens_out"] == 0
+    assert "diagnostico-athena" in res["resposta"]

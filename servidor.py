@@ -48,6 +48,7 @@ from agentes import (
     orquestrador,
     registrar_cooldown_modelo,
     resolver_modelo_execucao,
+    sanitizar_resposta_ollama_offline,
     verificar_ollama_disponivel,
 )
 from compactador import (
@@ -55,6 +56,7 @@ from compactador import (
     limpar_resumos_conversa,
     preparar_historico_compactado,
 )
+from fast_path import MODELO_FAST_PATH, tentar_fast_path
 from ferramentas_estudos import PASTA_PDFS, formatar_nome_materia
 from ferramentas_estudos import _conn as conn_estudos
 from ferramentas_faxina import (
@@ -1347,6 +1349,64 @@ async def conversar(pedido: PedidoChat):
         ctx.registrar("Athena", "Roteador", "delegacao", f"Auto escolheu {modelo_inicial} ({motivo_auto})")
     t0 = time.perf_counter()
     try:
+        res_fp = await asyncio.to_thread(tentar_fast_path, pedido.mensagem)
+        if res_fp is not None:
+            duracao_ms = max(1, int((time.perf_counter() - t0) * 1000))
+            rota_fp = str(res_fp.get("rota") or "local")
+            modelo_fp = str(res_fp.get("modelo") or MODELO_FAST_PATH)
+            ESTADO_EXECUCAO["modelo"] = modelo_fp
+            acao_win_fp = res_fp.get("acao_windows")
+            if isinstance(acao_win_fp, dict):
+                ctx.emitir_permissao_windows(acao_win_fp)
+            ctx.registrar("Athena", modelo_fp, "ferramenta", f"{rota_fp} ({duracao_ms} ms · 0 tokens)")
+            resposta_final = str(res_fp.get("resposta") or "").strip()
+            registrar_telemetria(
+                modelo=modelo_fp,
+                duracao_ms=duracao_ms,
+                tokens_in=0,
+                tokens_out=0,
+                agentes_usados=modelo_fp,
+                sucesso=True,
+            )
+            meta_msg = {
+                "modelo_usado": modelo_fp,
+                "modo_auto": False,
+                "motivo_modelo": f"Fast-Path: {rota_fp}",
+                "duracao_ms": duracao_ms,
+                "tokens_in": 0,
+                "tokens_out": 0,
+                "fast_path": True,
+                "rota_fast_path": rota_fp,
+                "imagens": [],
+                "acoes_windows": list(ctx.acoes_windows),
+            }
+            salvar_mensagem("bot", resposta_final, ctx.trilha, meta=meta_msg)
+            logger.info(
+                "fast_path_hit",
+                conversa_id=CONVERSA_ID_PADRAO,
+                rota=rota_fp,
+                latencia_ms=duracao_ms,
+                tokens=0,
+            )
+            return {
+                "ok": True,
+                "resposta": resposta_final,
+                "modelo": modelo_config,
+                "modelo_usado": modelo_fp,
+                "modo_auto": False,
+                "motivo_modelo": f"Fast-Path: {rota_fp}",
+                "fast_path": True,
+                "rota_fast_path": rota_fp,
+                "duracao_ms": duracao_ms,
+                "tokens_in": 0,
+                "tokens_out": 0,
+                "imagens": [],
+                "acoes_windows": list(ctx.acoes_windows),
+                "trilha": ctx.trilha,
+                "fatos": listar_fatos(),
+                "telemetria": {"duracao_ms": duracao_ms, "tokens_in": 0, "tokens_out": 0},
+            }
+
         res, modelo_executado = await _executar_orquestrador_auto_ou_manual(
             prompt_completo, ctx, fila_modelos, eh_auto
         )
@@ -1355,7 +1415,8 @@ async def conversar(pedido: PedidoChat):
         cache_read_tokens, cache_write_tokens = _extrair_cache_tokens(res)
         cache_hit_pct = round((cache_read_tokens / tokens_in) * 100.0, 1) if tokens_in > 0 else 0.0
         imagens_geradas = _extrair_e_salvar_imagens_geradas(res)
-        resposta_final = _anexar_imagens_no_markdown(res.output or "", imagens_geradas)
+        resposta_limpa = sanitizar_resposta_ollama_offline(res.output or "", modelo_executado)
+        resposta_final = _anexar_imagens_no_markdown(resposta_limpa, imagens_geradas)
         logger.info(
             "chat_concluido",
             conversa_id=CONVERSA_ID_PADRAO,
@@ -1958,7 +2019,105 @@ def _iniciar_tarefa_chat_background(
         modelo_executado = modelo_real
         resultado_final_obj = None
         t0 = time.perf_counter()
+        def _novo_estado_stream_ollama(modelo_id: str) -> dict:
+            eh_ol = modelo_id == MODELO_OLLAMA_ID or "ollama" in (modelo_id or "").lower()
+            return {"eh_ollama": eh_ol, "retendo": eh_ol, "buffer": ""}
+
+        def _processar_delta_stream(delta: str, estado_st: dict) -> None:
+            partes_texto.append(delta)
+            if not estado_st["retendo"]:
+                _publicar_evento_tarefa(registro, "chunk", {"delta": delta})
+                return
+            estado_st["buffer"] += delta
+            inicio_limpo = estado_st["buffer"].lstrip()
+            if inicio_limpo and not inicio_limpo.startswith(("{", "[", "`")):
+                estado_st["retendo"] = False
+                _publicar_evento_tarefa(registro, "chunk", {"delta": estado_st["buffer"]})
+                estado_st["buffer"] = ""
+
+        def _finalizar_stream_ollama(modelo_exec: str, estado_st: dict) -> str:
+            bruto = "".join(partes_texto).strip()
+            limpo = sanitizar_resposta_ollama_offline(bruto, modelo_exec)
+            if estado_st["retendo"] and limpo:
+                _publicar_evento_tarefa(registro, "chunk", {"delta": limpo})
+                estado_st["buffer"] = ""
+                estado_st["retendo"] = False
+            return limpo
+
         try:
+            # Fast-Path deterministico (Zero-LLM) apenas para mensagens de texto sem anexos multimodais
+            if not nomes_exibicao:
+                res_fp = await asyncio.to_thread(tentar_fast_path, ctx.mensagem_atual)
+                if res_fp is not None:
+                    rota_fp = str(res_fp.get("rota") or "local")
+                    modelo_executado = str(res_fp.get("modelo") or MODELO_FAST_PATH)
+                    modelo_atual_ref[0] = modelo_executado
+                    ESTADO_EXECUCAO["modelo"] = modelo_executado
+                    acao_win_fp = res_fp.get("acao_windows")
+                    if isinstance(acao_win_fp, dict):
+                        ctx.emitir_permissao_windows(acao_win_fp)
+                    duracao_ms = max(1, int((time.perf_counter() - t0) * 1000))
+                    ctx.registrar("Athena", modelo_executado, "ferramenta", f"{rota_fp} ({duracao_ms} ms · 0 tokens)")
+                    texto_final = str(res_fp.get("resposta") or "").strip()
+                    if texto_final:
+                        _publicar_evento_tarefa(registro, "chunk", {"delta": texto_final})
+                    with suppress(Exception):
+                        registrar_telemetria(
+                            modelo=modelo_executado,
+                            duracao_ms=duracao_ms,
+                            tokens_in=0,
+                            tokens_out=0,
+                            agentes_usados=modelo_executado,
+                            sucesso=True,
+                        )
+                    meta_fp = {
+                        "modelo_usado": modelo_executado,
+                        "modo_auto": False,
+                        "motivo_modelo": f"Fast-Path: {rota_fp}",
+                        "duracao_ms": duracao_ms,
+                        "tokens_in": 0,
+                        "tokens_out": 0,
+                        "fast_path": True,
+                        "rota_fast_path": rota_fp,
+                        "imagens": [],
+                        "acoes_windows": list(ctx.acoes_windows),
+                    }
+                    salvar_mensagem("bot", texto_final, ctx.trilha, meta=meta_fp)
+                    payload_done_fp = {
+                        "ok": True,
+                        "conversa_id": cid,
+                        "resposta": texto_final,
+                        "modelo": modelo_config,
+                        "modelo_usado": modelo_executado,
+                        "modo_auto": False,
+                        "motivo_modelo": f"Fast-Path: {rota_fp}",
+                        "fast_path": True,
+                        "rota_fast_path": rota_fp,
+                        "duracao_ms": duracao_ms,
+                        "tokens_in": 0,
+                        "tokens_out": 0,
+                        "imagens": [],
+                        "acoes_windows": list(ctx.acoes_windows),
+                        "anexo": "",
+                        "anexos": [],
+                        "caminho_upload": "",
+                        "caminhos_upload": [],
+                        "trilha": list(ctx.trilha),
+                        "fatos": listar_fatos(),
+                        "telemetria": {"duracao_ms": duracao_ms, "tokens_in": 0, "tokens_out": 0},
+                    }
+                    registro["resultado_final"] = payload_done_fp
+                    registro["status"] = "done"
+                    logger.info(
+                        "fast_path_hit",
+                        conversa_id=cid,
+                        rota=rota_fp,
+                        latencia_ms=duracao_ms,
+                        tokens=0,
+                    )
+                    _publicar_evento_tarefa(registro, "done", payload_done_fp)
+                    return
+
             if not usar_stream:
                 res, modelo_executado = await _executar_orquestrador_auto_ou_manual(
                     entrada_modelo, ctx, fila_modelos, eh_auto
@@ -1966,12 +2125,13 @@ def _iniciar_tarefa_chat_background(
                 resultado_final_obj = res
                 modelo_atual_ref[0] = modelo_executado
                 tokens_in, tokens_out = _extrair_usage_tokens(res)
-                texto_final = (res.output or "").strip()
+                texto_final = sanitizar_resposta_ollama_offline((res.output or "").strip(), modelo_executado)
                 if texto_final:
                     _publicar_evento_tarefa(registro, "chunk", {"delta": texto_final})
             elif not eh_auto:
                 # Modo manual forcado: string direta sem cooldown e sem fallback silencioso
                 modelo_obj = obter_modelo(modelo_real, usar_fallback=False)
+                estado_st = _novo_estado_stream_ollama(modelo_real)
                 try:
                     stream_result = None
                     async with orquestrador.run_stream(
@@ -1982,12 +2142,11 @@ def _iniciar_tarefa_chat_background(
                         stream_result = result
                         async for delta in result.stream_text(delta=True, debounce_by=0.04):
                             if delta:
-                                partes_texto.append(delta)
-                                _publicar_evento_tarefa(registro, "chunk", {"delta": delta})
+                                _processar_delta_stream(delta, estado_st)
                     resultado_final_obj = stream_result
                     tokens_in, tokens_out = _extrair_usage_tokens(stream_result)
                     modelo_executado = _extrair_modelo_real(stream_result, modelo_real)
-                    texto_final = "".join(partes_texto).strip()
+                    texto_final = _finalizar_stream_ollama(modelo_executado, estado_st)
                     if not texto_final:
                         res_fb = await orquestrador.run(
                             entrada_modelo,
@@ -1999,7 +2158,7 @@ def _iniciar_tarefa_chat_background(
                         tokens_in += fb_in
                         tokens_out += fb_out
                         modelo_executado = _extrair_modelo_real(res_fb, modelo_executado)
-                        texto_final = (res_fb.output or "").strip()
+                        texto_final = sanitizar_resposta_ollama_offline((res_fb.output or "").strip(), modelo_executado)
                         if texto_final:
                             _publicar_evento_tarefa(registro, "chunk", {"delta": texto_final})
                 except asyncio.CancelledError:
@@ -2016,7 +2175,7 @@ def _iniciar_tarefa_chat_background(
                         resultado_final_obj = res_fb
                         tokens_in, tokens_out = _extrair_usage_tokens(res_fb)
                         modelo_executado = _extrair_modelo_real(res_fb, modelo_real)
-                        texto_final = (res_fb.output or "").strip()
+                        texto_final = sanitizar_resposta_ollama_offline((res_fb.output or "").strip(), modelo_executado)
                         if texto_final:
                             _publicar_evento_tarefa(registro, "chunk", {"delta": texto_final})
                     else:
@@ -2037,6 +2196,7 @@ def _iniciar_tarefa_chat_background(
                     rot_atual = ROTULOS_MODELO.get(mid, mid)
 
                     partes_texto.clear()
+                    estado_st = _novo_estado_stream_ollama(mid)
                     stream_result = None
                     try:
                         async with asyncio.timeout(TIMEOUT_TENTATIVA_AUTO_SEGUNDOS):
@@ -2049,12 +2209,11 @@ def _iniciar_tarefa_chat_background(
                                 stream_result = result
                                 async for delta in result.stream_text(delta=True, debounce_by=0.04):
                                     if delta:
-                                        partes_texto.append(delta)
-                                        _publicar_evento_tarefa(registro, "chunk", {"delta": delta})
+                                        _processar_delta_stream(delta, estado_st)
                         resultado_final_obj = stream_result
                         tokens_in, tokens_out = _extrair_usage_tokens(stream_result)
                         modelo_executado = _extrair_modelo_real(stream_result, mid)
-                        texto_final = "".join(partes_texto).strip()
+                        texto_final = _finalizar_stream_ollama(modelo_executado, estado_st)
                         if not texto_final:
                             async with asyncio.timeout(TIMEOUT_TENTATIVA_AUTO_SEGUNDOS):
                                 res_fb = await orquestrador.run(
@@ -2068,7 +2227,9 @@ def _iniciar_tarefa_chat_background(
                             tokens_in += fb_in
                             tokens_out += fb_out
                             modelo_executado = _extrair_modelo_real(res_fb, mid)
-                            texto_final = (res_fb.output or "").strip()
+                            texto_final = sanitizar_resposta_ollama_offline(
+                                (res_fb.output or "").strip(), modelo_executado
+                            )
                             if texto_final:
                                 _publicar_evento_tarefa(registro, "chunk", {"delta": texto_final})
                         modelo_atual_ref[0] = modelo_executado
@@ -2093,7 +2254,9 @@ def _iniciar_tarefa_chat_background(
                                 tokens_in, tokens_out = _extrair_usage_tokens(res_fb)
                                 modelo_executado = _extrair_modelo_real(res_fb, mid)
                                 modelo_atual_ref[0] = modelo_executado
-                                texto_final = (res_fb.output or "").strip()
+                                texto_final = sanitizar_resposta_ollama_offline(
+                                    (res_fb.output or "").strip(), modelo_executado
+                                )
                                 if texto_final:
                                     _publicar_evento_tarefa(registro, "chunk", {"delta": texto_final})
                                 sucesso_auto = True

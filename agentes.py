@@ -1,5 +1,7 @@
 import asyncio
 import contextlib
+import hashlib
+import json
 import os
 import re
 import threading
@@ -13,12 +15,12 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
+from pydantic import ValidationError
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.capabilities import (
     Caching,
     DynamicCapability,
     FileUnderstanding,
-    ImageGeneration,
     PrepareTools,
     RetryOnModelErrors,
     Thinking,
@@ -32,10 +34,10 @@ from pydantic_ai.exceptions import (
     ModelOverloadedError,
     ModelQuotaExceededError,
     ModelRateLimitError,
-    ModelServerError,
-    ModelTimeoutError,
     ModelUnavailableError,
     ToolFailedError,
+    UnexpectedModelBehavior,
+    UserError,
 )
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.tools import ToolDefinition
@@ -371,6 +373,81 @@ def resolver_modelo_execucao(nome_modelo: str, *, usar_fallback: bool = True) ->
         return criar_modelo_ollama()
     return obter_modelo(nome_modelo, usar_fallback=usar_fallback)
 
+
+_RE_FENCE_JSON = re.compile(r"^\s*```(?:json)?\s*([\s\S]*?)\s*```\s*$", re.IGNORECASE)
+_MENSAGEM_OLLAMA_OFFLINE_SEM_TOOLS = (
+    "No momento estou operando em **modo offline (Ollama local)**, sem acesso às ferramentas "
+    "e subagentes externos até os modelos da nuvem voltarem. Assim que a nuvem normalizar, "
+    "posso executar essa ação para você — por enquanto, posso ajudar diretamente com "
+    "perguntas gerais, explicações, textos e código por aqui."
+)
+
+
+def ollama_suporta_tools_confiavel(nome_modelo: str | None = None) -> bool:
+    """Indica se o modelo local do Ollama deve receber schemas de tools da Orquestradora.
+
+    Por padrao retorna `False` para evitar JSON cru (`{"name": ..., "arguments": ...}`)
+    em modelos locais leves; pode ser habilitado explicitamente com `ATHENA_OLLAMA_TOOLS=true`.
+    """
+    flag = (os.getenv("ATHENA_OLLAMA_TOOLS", "false") or "false").strip().lower()
+    return flag in ("1", "true", "sim", "yes", "on")
+
+
+def _objeto_parece_tool_call_cru(obj: Any) -> bool:
+    if isinstance(obj, dict):
+        if "name" in obj and isinstance(obj.get("name"), str) and any(
+            k in obj for k in ("arguments", "parameters", "args")
+        ):
+            return True
+        if "tool_call" in obj or "tool_calls" in obj:
+            return True
+        fn = obj.get("function")
+        return bool(isinstance(fn, dict) and isinstance(fn.get("name"), str))
+    if isinstance(obj, list) and obj:
+        return all(_objeto_parece_tool_call_cru(item) for item in obj)
+    return False
+
+
+def eh_json_tool_call_cru(texto: str) -> bool:
+    """Detecta quando um modelo local emitiu JSON cru de tool-call em vez de resposta natural."""
+    bruto = (texto or "").strip()
+    if not bruto:
+        return False
+
+    candidato = bruto
+    m_fence = _RE_FENCE_JSON.match(bruto)
+    if m_fence:
+        candidato = m_fence.group(1).strip()
+
+    if candidato.startswith(("{", "[")):
+        try:
+            parsed = json.loads(candidato)
+            if _objeto_parece_tool_call_cru(parsed):
+                return True
+        except Exception:
+            pass
+
+    # Fallback para JSON cru ligeiramente malformado ou cercado por texto curto
+    return bool(
+        len(candidato) <= 1500
+        and re.search(
+            r'\{\s*"name"\s*:\s*"[a-zA-Z0-9_.-]+"\s*,\s*"(?:arguments|parameters|args)"\s*:',
+            candidato,
+        )
+    )
+
+
+def sanitizar_resposta_ollama_offline(texto: str, modelo_usado: str = "") -> str:
+    """Intercepta JSON cru de tool-call vindo do Ollama local e substitui por aviso natural em pt-BR."""
+    bruto = (texto or "").strip()
+    if not bruto:
+        return bruto
+    eh_ollama = (modelo_usado or "").strip().lower() == MODELO_OLLAMA_ID or "ollama" in (modelo_usado or "").lower()
+    if eh_ollama and eh_json_tool_call_cru(bruto):
+        _log.warning("ollama_json_tool_call_interceptado", tamanho_original=len(bruto))
+        return _MENSAGEM_OLLAMA_OFFLINE_SEM_TOOLS
+    return bruto
+
 MODELO = MODELOS_DISPONIVEIS["gemini-3.5-flash-lite"]
 MODELO_RAPIDO = MODELOS_DISPONIVEIS["gemini-3.5-flash-lite"]
 MODELO_FALLBACK_ARQUIVOS = "google:gemini-3.5-flash-lite"
@@ -442,7 +519,19 @@ def _preparar_tools_orquestrador(
     ctx: RunContext["ContextoMissao"],
     tool_defs: list[ToolDefinition],
 ) -> list[ToolDefinition]:
-    """Filtra dinamicamente as tools da Orquestradora pelo turno atual e ordena por nome (Prompt Cache)."""
+    """Filtra dinamicamente as tools da Orquestradora pelo turno atual e ordena por nome (Prompt Cache).
+
+    No modo offline (`ollama-local`), desativa tools quando o modelo local nao suporta
+    tool-calling estruturado confiavel, evitando JSON cru na resposta.
+    """
+    if (
+        ctx.deps is not None
+        and ctx.deps.modelo == MODELO_OLLAMA_ID
+        and not ollama_suporta_tools_confiavel()
+    ):
+        _log.debug("tools_desativadas_ollama_offline", total_antes=len(tool_defs))
+        return []
+
     msg = ""
     if ctx.deps is not None and (ctx.deps.mensagem_atual or "").strip():
         msg = ctx.deps.mensagem_atual
@@ -462,13 +551,14 @@ def _preparar_tools_orquestrador(
 def _criar_capabilities_orquestrador() -> list:
     # A instrumentacao OpenTelemetry/Logfire e aplicada globalmente via `logfire.instrument_pydantic_ai()`
     # em `observabilidade.py`, evitando spans duplicados ou TracerProvider NoOp capturado no import.
+    # Nota: geracao de imagens fica na tool sob demanda `gerar_imagem` (nao em `ImageGeneration` global)
+    # para nunca disparar `UserError: ImageGenerationTool is not supported` em modelos texto/Ollama.
     return [
         _criar_retry_503(max_attempts=4, initial_delay=2.0, max_delay=6.0),
         Caching(retention=True, messages=True),
         ToolSearch(tools=list(FERRAMENTAS_SOB_DEMANDA_ORQUESTRADOR)),
         DynamicCapability(_thinking_adaptativo, id="thinking_adaptativo"),
         FileUnderstanding(fallback_subagent_model=MODELO_FALLBACK_ARQUIVOS),
-        ImageGeneration(fallback_image_model=MODELO_IMAGEM_GEMINI),
         PrepareTools(_preparar_tools_orquestrador),
     ]
 
@@ -550,14 +640,28 @@ def limpar_cooldowns_503(modelos: tuple[str, ...] | list[str] | None = None) -> 
 
 
 def _eh_excecao_erro_llm(exc: BaseException) -> bool:
-    """Retorna True APENAS para erros reais da API do modelo LLM (ou timeout do loop Auto).
+    """Retorna True APENAS para erros reais da API do modelo LLM.
 
-    Erros de MCP, ferramentas (`ToolFailedError`), `httpx.HTTPError` externos, autenticacao de
-    terceiros ou schemas locais retornam False para NUNCA serem mascarados como 503 do Gemini.
+    `UserError`, erros de validacao/codigo (`ValidationError`, `ValueError`, `TypeError`,
+    `UnexpectedModelBehavior`), MCP, ferramentas (`ToolFailedError`) e `httpx.HTTPError`
+    externos retornam False para NUNCA colocarem modelos da nuvem em `MODEL_COOLDOWN`.
     """
-    if isinstance(exc, (ToolFailedError, httpx.HTTPError)):
+    if isinstance(
+        exc,
+        (
+            UserError,
+            UnexpectedModelBehavior,
+            ToolFailedError,
+            httpx.HTTPError,
+            ValidationError,
+            ValueError,
+            TypeError,
+            KeyError,
+            AttributeError,
+        ),
+    ):
         return False
-    if isinstance(exc, (ModelAPIError, TimeoutError, asyncio.TimeoutError)):
+    if isinstance(exc, ModelAPIError):
         return True
     if isinstance(exc, BaseExceptionGroup):
         return bool(exc.exceptions) and all(_eh_excecao_erro_llm(sub) for sub in exc.exceptions)
@@ -619,16 +723,13 @@ def _extrair_retry_delay_segundos(exc: BaseException) -> float | None:
 
 
 def classificar_erro_modelo(exc: BaseException) -> tuple[bool, float, str]:
-    """Classifica erro REAL de chamada LLM para decidir se o modo Auto deve aplicar cooldown e trocar de modelo.
+    """Classifica erro REAL de API LLM para decidir se o modo Auto deve aplicar cooldown e trocar de modelo.
 
-    Erros de MCP, tools, autenticacao externa ou schema local retornam `(False, 0.0, '')`
-    para serem exibidos claramente sem mascarar como 'sobrecarregado (503)'.
+    Apenas `429` (cota), `403`/`400` de plano pago/billing e `503` real ativam `MODEL_COOLDOWN`.
+    `UserError`, erros de validacao/schema/codigo, MCP e ferramentas retornam `(False, 0.0, '')`.
     """
     if not _eh_excecao_erro_llm(exc):
         return (False, 0.0, "")
-
-    if isinstance(exc, (TimeoutError, asyncio.TimeoutError, ModelTimeoutError)):
-        return (True, float(COOLDOWN_INSTAVEL_SEGUNDOS), "timeout")
 
     if isinstance(exc, BaseExceptionGroup):
         for sub in exc.exceptions:
@@ -654,7 +755,7 @@ def classificar_erro_modelo(exc: BaseException) -> tuple[bool, float, str]:
         if m:
             status_int = int(m.group(1))
 
-    # 429 / cota esgotada / RESOURCE_EXHAUSTED
+    # 1) 429 / cota esgotada / RESOURCE_EXHAUSTED
     if (
         isinstance(exc, (ModelRateLimitError, ModelQuotaExceededError))
         or status_int == 429
@@ -677,41 +778,47 @@ def classificar_erro_modelo(exc: BaseException) -> tuple[bool, float, str]:
             cooldown = float(COOLDOWN_COTA_SEGUNDOS)
         return (True, cooldown, "sem cota (429)")
 
-    # 503 / UNAVAILABLE / sobrecarga momentanea -> cooldown curto de 30s
-    # Checado ANTES de heuristicas genericas de 400/403 ("not available") para nunca mascarar 503 como erro de plano.
+    # 2) 503 / UNAVAILABLE / sobrecarga momentanea -> cooldown curto de 30s
     if eh_erro_503(exc):
         return (True, float(COOLDOWN_503_SEGUNDOS), "sobrecarregado (503)")
 
-    # 400 / 403 / 404 de plano pago, permissao ou modelo indisponivel
-    # Nao coloca modelo em cooldown quando 400 for INVALID_ARGUMENT de schema de ferramenta
+    # 3) 403 ou 400 explicitamente de plano pago / billing / modelo indisponivel no plano
+    # Erros 400 de schema, argumentos, tools ou validacao NUNCA ativam cooldown.
+    sinais_validacao_codigo = (
+        "invalid_argument",
+        "function_declarations",
+        "schema",
+        "validation",
+        "unsupported",
+        "invalid json",
+        "unknown field",
+    )
+    sinais_plano_pago = (
+        "permission_denied",
+        "billing",
+        "paid",
+        "free_tier",
+        "not enabled",
+        "not found for api version",
+        "not available",
+        "upgrade",
+    )
+    eh_400_plano_pago = (
+        status_int == 400
+        and any(s in low for s in sinais_plano_pago)
+        and not any(v in low for v in sinais_validacao_codigo)
+    )
     if (
-        status_int in (403, 404)
+        status_int == 403
+        or eh_400_plano_pago
         or (
-            status_int == 400
-            and "invalid_argument" not in low
-            and "function_declarations" not in low
-            and "schema" not in low
+            status_int is None
+            and any(s in low for s in ("permission_denied", "billing", "paid", "not found for api version"))
+            and not any(v in low for v in sinais_validacao_codigo)
         )
-        or "permission_denied" in low
-        or "billing" in low
-        or "paid" in low
-        or "not found for api version" in low
-        or "not available" in low
     ):
         cod = status_int or "400/403"
         return (True, float(COOLDOWN_COTA_SEGUNDOS), f"indisponivel no plano ({cod})")
-
-    # Outros 5xx / timeout de rede do proprio modelo -> cooldown de 2 min
-    if (
-        isinstance(exc, ModelServerError)
-        or status_int in (500, 502, 504)
-        or "timed out" in low
-        or "timeout" in low
-        or "readtimeout" in low
-        or "connecttimeout" in low
-    ):
-        cod = status_int or "5xx"
-        return (True, float(COOLDOWN_INSTAVEL_SEGUNDOS), f"instavel ({cod})")
 
     return (False, 0.0, "")
 
@@ -1602,7 +1709,7 @@ orquestrador = Agent(
         "- `carregar_skill(nome)`: carrega sob demanda o roteiro detalhado de uma Agent Skill (`skills/*/SKILL.md`). Chame APENAS quando a tarefa do usuario combinar diretamente com uma skill listada no catalogo de Agent Skills.\n"
         "- `solicitar_abrir_app`, `solicitar_abrir_url` e `solicitar_abrir_arquivo_ou_pasta`: execucao NATIVA no Windows 11 do William para abrir aplicativos (Brave, VS Code, Obsidian, Spotify, Discord, etc.), URLs/abas no Brave e arquivos/pastas locais (ex.: PDFs da faculdade ou pasta Downloads), sempre exibindo um card de confirmacao inline no chat (ou abrindo direto se o app estiver em 'Sempre permitir').\n"
         "- `solicitar_captura_tela(motivo)`: pede autorizacao explicita (card de permissao inline, nunca automatico e sem 'Sempre permitir') para capturar o monitor principal do William quando ele pedir para voce olhar a tela ou diagnosticar algo visivel no monitor.\n"
-        "- `generate_image`: gerar imagens diretamente quando o usuario pedir para criar/desenhar/ilustrar uma imagem (o servidor salva automaticamente em `sandbox_files/imagens/` e exibe inline no chat).\n"
+        "- `gerar_imagem(prompt)`: gera imagens sob demanda usando o modelo de imagem dedicado do Gemini, salva em `sandbox_files/imagens/` e devolve o Markdown inline `![...](/api/arquivos/imagens/...)` para exibir direto no chat.\n"
         "- `guardar_na_memoria`: salvar fatos duradouros sobre o usuario.\n"
         "- Ferramentas sob demanda via `search_tools`: busca semantica `buscar_semantico` (Qdrant Vetorial) e Obsidian Vault (`listar_notas_vault`, `buscar_no_vault`, `ler_nota_vault`, `escrever_nota_vault`) — carregue-as via `search_tools` sempre que precisar de contexto pessoal, notas do Segundo Cerebro ou busca vetorial.\n\n"
         "REGRA OBRIGATORIA PARA ABRIR APPS, SITES, ARQUIVOS E PASTAS NO WINDOWS:\n"
@@ -1735,10 +1842,20 @@ def _instrucoes_contexto_dinamico(ctx: RunContext[ContextoMissao]) -> str:
     """Bloco dinamico posicionado SEMPRE no final das instrucoes (higiene de Prompt Cache).
 
     Contem apenas data arredondada por dia (YYYY-MM-DD, sem horas/minutos/segundos) e,
-    quando fornecidos em `ctx.deps`, memorias recuperadas e resumo compactado da conversa.
+    quando fornecidos em `ctx.deps`, memorias recuperadas, resumo compactado da conversa
+    e aviso de modo offline quando operando no Ollama local sem tools.
     """
     partes = [f"CONTEXTO TEMPORAL: Data atual (America/Sao_Paulo): {_data_referencia_iso_dia()}"]
     if ctx.deps is not None:
+        if ctx.deps.modelo == MODELO_OLLAMA_ID and not ollama_suporta_tools_confiavel():
+            partes.append(
+                "[MODO OFFLINE - OLLAMA LOCAL]\n"
+                "Voce esta operando em modo offline (Ollama local) sem acesso as ferramentas dos subagentes "
+                "(Google, Ulife, Investimentos, Faxina, Windows, Web, Logfire) ate a nuvem voltar. "
+                "Responda SEMPRE em portugues natural, NUNCA emita JSON de chamada de ferramenta "
+                "(como {\"name\": ..., \"arguments\": ...}). Se o pedido exigir uma ferramenta externa, "
+                "avise educadamente que esta em modo offline (Ollama local) no momento."
+            )
         if (ctx.deps.memorias_contexto or "").strip():
             partes.append(f"[MEMORIAS RECUPERADAS]\n{ctx.deps.memorias_contexto.strip()}")
         if (ctx.deps.resumo_conversa or "").strip():
@@ -1751,6 +1868,79 @@ def carregar_skill(ctx: RunContext[ContextoMissao], nome: str) -> str:
     """Carrega sob demanda o roteiro completo (SKILL.md) de uma Agent Skill pelo nome exato do catalogo."""
     ctx.deps.registrar("Athena", "Agent Skills", "ferramenta", f"carregar_skill({nome})")
     return _carregar_skill(nome)
+
+
+PASTA_IMAGENS_GERADAS = Path(__file__).resolve().parent / "sandbox_files" / "imagens"
+_MIME_EXT_IMAGEM: dict[str, str] = {
+    "image/png": ".png",
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+}
+
+
+async def _gerar_e_salvar_imagem(
+    prompt: str,
+    *,
+    pasta_imagens: Path | None = None,
+    modelo_imagem: str | None = None,
+) -> list[dict[str, str]]:
+    """Gera imagem via `ImageGenerator` dedicado (isolado dos modelos de texto) e salva em `sandbox_files/imagens/`."""
+    from pydantic_ai.images import ImageGenerator
+
+    prompt_limpo = (prompt or "").strip()
+    if not prompt_limpo:
+        raise ValueError("Informe uma descricao (prompt) nao vazia para gerar a imagem.")
+
+    gerador = ImageGenerator(modelo_imagem or MODELO_IMAGEM_GEMINI)
+    resultado = await gerador.generate(prompt_limpo)
+
+    destino_dir = Path(pasta_imagens) if pasta_imagens is not None else PASTA_IMAGENS_GERADAS
+    destino_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    salvas: list[dict[str, str]] = []
+    for idx, item in enumerate(resultado.images or (), start=1):
+        conteudo = getattr(item, "content", None)
+        dados = getattr(conteudo, "data", None)
+        if not isinstance(dados, (bytes, bytearray)) or not dados:
+            continue
+        dados_bytes = bytes(dados)
+        mime = (str(getattr(conteudo, "media_type", "") or "image/png").split(";")[0]).strip().lower()
+        ext = _MIME_EXT_IMAGEM.get(mime, ".png")
+        digest = hashlib.sha256(dados_bytes).hexdigest()[:8]
+        nome_arq = f"img_{ts}_{idx}_{digest}{ext}"
+        (destino_dir / nome_arq).write_bytes(dados_bytes)
+        salvas.append(
+            {
+                "arquivo": nome_arq,
+                "url": f"/api/arquivos/imagens/{nome_arq}",
+                "caminho": f"sandbox_files/imagens/{nome_arq}",
+                "media_type": mime,
+            }
+        )
+    return salvas
+
+
+@orquestrador.tool
+async def gerar_imagem(ctx: RunContext[ContextoMissao], prompt: str) -> str:
+    """Gera uma imagem a partir de uma descricao detalhada usando o modelo de imagem do Gemini e salva em `sandbox_files/imagens/`."""
+    ctx.deps.registrar("Athena", "Gerador de Imagens", "ferramenta", f"gerar_imagem({prompt[:120]})")
+    try:
+        salvas = await _gerar_e_salvar_imagem(prompt)
+    except Exception as exc:
+        _log.error("gerar_imagem_falha", modelo=MODELO_IMAGEM_GEMINI, erro=str(exc))
+        return f"Nao foi possivel gerar a imagem agora ({type(exc).__name__}): {exc}"
+
+    if not salvas:
+        return "O modelo de imagem nao retornou nenhum arquivo valido."
+
+    linhas = [f"Imagem gerada com sucesso ({len(salvas)} arquivo(s)) usando `{MODELO_IMAGEM_GEMINI}`:"]
+    for idx, img in enumerate(salvas, start=1):
+        alt = f"Imagem gerada {idx}" if len(salvas) > 1 else "Imagem gerada"
+        linhas.append(f"\n![{alt}]({img['url']})\n- Arquivo: `{img['caminho']}`")
+    return "\n".join(linhas)
 
 
 @orquestrador.tool

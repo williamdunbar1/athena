@@ -103,7 +103,7 @@ DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
     ),
     "imagem": frozenset(
         {
-            "generate_image",
+            "gerar_imagem",
         }
     ),
 }
@@ -182,8 +182,12 @@ _PADROES_DOMINIO: dict[str, tuple[re.Pattern[str], ...]] = {
         re.compile(r"\b(?:guardar?|salvar?|anotar?)\s+na\s+memoria\b"),
     ),
     "imagem": (
-        re.compile(r"\b(?:desenhar|desenhe|desenha|ilustrar|ilustre|ilustra)\b"),
-        re.compile(r"\b(?:gerar|gere|gera|criar|crie|cria)\s+(?:uma\s+)?imagem\b"),
+        re.compile(
+            r"\b(?:desenhar|desenhe|desenha|ilustrar|ilustre|ilustra|"
+            r"ilustracao|ilustracoes|icones?|logos?|logotipos?|arte|artes|"
+            r"banner|poster|wallpaper)\b"
+        ),
+        re.compile(r"\b(?:gerar|gere|gera|criar|crie|cria|fazer|faca|faz)\s+(?:uma\s+)?imagem\b"),
     ),
 }
 

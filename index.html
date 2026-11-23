@@ -3223,17 +3223,18 @@ function anexarBotaoOuvir(wrapper, textoBruto, metaModelo = null) {
   const tokIn = metaModelo ? Number(metaModelo.tokens_in ?? metaModelo.tokensIn ?? 0) : 0;
   const tokOut = metaModelo ? Number(metaModelo.tokens_out ?? metaModelo.tokensOut ?? 0) : 0;
   const tokTotal = tokIn + tokOut;
+  const ehFastPath = Boolean(metaModelo && (metaModelo.fast_path || String(modeloUsado).toLowerCase().includes("fast-path")));
 
-  if (durMs > 0 || tokTotal > 0) {
+  if (durMs > 0 || tokTotal > 0 || ehFastPath) {
     const partes = [];
     if (durMs > 0) partes.push(formatarLatenciaChat(durMs));
-    if (tokTotal > 0) partes.push(`${tokTotal.toLocaleString("pt-BR")} tokens`);
+    if (tokTotal > 0 || ehFastPath) partes.push(`${tokTotal.toLocaleString("pt-BR")} tokens`);
     const stats = document.createElement("span");
     stats.className = "msg-meta-stats";
     stats.textContent = partes.join(" · ");
     const dica = [];
     if (durMs > 0) dica.push(`Tempo: ${Math.round(durMs).toLocaleString("pt-BR")} ms (${(durMs / 1000).toFixed(2).replace(".", ",")} s)`);
-    if (tokTotal > 0) dica.push(`Entrada: ${tokIn.toLocaleString("pt-BR")} tokens · Saída: ${tokOut.toLocaleString("pt-BR")} tokens`);
+    if (tokTotal > 0 || ehFastPath) dica.push(`Entrada: ${tokIn.toLocaleString("pt-BR")} tokens · Saída: ${tokOut.toLocaleString("pt-BR")} tokens`);
     if (dica.length) stats.title = dica.join(" | ");
     actions.appendChild(stats);
   }
