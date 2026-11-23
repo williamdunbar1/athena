@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from agentes import MODELO_PADRAO, ContextoMissao, agente_analista, obter_modelo
 from ferramentas_estudos import listar_provas
@@ -197,13 +198,29 @@ def _sincronizar_job_scheduler(rotina: dict) -> None:
 
 
 def iniciar_agendador() -> None:
-    """Inicializa o AsyncIOScheduler(timezone='America/Sao_Paulo') e registra rotinas ativas."""
+    """Inicializa o AsyncIOScheduler(timezone='America/Sao_Paulo') e registra rotinas ativas + Logfire Sentinel."""
     global _SCHEDULER
     if _SCHEDULER is not None and _SCHEDULER.running:
         return
     _SCHEDULER = AsyncIOScheduler(timezone=_obter_fuso())
     for rotina in listar_rotinas():
         _sincronizar_job_scheduler(rotina)
+
+    from athena_lab import sentinel_ativo, sentinel_intervalo_minutos
+
+    if sentinel_ativo():
+        intervalo_min = sentinel_intervalo_minutos()
+        _SCHEDULER.add_job(
+            _disparar_logfire_sentinel,
+            trigger=IntervalTrigger(minutes=intervalo_min, timezone=_obter_fuso()),
+            id="logfire_sentinel",
+            replace_existing=True,
+            coalesce=True,
+            max_instances=1,
+            misfire_grace_time=300,
+        )
+        _log.info("logfire_sentinel_agendado", intervalo_minutos=intervalo_min)
+
     _SCHEDULER.start()
 
 
@@ -451,3 +468,10 @@ async def executar_rotina_agora(
 async def _disparar_rotina_agendada(rotina_id: str) -> None:
     with suppress(Exception):
         await executar_rotina_agora(rotina_id)
+
+
+async def _disparar_logfire_sentinel() -> None:
+    with suppress(Exception):
+        from athena_lab import verificar_erros_logfire_sentinel
+
+        await verificar_erros_logfire_sentinel()

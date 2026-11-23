@@ -2622,3 +2622,124 @@ def test_athena_lab_descarta_quando_critico_reprova_e_salva_quando_aprovado(monk
     assert res_pend["proposta"]["checks"]["pytest"]["ok"] is True
     assert "diff --git" in res_pend["proposta"]["diff_texto"]
     assert len(lab.listar_propostas_lab(db_path=db_teste)) == 2
+
+
+# ==============================================================================
+# 22. LOGFIRE SENTINEL (VIGIA AUTO-HEALING CONECTADO AO ATHENA LAB)
+# ==============================================================================
+
+
+def test_sentinel_classifica_bugs_reais_e_ignora_transitorios():
+    import athena_lab as lab
+
+    # 1) Erros transitorios externos (503/429/timeouts/rede) devem ser ignorados
+    transitorios = [
+        {"exception_type": "ModelUnavailableError", "exception_message": "503 UNAVAILABLE overloaded"},
+        {"exception_type": "ModelRateLimitError", "exception_message": "429 RESOURCE_EXHAUSTED quota"},
+        {"exception_type": "TimeoutError", "exception_message": "timed out waiting for response"},
+        {"exception_type": "ConnectError", "exception_message": "Connection refused"},
+        {"exception_type": "ReadTimeout", "exception_message": "ReadTimeout on httpx"},
+    ]
+    for err in transitorios:
+        assert lab.eh_bug_de_codigo_corrigivel(err) is False, f"Nao deveria tratar {err} como bug de codigo"
+
+    # 2) Bugs reais de codigo da Athena devem retornar True
+    bugs_reais = [
+        {"exception_type": "TypeError", "exception_message": "NoneType object is not subscriptable"},
+        {"exception_type": "AttributeError", "exception_message": "'dict' object has no attribute 'output'"},
+        {"exception_type": "UserError", "exception_message": "ImageGenerationTool is not supported"},
+        {"exception_type": "KeyError", "exception_message": "'tokens_in'"},
+        {"exception_type": "ZeroDivisionError", "exception_message": "division by zero"},
+        {"exception_type": "OperationalError", "exception_message": "no such column: foo"},
+        {"message": "HTTP 500 Internal Server Error em /api/chat", "http_status_code": 500},
+    ]
+    for bug in bugs_reais:
+        assert lab.eh_bug_de_codigo_corrigivel(bug) is True, f"Deveria tratar {bug} como bug corrigivel"
+
+
+def test_sentinel_deduplicacao_limite_hora_e_sem_token(monkeypatch, tmp_path):
+    import athena_lab as lab
+    import memoria
+
+    db_teste = tmp_path / "sentinel_teste.db"
+    memoria.executar_migrations(db_teste)
+    lab.limpar_estado_sentinel()
+
+    async def _inline_to_thread(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr(lab.asyncio, "to_thread", _inline_to_thread)
+
+    # 1) Sem LOGFIRE_READ_TOKEN retorna silenciosamente sem quebrar
+    monkeypatch.setenv("ATHENA_SENTINEL_ENABLED", "true")
+    monkeypatch.delenv("LOGFIRE_READ_TOKEN", raising=False)
+    res_sem_tok = _executar_async_real_teste(lab.verificar_erros_logfire_sentinel(db_path=db_teste))
+    assert res_sem_tok["ok"] is True
+    assert res_sem_tok["acionou_lab"] is False
+
+    # 2) Deduplicacao por fingerprint: mesmo erro com hex/timestamp diferentes gera o mesmo hash
+    err_a = {
+        "exception_type": "AttributeError",
+        "exception_message": "'NoneType' object at 0x7f1a2b3c4d has no attribute 'strip'",
+        "exception_stacktrace": 'File "servidor.py", line 42\nAttributeError',
+    }
+    err_b = {
+        "exception_type": "AttributeError",
+        "exception_message": "'NoneType' object at 0x9988776655 has no attribute 'strip'",
+        "exception_stacktrace": 'File "servidor.py", line 99\nAttributeError',
+    }
+    assert lab.gerar_fingerprint_erro(err_a) == lab.gerar_fingerprint_erro(err_b)
+
+    # 3) Sentinel aciona rodar_ciclo_rd com categoria="auto-fix-logfire" na 1a vez e deduplica na 2a
+    monkeypatch.setenv("LOGFIRE_READ_TOKEN", "pylf_v1_us_fake_token")
+    monkeypatch.setenv("ATHENA_SENTINEL_MAX_POR_HORA", "1")
+    chamadas_lab: list[dict] = []
+
+    async def _fake_rodar_lab(foco: str = "", *, categoria: str | None = None, **_kw):
+        chamadas_lab.append({"foco": foco, "categoria": categoria})
+        return {"ok": True, "status": "pendente"}
+
+    monkeypatch.setattr(lab, "rodar_ciclo_rd", _fake_rodar_lab)
+    monkeypatch.setattr(
+        lab,
+        "consultar_erros_logfire_estruturados",
+        lambda minutos=15, limite=15: [
+            {"exception_type": "ModelUnavailableError", "exception_message": "503 UNAVAILABLE"},
+            err_a,
+        ],
+    )
+
+    res1 = _executar_async_real_teste(lab.verificar_erros_logfire_sentinel(db_path=db_teste))
+    assert res1["ok"] is True
+    assert res1["acionou_lab"] is True
+    assert len(chamadas_lab) == 1
+    assert chamadas_lab[0]["categoria"] == "auto-fix-logfire"
+    assert "AttributeError" in chamadas_lab[0]["foco"]
+
+    # 4) Limite por hora (max=1) impede 2a execucao mesmo com bug diferente
+    monkeypatch.setattr(
+        lab,
+        "consultar_erros_logfire_estruturados",
+        lambda minutos=15, limite=15: [
+            {"exception_type": "KeyError", "exception_message": "'outra_chave'"},
+        ],
+    )
+    res_lim = _executar_async_real_teste(lab.verificar_erros_logfire_sentinel(db_path=db_teste))
+    assert res_lim["ok"] is True
+    assert res_lim["acionou_lab"] is False
+    assert res_lim.get("limite_hora_atingido") is True
+    assert len(chamadas_lab) == 1
+
+    # 5) Aumentando o limite, o mesmo erro `err_b` continua deduplicado pelo fingerprint no SQLite
+    monkeypatch.setenv("ATHENA_SENTINEL_MAX_POR_HORA", "5")
+    monkeypatch.setattr(
+        lab,
+        "consultar_erros_logfire_estruturados",
+        lambda minutos=15, limite=15: [err_b],
+    )
+    res_dup = _executar_async_real_teste(lab.verificar_erros_logfire_sentinel(db_path=db_teste))
+    assert res_dup["ok"] is True
+    assert res_dup["acionou_lab"] is False
+    assert res_dup.get("duplicados_ignorados") == 1
+    assert len(chamadas_lab) == 1
+    lab.limpar_estado_sentinel()

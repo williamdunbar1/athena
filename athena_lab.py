@@ -15,6 +15,7 @@ Fluxo seguro:
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import os
 import re
@@ -35,7 +36,7 @@ from pydantic_ai.capabilities import WebSearch
 
 from agentes import MODELO, _criar_retry_503
 from eficiencia import compactar_saida_tool
-from ferramentas_logfire import buscar_erros_logfire
+from ferramentas_logfire import buscar_erros_logfire, consultar_erros_logfire_estruturados
 from logging_config import obter_logger
 from memoria import obter_db_path
 
@@ -674,6 +675,7 @@ def obter_status_lab() -> dict[str, Any]:
 async def rodar_ciclo_rd(
     foco: str = "eficiencia e tokens",
     *,
+    categoria: str | None = None,
     db_path: str | Path | None = None,
     repo_dir: Path | None = None,
 ) -> dict[str, Any]:
@@ -735,11 +737,13 @@ async def rodar_ciclo_rd(
                 "critico": veredito.model_dump(),
             }
 
+            categoria_final = (categoria or proposta.categoria or "eficiencia").strip()[:60]
+
             if (not veredito.aprovado) or int(veredito.nota) < NOTA_MINIMA_APROVACAO:
                 salva = salvar_proposta_lab(
                     proposta_id=proposta_id,
                     titulo=proposta.titulo,
-                    categoria=proposta.categoria,
+                    categoria=categoria_final,
                     resumo=f"{proposta.problema} -> {proposta.solucao}",
                     ganho_estimado=proposta.ganho_estimado,
                     debate=debate,
@@ -805,7 +809,7 @@ async def rodar_ciclo_rd(
             salva = salvar_proposta_lab(
                 proposta_id=proposta_id,
                 titulo=proposta.titulo,
-                categoria=proposta.categoria,
+                categoria=categoria_final,
                 resumo=plano.resumo_tecnico or f"{proposta.problema} -> {proposta.solucao}",
                 ganho_estimado=proposta.ganho_estimado,
                 debate=debate,
@@ -840,3 +844,299 @@ async def rodar_ciclo_rd(
             ESTADO_LAB["ativo"] = False
             ESTADO_LAB["etapa"] = "ocioso"
             ESTADO_LAB["ultima_execucao"] = datetime.now().isoformat(timespec="seconds")
+
+
+# ==============================================================================
+# LOGFIRE SENTINEL (VIGIA AUTO-HEALING CONECTADO AO ATHENA LAB)
+# ==============================================================================
+
+_RE_ERRO_TRANSITORIO = re.compile(
+    r"(?:\b503\b|\b429\b|service\s+unavailable|\bunavailable\b|overloaded|"
+    r"resource_exhausted|rate\s*limit|too\s+many\s+requests|quota|"
+    r"timeouterror|readtimeout|connecttimeout|connecterror|timed\s+out|"
+    r"modelunavailableerror|modeloverloadederror|modelratelimiterror|"
+    r"modelquotaexceedederror|connection\s+refused|remotedisconnected)",
+    re.IGNORECASE,
+)
+
+_RE_BUG_CODIGO_CORRIGIVEL = re.compile(
+    r"(?:\btypeerror\b|\battributeerror\b|\bkeyerror\b|\bvalueerror\b|\bnameerror\b|"
+    r"\bimporterror\b|\bmodulenotfounderror\b|\busererror\b|\boperationalerror\b|"
+    r"\bzerodivisionerror\b|\bindexerror\b|\bunboundlocalerror\b|\bsyntaxerror\b|"
+    r"\bhttp\s*500\b|\bstatus[_\s:=]+500\b|internal\s+server\s+error)",
+    re.IGNORECASE,
+)
+
+_SENTINEL_EXECUCOES_TS: list[float] = []
+_SENTINEL_VISTOS_RAM: set[str] = set()
+_SENTINEL_TASKS_BG: set[asyncio.Task[Any]] = set()
+
+
+def sentinel_ativo() -> bool:
+    return (os.getenv("ATHENA_SENTINEL_ENABLED", "true") or "true").strip().lower() in (
+        "1",
+        "true",
+        "sim",
+        "yes",
+        "on",
+    )
+
+
+def sentinel_intervalo_minutos() -> int:
+    bruto = (os.getenv("ATHENA_SENTINEL_INTERVAL_MIN", "10") or "10").strip()
+    try:
+        return max(1, min(int(bruto), 1440))
+    except ValueError:
+        return 10
+
+
+def sentinel_max_por_hora() -> int:
+    bruto = (os.getenv("ATHENA_SENTINEL_MAX_POR_HORA", "2") or "2").strip()
+    try:
+        return max(1, min(int(bruto), 20))
+    except ValueError:
+        return 2
+
+
+def limpar_estado_sentinel() -> None:
+    """Limpa contadores e cache em RAM do Sentinel (util em testes deterministas)."""
+    _SENTINEL_EXECUCOES_TS.clear()
+    _SENTINEL_VISTOS_RAM.clear()
+
+
+def eh_bug_de_codigo_corrigivel(erro: dict[str, Any]) -> bool:
+    """Filtra ruido transitorio externo (503/429/timeouts) e aceita bugs reais de codigo da Athena."""
+    if not isinstance(erro, dict):
+        return False
+
+    exc_type = str(erro.get("exception_type") or "").strip()
+    exc_msg = str(erro.get("exception_message") or "").strip()
+    msg = str(erro.get("message") or "").strip()
+    span = str(erro.get("span_name") or "").strip()
+    tb = str(erro.get("exception_stacktrace") or "").strip()
+    status_http = str(erro.get("http_status_code") or erro.get("status_code") or "").strip()
+
+    texto_combinado = " | ".join(p for p in (exc_type, exc_msg, msg, span, status_http, tb[-500:]) if p)
+    if not texto_combinado:
+        return False
+
+    if _RE_ERRO_TRANSITORIO.search(texto_combinado):
+        return False
+
+    if status_http == "500":
+        return True
+
+    return bool(_RE_BUG_CODIGO_CORRIGIVEL.search(texto_combinado))
+
+
+def gerar_fingerprint_erro(erro: dict[str, Any]) -> str:
+    """Gera hash SHA-256 curto (16 hex) normalizado por tipo + mensagem + arquivo para deduplicacao."""
+    exc_type = str(erro.get("exception_type") or "Error").strip().lower()
+    msg_base = str(erro.get("exception_message") or erro.get("message") or erro.get("span_name") or "").strip().lower()
+    # Normaliza tokens volateis (enderecos 0x..., UUIDs, timestamps, numeros soltos)
+    msg_norm = re.sub(r"0x[0-9a-f]+", "0xADDR", msg_base)
+    msg_norm = re.sub(r"[0-9a-f]{8,}", "ID", msg_norm)
+    msg_norm = re.sub(r"\b\d{4}-\d{2}-\d{2}[t ]\d{2}:\d{2}(?::\d{2})?\b", "TS", msg_norm)
+    msg_norm = re.sub(r"\b\d+\b", "N", msg_norm)
+    msg_norm = re.sub(r"\s+", " ", msg_norm).strip()[:220]
+
+    tb = str(erro.get("exception_stacktrace") or "")
+    arquivos = re.findall(r'([A-Za-z0-9_.-]+\.py)', tb)
+    arq_principal = arquivos[-1].lower() if arquivos else ""
+
+    chave = f"{exc_type}|{arq_principal}|{msg_norm}"
+    return hashlib.sha256(chave.encode("utf-8")).hexdigest()[:16]
+
+
+def _garantir_tabela_sentinel(c: sqlite3.Connection) -> None:
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS erros_sentinel_vistos (
+            fingerprint TEXT PRIMARY KEY,
+            exception_type TEXT NOT NULL DEFAULT '',
+            resumo TEXT NOT NULL DEFAULT '',
+            visto_em TEXT NOT NULL,
+            acionou_lab INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+
+
+def _erro_sentinel_ja_visto(fingerprint: str, *, db_path: str | Path | None = None) -> bool:
+    if fingerprint in _SENTINEL_VISTOS_RAM:
+        return True
+    with _conn_lab(db_path) as c:
+        _garantir_tabela_sentinel(c)
+        row = c.execute(
+            "SELECT 1 FROM erros_sentinel_vistos WHERE fingerprint = ?",
+            (fingerprint,),
+        ).fetchone()
+    if row is not None:
+        _SENTINEL_VISTOS_RAM.add(fingerprint)
+        return True
+    return False
+
+
+def _registrar_erro_sentinel_visto(
+    fingerprint: str,
+    exc_type: str,
+    resumo: str,
+    *,
+    acionou_lab: bool = False,
+    db_path: str | Path | None = None,
+) -> None:
+    _SENTINEL_VISTOS_RAM.add(fingerprint)
+    agora = datetime.now().isoformat(timespec="seconds")
+    with _conn_lab(db_path) as c:
+        _garantir_tabela_sentinel(c)
+        c.execute(
+            """
+            INSERT OR REPLACE INTO erros_sentinel_vistos
+                (fingerprint, exception_type, resumo, visto_em, acionou_lab)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (fingerprint, exc_type[:100], resumo[:400], agora, 1 if acionou_lab else 0),
+        )
+
+
+def _resumir_erro_logfire(erro: dict[str, Any]) -> str:
+    exc_type = str(erro.get("exception_type") or "").strip()
+    exc_msg = str(erro.get("exception_message") or erro.get("message") or "").strip()
+    span = str(erro.get("span_name") or "").strip()
+    tb = str(erro.get("exception_stacktrace") or "").strip()
+    ultima_tb = ""
+    if tb:
+        linhas_tb = [ln.strip() for ln in tb.splitlines() if ln.strip()]
+        ultima_tb = " | ".join(linhas_tb[-2:])[:180]
+    partes = [p for p in (f"{exc_type}: {exc_msg}".strip(": "), f"span={span}" if span else "", ultima_tb) if p]
+    return " · ".join(partes)[:320]
+
+
+async def verificar_erros_logfire_sentinel(
+    *,
+    db_path: str | Path | None = None,
+    repo_dir: Path | None = None,
+    forcar: bool = False,
+    background_lab: bool = False,
+) -> dict[str, Any]:
+    """Vigia periodico que consulta o Logfire (0 tokens) e aciona o Athena Lab para bugs reais ineditos."""
+    ativo = sentinel_ativo()
+    if not forcar and not ativo:
+        return {
+            "ok": True,
+            "ativo": False,
+            "acionou_lab": False,
+            "erros_analisados": 0,
+            "motivo": "Logfire Sentinel desativado (ATHENA_SENTINEL_ENABLED=false).",
+        }
+
+    if not (os.getenv("LOGFIRE_READ_TOKEN") or "").strip():
+        return {
+            "ok": True,
+            "ativo": ativo,
+            "acionou_lab": False,
+            "erros_analisados": 0,
+            "motivo": "LOGFIRE_READ_TOKEN nao configurado (verificacao ignorada silenciosamente).",
+        }
+
+    agora_ts = time.time()
+    _SENTINEL_EXECUCOES_TS[:] = [ts for ts in _SENTINEL_EXECUCOES_TS if (agora_ts - ts) < 3600.0]
+    max_hora = sentinel_max_por_hora()
+    if len(_SENTINEL_EXECUCOES_TS) >= max_hora:
+        _log.info("sentinel_limite_hora_atingido", executados_ultima_hora=len(_SENTINEL_EXECUCOES_TS), limite=max_hora)
+        return {
+            "ok": True,
+            "ativo": ativo,
+            "acionou_lab": False,
+            "limite_hora_atingido": True,
+            "erros_analisados": 0,
+            "motivo": f"Limite de {max_hora} ciclo(s) auto-fix por hora atingido.",
+        }
+
+    if _LAB_LOCK.locked():
+        return {
+            "ok": True,
+            "ativo": ativo,
+            "acionou_lab": False,
+            "erros_analisados": 0,
+            "motivo": "Athena Lab ja esta executando outro ciclo no momento.",
+        }
+
+    janela_min = sentinel_intervalo_minutos() + 5
+    erros = await asyncio.to_thread(consultar_erros_logfire_estruturados, minutos=janela_min, limite=15)
+    if not erros:
+        return {
+            "ok": True,
+            "ativo": ativo,
+            "acionou_lab": False,
+            "erros_analisados": 0,
+            "motivo": f"Nenhum erro encontrado no Logfire nos ultimos {janela_min} min.",
+        }
+
+    bugs_filtrados = 0
+    duplicados = 0
+    for erro in erros:
+        if not eh_bug_de_codigo_corrigivel(erro):
+            continue
+        bugs_filtrados += 1
+        fp = gerar_fingerprint_erro(erro)
+        if _erro_sentinel_ja_visto(fp, db_path=db_path):
+            duplicados += 1
+            continue
+
+        resumo_erro = _resumir_erro_logfire(erro)
+        exc_type = str(erro.get("exception_type") or "Error").strip()
+        _registrar_erro_sentinel_visto(fp, exc_type, resumo_erro, acionou_lab=True, db_path=db_path)
+        _SENTINEL_EXECUCOES_TS.append(time.time())
+
+        foco_fix = f"Corrigir bug capturado no Logfire: {resumo_erro}"
+        _log.info(
+            "sentinel_bug_detectado",
+            fingerprint=fp,
+            exception_type=exc_type,
+            resumo=resumo_erro,
+            background_lab=background_lab,
+        )
+
+        if background_lab:
+            task = asyncio.create_task(
+                rodar_ciclo_rd(foco=foco_fix, categoria="auto-fix-logfire", db_path=db_path, repo_dir=repo_dir)
+            )
+            _SENTINEL_TASKS_BG.add(task)
+            task.add_done_callback(_SENTINEL_TASKS_BG.discard)
+            return {
+                "ok": True,
+                "ativo": ativo,
+                "acionou_lab": True,
+                "em_segundo_plano": True,
+                "fingerprint": fp,
+                "resumo_erro": resumo_erro,
+                "erros_analisados": len(erros),
+                "motivo": f"Bug detectado ({exc_type}) — Athena Lab iniciado em segundo plano.",
+            }
+
+        res_lab = await rodar_ciclo_rd(
+            foco=foco_fix,
+            categoria="auto-fix-logfire",
+            db_path=db_path,
+            repo_dir=repo_dir,
+        )
+        return {
+            "ok": True,
+            "ativo": ativo,
+            "acionou_lab": True,
+            "fingerprint": fp,
+            "resumo_erro": resumo_erro,
+            "erros_analisados": len(erros),
+            "resultado_lab": res_lab,
+        }
+
+    return {
+        "ok": True,
+        "ativo": ativo,
+        "acionou_lab": False,
+        "erros_analisados": len(erros),
+        "bugs_filtrados": bugs_filtrados,
+        "duplicados_ignorados": duplicados,
+        "motivo": "Nenhum bug de codigo inedito encontrado no Logfire.",
+    }

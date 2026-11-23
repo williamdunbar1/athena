@@ -2317,6 +2317,27 @@
     flex-wrap: wrap;
     margin-top: 10px;
   }
+  .lab-badge.autofix {
+    color: #111214;
+    background: var(--accent, #facc15);
+    border-color: var(--accent, #facc15);
+    font-weight: 700;
+  }
+  .nav-badge {
+    margin-left: auto;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--accent, #facc15);
+    color: #111214;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 18px;
+    text-align: center;
+    box-shadow: 0 0 0 2px rgba(17, 18, 20, 0.7);
+  }
+  .nav-badge.hidden { display: none; }
 </style>
 </head>
 <body>
@@ -2356,6 +2377,7 @@
         <button type="button" class="nav-item" data-aba="lab" onclick="abrirAba('lab', this)" title="Athena Lab (R&D)">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9.5V3"/><path d="M8.5 14h7"/></svg>
           <span class="nav-label">Athena Lab</span>
+          <span id="nav-badge-lab" class="nav-badge hidden" title="Propostas pendentes no Athena Lab">0</span>
         </button>
       </nav>
 
@@ -2833,6 +2855,9 @@
                   <input id="lab-foco-input" type="text" placeholder="Foco opcional (ex.: reduzir tokens, melhorar RAG, segurança)..." />
                   <button type="button" id="btn-lab-executar" class="btn-primary" onclick="dispararCicloLab()">
                     <span>Rodar Ciclo R&amp;D</span>
+                  </button>
+                  <button type="button" id="btn-lab-sentinel" class="ghost" onclick="checarLogfireSentinelAgora(this)" title="Consultar erros recentes no Logfire (0 tokens) e gerar Auto-Fix se houver bug novo">
+                    <span>Checar Logfire agora</span>
                   </button>
                 </div>
                 <div id="lab-status-banner" class="lab-status-banner hidden">
@@ -5733,6 +5758,43 @@ async function carregarSkills() {
 
 /* ===== ATHENA LAB (R&D) ===== */
 let _labPollTimer = null;
+let _labBadgeInterval = null;
+
+function atualizarBadgeNavLab(qtdPendentes) {
+  const el = document.getElementById("nav-badge-lab");
+  if (!el) return;
+  const n = Math.max(0, Number(qtdPendentes || 0));
+  el.textContent = n > 99 ? "99+" : String(n);
+  el.classList.toggle("hidden", n <= 0);
+}
+
+async function atualizarBadgeAthenaLab() {
+  try {
+    const r = await fetch("/api/lab/propostas").then(x => x.json());
+    if (r && typeof r.pendentes === "number") {
+      atualizarBadgeNavLab(r.pendentes);
+    } else if (r && Array.isArray(r.propostas)) {
+      atualizarBadgeNavLab(r.propostas.filter(p => p.status === "pendente").length);
+    }
+  } catch (_) {}
+}
+
+async function checarLogfireSentinelAgora(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch("/api/lab/sentinel/verificar-agora", { method: "POST" }).then(x => x.json());
+    if (r && r.ok) {
+      mostrarToast(r.motivo || (r.acionou_lab ? "Bug detectado no Logfire — Auto-Fix iniciado!" : "Logfire verificado: nenhum bug novo."));
+      await carregarAthenaLab();
+    } else {
+      mostrarToast((r && r.erro) || "Falha ao verificar Logfire Sentinel.", true);
+    }
+  } catch (_) {
+    mostrarToast("Erro de comunicação ao acionar Logfire Sentinel.", true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
 
 function _renderCheckBadge(nome, info) {
   const ok = Boolean(info && info.ok);
@@ -5755,6 +5817,10 @@ function _renderCardPropostaLab(p, ehPendente) {
 
   const notaCrit = crit.nota !== undefined ? `<span class="lab-badge accent">Crítico: ${escHtml(crit.nota)}/10</span>` : "";
   const badgeStatus = `<span class="lab-badge ${p.status === "aprovada" ? "ok" : (p.status === "pendente" ? "accent" : "fail")}">${escHtml(p.status)}</span>`;
+  const ehAutoFix = String(p.categoria || "").toLowerCase() === "auto-fix-logfire";
+  const badgeCategoria = ehAutoFix
+    ? '<span class="lab-badge autofix">Auto-Fix · Logfire</span>'
+    : (p.categoria ? `<span class="lab-badge">${escHtml(p.categoria)}</span>` : "");
 
   const blocoDiff = p.diff_texto
     ? `<details class="lab-diff-details"><summary>Ver git diff (${escHtml(p.branch || "patch")})</summary><pre class="lab-diff-pre">${escHtml(p.diff_texto)}</pre></details>`
@@ -5775,7 +5841,7 @@ function _renderCardPropostaLab(p, ehPendente) {
           <div style="font-size:12px;color:var(--muted);margin-top:3px;">${escHtml(p.ganho_estimado || p.resumo || "")}</div>
         </div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          ${p.categoria ? `<span class="lab-badge">${escHtml(p.categoria)}</span>` : ""}
+          ${badgeCategoria}
           ${notaCrit}
           ${badgeStatus}
         </div>
@@ -5836,6 +5902,7 @@ async function carregarAthenaLab() {
 
     const pendentes = lista.filter(p => p.status === "pendente");
     const historico = lista.filter(p => p.status !== "pendente");
+    atualizarBadgeNavLab(Number(r.pendentes ?? pendentes.length));
     if (badgeCount) badgeCount.textContent = `${pendentes.length} pendente(s)`;
 
     if (boxPend) {
@@ -5914,7 +5981,12 @@ async function carregarDadosIniciaisApp() {
   _appInicializada = true;
   obterOuCriarConversaId();
   atualizarBotoesAuthUI();
-  await Promise.all([carregarConfig(), carregarHistorico(), carregarSkills()]);
+  await Promise.all([carregarConfig(), carregarHistorico(), carregarSkills(), atualizarBadgeAthenaLab()]);
+  if (!_labBadgeInterval) {
+    _labBadgeInterval = setInterval(() => {
+      if (_appInicializada) atualizarBadgeAthenaLab();
+    }, 60000);
+  }
   reconectarConversaAtiva();
 }
 

@@ -183,6 +183,34 @@ def buscar_erros_logfire(minutos: int = 60, filtro: str = "", limite: int = 10) 
     return _limitar_saida(linhas)
 
 
+def consultar_erros_logfire_estruturados(minutos: int = 15, limite: int = 15) -> list[dict]:
+    """Retorna lista estruturada dos ultimos erros/excecoes no Logfire (0 tokens, somente leitura).
+
+    Se `LOGFIRE_READ_TOKEN` nao estiver configurado, retorna lista vazia silenciosamente.
+    """
+    if not (os.getenv("LOGFIRE_READ_TOKEN") or "").strip():
+        return []
+    mins = max(1, min(int(minutos or 15), 10080))
+    lim = max(1, min(int(limite or 15), 30))
+    min_ts = datetime.now(UTC) - timedelta(minutes=mins)
+    sql = (
+        "SELECT "
+        "  start_timestamp, service_name, span_name, message, level, "
+        "  otel_status_code, is_exception, exception_type, exception_message, "
+        "  exception_stacktrace, duration, trace_id "
+        "FROM records "
+        "WHERE (is_exception = true OR level >= 17 OR otel_status_code = 'ERROR') "
+        "ORDER BY start_timestamp DESC"
+    )
+    try:
+        with _obter_cliente_logfire() as client:
+            res = client.query_json_rows(sql, min_timestamp=min_ts, limit=lim)
+        rows = res.get("rows") if isinstance(res, dict) else []
+        return [r for r in (rows or []) if isinstance(r, dict)]
+    except Exception:
+        return []
+
+
 def consultar_trace_logfire(texto_busca: str, minutos: int = 1440, limite: int = 10) -> str:
     """Busca os ultimos traces/spans no Logfire por nome, mensagem ou trace_id (com tokens, duracao e erro; resumido <= 3000 chars)."""
     termo = (texto_busca or "").strip()

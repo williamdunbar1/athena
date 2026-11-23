@@ -64,6 +64,8 @@ from athena_lab import (
     obter_status_lab,
     rejeitar_proposta_lab,
     rodar_ciclo_rd,
+    sentinel_ativo,
+    verificar_erros_logfire_sentinel,
 )
 from compactador import (
     agendar_extracao_memorias,
@@ -1003,12 +1005,22 @@ _TAREFA_LAB_ATUAL: asyncio.Task | None = None
 
 @app.get("/api/lab/propostas")
 def api_lab_propostas():
-    """Lista todas as propostas do Athena Lab e o status do ciclo R&D atual."""
+    """Lista todas as propostas do Athena Lab, contagem de pendentes e status do ciclo/Sentinel."""
+    propostas = listar_propostas_lab()
+    pendentes = sum(1 for p in propostas if p.get("status") == "pendente")
     return {
         "ok": True,
         "status": obter_status_lab(),
-        "propostas": listar_propostas_lab(),
+        "propostas": propostas,
+        "pendentes": pendentes,
+        "sentinel_ativo": sentinel_ativo(),
     }
+
+
+@app.post("/api/lab/sentinel/verificar-agora")
+async def api_lab_sentinel_verificar_agora():
+    """Aciona manualmente o Logfire Sentinel (0 tokens na consulta; dispara Lab em 2o plano se achar bug novo)."""
+    return await verificar_erros_logfire_sentinel(forcar=True, background_lab=True)
 
 
 @app.post("/api/lab/executar")
