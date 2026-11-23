@@ -20,6 +20,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from guardrails import mascarar_segredos_e_pii
 from logging_config import obter_logger
 from memoria import _conn as _conn_memoria
 from memoria import guardar_fato, listar_fatos
@@ -436,12 +437,15 @@ async def extrair_memorias_em_background(
             continue
         if _contem_segredo_sensivel(chave_limpa) or _contem_segredo_sensivel(valor_limpo):
             continue
-        if _ja_existe_fato_semelhante(chave_limpa, valor_limpo, existentes):
+        valor_seguro, tipos_mascarados = mascarar_segredos_e_pii(valor_limpo)
+        if tipos_mascarados and "[MASCARADO:" in valor_seguro and len(valor_seguro.replace("[MASCARADO:cpf]", "").strip()) < 8:
+            continue
+        if _ja_existe_fato_semelhante(chave_limpa, valor_seguro, existentes):
             continue
 
-        guardar_fato(chave_limpa, valor_limpo, db_path=db_path)
-        existentes.append({"chave": chave_limpa, "valor": valor_limpo})
-        salvos.append((chave_limpa, valor_limpo))
+        guardar_fato(chave_limpa, valor_seguro, db_path=db_path)
+        existentes.append({"chave": chave_limpa, "valor": valor_seguro})
+        salvos.append((chave_limpa, valor_seguro))
 
     if salvos:
         _log.info(

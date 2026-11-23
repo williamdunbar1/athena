@@ -7,6 +7,8 @@ from urllib.parse import urlparse
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
 
+from guardrails import sanitizar_conteudo_externo
+
 PASTA_PRINTS = Path(__file__).resolve().parent / "sandbox_files" / "prints"
 LIMITE_TEXTO = 8000
 MAX_LINKS = 25
@@ -119,7 +121,7 @@ def _abrir_e_ler_pagina_sync(url: str) -> str:
             else "(nenhum link principal encontrado)"
         )
 
-        return (
+        bruto = (
             f"Titulo: {titulo}\n"
             f"URL: {url_final}\n\n"
             f"--- Conteudo ---\n"
@@ -127,6 +129,8 @@ def _abrir_e_ler_pagina_sync(url: str) -> str:
             f"--- Links Principais ---\n"
             f"{bloco_links}"
         )
+        sanitizado, _susp, _pads = sanitizar_conteudo_externo(bruto, origem=f"web:{url_final}")
+        return sanitizado
     except Exception as e:
         return f"Erro ao abrir e ler pagina ({url_valida}): {e}"
 
@@ -282,7 +286,9 @@ def _buscar_no_site_sync(url: str, texto_busca: str) -> str:
                 "\n--- Elementos encontrados ---\n"
                 + "\n".join(f"- <{item['tag']}> {item['texto']}" for item in elementos)
             )
-        return "\n".join(partes)
+        bruto = "\n".join(partes)
+        sanitizado, _susp, _pads = sanitizar_conteudo_externo(bruto, origem=f"web:{url_final}")
+        return sanitizado
     except Exception as e:
         return f"Erro ao buscar '{termo}' em ({url_valida}): {e}"
 
