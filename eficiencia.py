@@ -31,9 +31,11 @@ _RE_PONTUACAO_SAUDACAO = re.compile(r"[^\w\s]", re.UNICODE)
 DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
     "estudos": frozenset(
         {
-            "delegar_para_estudos",
+            "buscar_pdfs_faculdade_direto",
             "buscar_semantico",
             "carregar_skill",
+            "consultar_resumo_ulife_direto",
+            "delegar_para_estudos",
             "search_tools",
         }
     ),
@@ -60,6 +62,8 @@ DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
     "google": frozenset(
         {
             "delegar_para_google",
+            "listar_agenda_direto",
+            "listar_emails_direto",
         }
     ),
     "pesquisa": frozenset(
@@ -76,12 +80,13 @@ DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
     ),
     "obsidian": frozenset(
         {
-            "listar_notas_vault",
             "buscar_no_vault",
-            "ler_nota_vault",
+            "buscar_obsidian_direto",
+            "buscar_semantico",
             "escrever_nota_vault",
             "explorar_grafo_obsidian",
-            "buscar_semantico",
+            "ler_nota_vault",
+            "listar_notas_vault",
             "search_tools",
         }
     ),
