@@ -88,6 +88,7 @@ from ferramentas_windows import (
 from ferramentas_windows import (
     remover_whitelist as remover_whitelist_windows,
 )
+from grafo_obsidian import estatisticas_grafo
 from logging_config import configurar_logging, obter_logger
 from mcp_manager import (
     encerrar_conexoes_mcp,
@@ -948,6 +949,12 @@ def ver_servidores_mcp():
 @app.get("/api/skills")
 def ver_skills():
     return {"skills": listar_skills()}
+
+
+@app.get("/api/obsidian/grafo")
+async def ver_grafo_obsidian():
+    """Retorna metricas do GraphRAG do Obsidian Vault (nos, arestas, top 5 hubs e notas orfas)."""
+    return await asyncio.to_thread(estatisticas_grafo)
 
 
 class PedidoVozFalar(BaseModel):

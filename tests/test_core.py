@@ -1624,3 +1624,57 @@ def test_ollama_online_entra_como_fallback_final_no_auto_quando_nuvem_em_cooldow
     st_fb = agentes.verificar_ollama_disponivel(forcar=True)
     assert st_fb["disponivel"] is True
     assert st_fb["modelo"] == "llama3.2:3b"
+
+
+# ==============================================================================
+# 14. GRAPHRAG LEVE NO OBSIDIAN VAULT (grafo_obsidian.py + networkx)
+# ==============================================================================
+
+
+def test_graphrag_obsidian_multihop_hub_e_nota_orfa(tmp_path):
+    import grafo_obsidian as go
+
+    # Cria mini-vault com cadeia NotaA -> [[NotaB|B]] -> [[Sub/NotaC]] + NotaOrfa isolada
+    (tmp_path / "NotaA.md").write_text(
+        "---\ntags:\n  - calculo\n  - faculdade\n---\n# Nota A\nRevisao inicial ligada a [[NotaB|Link para B]] #matematica.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "NotaB.md").write_text(
+        "# Nota B\nConceito intermediario que aponta para [[Sub/NotaC]] e aprofunda derivadas.\n",
+        encoding="utf-8",
+    )
+    sub = tmp_path / "Sub"
+    sub.mkdir()
+    (sub / "NotaC.md").write_text(
+        "# Nota C\nAplicacao final em mecanica dos solidos #fisica.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "NotaOrfa.md").write_text(
+        "# Nota Orfa\nAnotacao solta sem nenhum link de entrada ou saida.\n",
+        encoding="utf-8",
+    )
+
+    # 1) Travessia multi-hop a partir de NotaA encontra NotaB (1 salto) e Sub/NotaC (2 saltos)
+    ctx_grafo = go.buscar_contexto_grafo("NotaA", profundidade=2, max_notas=6, vault_dir=tmp_path)
+    assert "[[NotaA]]" in ctx_grafo
+    assert "[[NotaB]]" in ctx_grafo
+    assert "[[Sub/NotaC]]" in ctx_grafo
+    assert "[[NotaA]] -> [[NotaB]] -> [[Sub/NotaC]]" in ctx_grafo
+    assert "[[NotaOrfa]]" not in ctx_grafo
+
+    # 2) Estatisticas identificam contagem exata, hub principal (NotaB) e nota orfa (NotaOrfa)
+    st = go.estatisticas_grafo(vault_dir=tmp_path)
+    assert st["total_notas"] == 4
+    assert st["total_conexoes"] == 2
+    assert st["top_hubs"][0]["nota"] == "NotaB"
+    assert st["top_hubs"][0]["grau"] == 2
+    assert st["top_hubs"][0]["entrada"] == 1
+    assert st["top_hubs"][0]["saida"] == 1
+    assert st["total_orfas"] == 1
+    assert [o["nota"] for o in st["notas_orfas"]] == ["NotaOrfa"]
+
+    # 3) Consulta estrutural por orfas + registro da tool na Orquestradora e Analista
+    txt_orfas = go.buscar_contexto_grafo("quais notas estao orfas?", vault_dir=tmp_path)
+    assert "[[NotaOrfa]]" in txt_orfas
+    assert "explorar_grafo_obsidian" in agentes.orquestrador._function_toolset.tools
+    assert "explorar_grafo_obsidian" in agentes.agente_analista._function_toolset.tools
