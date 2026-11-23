@@ -621,6 +621,14 @@ def obter_status_acoes_windows(ids: list[int]) -> dict[int, dict]:
     return {int(r[0]): _row_para_dict(r) for r in rows}
 
 
+def _abrir_com_startfile(alvo: str) -> None:
+    """Invoca `os.startfile` de forma portavel (somente Windows, sem quebrar typecheck no Linux)."""
+    startfile = getattr(os, "startfile", None)
+    if startfile is None:
+        raise OSError("os.startfile disponivel apenas no Windows.")
+    startfile(alvo)
+
+
 def _executar_acao_no_windows(tipo: str, alvo: str, argumentos: str = "") -> None:
     """Executa a acao aprovada no Windows 11 usando APENAS `os.startfile` ou `subprocess.Popen(..., shell=False)`."""
     if tipo == "abrir_url":
@@ -630,12 +638,12 @@ def _executar_acao_no_windows(tipo: str, alvo: str, argumentos: str = "") -> Non
             _validar_seguranca_comando(nav_exe)
             subprocess.Popen([nav_exe, url], shell=False, close_fds=True)
         else:
-            os.startfile(url)
+            _abrir_com_startfile(url)
         return
 
     if tipo == "abrir_caminho":
         caminho_res = _resolver_caminho_local(alvo)
-        os.startfile(str(caminho_res))
+        _abrir_com_startfile(str(caminho_res))
         return
 
     if tipo == "abrir_app":
@@ -646,12 +654,12 @@ def _executar_acao_no_windows(tipo: str, alvo: str, argumentos: str = "") -> Non
         ext = p_alvo.suffix.lower()
         args_lista = shlex.split(argumentos, posix=False) if (argumentos or "").strip() else []
         if ext == ".lnk" and not args_lista:
-            os.startfile(str(p_alvo))
+            _abrir_com_startfile(str(p_alvo))
         elif ext == ".exe":
             subprocess.Popen([str(p_alvo), *args_lista], shell=False, close_fds=True)
         elif ext == ".lnk":
             # Atalho .lnk sempre via os.startfile (sem shell)
-            os.startfile(str(p_alvo))
+            _abrir_com_startfile(str(p_alvo))
         else:
             raise ValueError(f"Tipo de executavel nao suportado: {ext}")
         return

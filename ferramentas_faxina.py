@@ -2,6 +2,7 @@ import hashlib
 import os
 import shutil
 import sqlite3
+import sys
 import unicodedata
 from contextlib import contextmanager
 from datetime import datetime
@@ -92,7 +93,7 @@ def obter_pasta_desktop() -> Path:
     """Detecta o caminho REAL da Area de Trabalho no Windows via winreg (User Shell Folders -> Desktop),
     expandindo variaveis de ambiente com `os.path.expandvars`, com fallback para OneDrive/local.
     """
-    if winreg is not None:
+    if sys.platform == "win32" and winreg is not None:
         try:
             chave = r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, chave) as key:

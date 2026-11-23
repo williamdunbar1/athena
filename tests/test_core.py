@@ -492,13 +492,13 @@ def test_mcp_logfire_removido_e_sem_vazar_token(monkeypatch, tmp_path):
     import mcp_manager as mm
 
     # O servidor MCP remoto do Logfire foi removido de mcp_servers.json (mesmo com LOGFIRE_READ_TOKEN definido)
-    monkeypatch.setenv("LOGFIRE_READ_TOKEN", "pylf_v1_read_segredo_teste")
+    monkeypatch.setenv("LOGFIRE_READ_TOKEN", "dummy-logfire-token")
     toolsets_padrao = mm.carregar_servidores_mcp(recarregar=True)
     assert not any("logfire" in (ts.id or "").lower() for ts in toolsets_padrao)
     st_padrao = {item["nome"]: item for item in mm.listar_servidores_mcp()}
     assert "logfire" not in st_padrao
     assert "logfire" not in mm.CONFIG_PATH.read_text(encoding="utf-8").lower()
-    assert "pylf_v1_read_segredo_teste" not in str(st_padrao)
+    assert "dummy-logfire-token" not in str(st_padrao)
 
     # Verifica que servidores HTTP condicionais em geral ainda expandem Bearer em memoria sem vazar
     cfg_tmp = tmp_path / "mcp_servers_test.json"
@@ -525,7 +525,7 @@ def test_mcp_logfire_removido_e_sem_vazar_token(monkeypatch, tmp_path):
     monkeypatch.delenv("MCP_TESTE_TOKEN", raising=False)
     assert mm.carregar_servidores_mcp(recarregar=True) == []
 
-    token_fake = "segredo_mcp_teste_123"
+    token_fake = "dummy-mcp-token"
     monkeypatch.setenv("MCP_TESTE_TOKEN", token_fake)
     toolsets_com = mm.carregar_servidores_mcp(recarregar=True)
     ts_ex = next((ts for ts in toolsets_com if ts.id == "mcp:exemplo-seguro"), None)

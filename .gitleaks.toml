@@ -1,0 +1,11 @@
+title = "Athena Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Placeholders de documentacao e fixtures ficticias de testes offline"
+paths = [
+  '''^\.env\.example$''',
+  '''^tests/test_core\.py$''',
+]
