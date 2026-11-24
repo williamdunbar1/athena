@@ -530,7 +530,8 @@ class _RetryOnModelErrorsCompat(AbstractCapability[Any]):
             if isinstance(item, type) and issubclass(item, BaseException):
                 handlers.append(lambda exc, cls=item: isinstance(exc, cls))
             elif callable(item):
-                handlers.append(item)
+                fn_pred: Any = item
+                handlers.append(lambda exc, fn=fn_pred: bool(fn(exc)))
         self._predicates = SimpleNamespace(exception_handlers=tuple(handlers))
 
     async def wrap_model_request(self, ctx: Any, *, request_context: Any, handler: Any) -> Any:
