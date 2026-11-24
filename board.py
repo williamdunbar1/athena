@@ -375,7 +375,8 @@ def listar_board(
     db_path: str | Path | None = None,
 ) -> list[dict[str, Any]]:
     """Lista cards do Board ordenados por `atualizado_em DESC` (opcionalmente filtrando por status)."""
-    filtro_st = normalizar_status_board(status) if (status or "").strip() else None
+    status_limpo = (status or "").strip()
+    filtro_st = normalizar_status_board(status_limpo) if status_limpo else None
     with _conn_board(db_path) as c:
         if filtro_st:
             rows = c.execute(

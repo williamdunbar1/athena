@@ -1088,7 +1088,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
 
     # 1) Primeira execucao em banco novo: cria schema completo (ate a migration 004) e registra revisao
     revisao_1 = memoria.executar_migrations(db_teste)
-    assert revisao_1 == "006_rotinas_dinamicas_e_auditoria"
+    assert revisao_1 == "007_board_e_recibos"
     assert db_teste.is_file()
 
     with sqlite3.connect(db_teste) as c:
@@ -1119,7 +1119,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
 
     # 2) Segunda execucao (idempotencia): mantem revisao e 100% dos dados intactos
     revisao_2 = memoria.executar_migrations(db_teste)
-    assert revisao_2 == "006_rotinas_dinamicas_e_auditoria"
+    assert revisao_2 == "007_board_e_recibos"
 
     with sqlite3.connect(db_teste) as c:
         fato = c.execute("SELECT valor FROM fatos WHERE chave = 'curso'").fetchone()
@@ -2475,7 +2475,7 @@ def test_athena_lab_migration_003_e_bloqueio_arquivos_sensiveis(tmp_path):
 
     # 1) Migration 003_lab_propostas cria tabela `lab_propostas` com todas as colunas esperadas
     db_teste = tmp_path / "lab_migration.db"
-    assert memoria.executar_migrations(db_teste) == "006_rotinas_dinamicas_e_auditoria"
+    assert memoria.executar_migrations(db_teste) == "007_board_e_recibos"
     with sqlite3.connect(db_teste) as c:
         cols = {r[1] for r in c.execute("PRAGMA table_info(lab_propostas)").fetchall()}
     assert {
@@ -2834,7 +2834,7 @@ def test_migration_004_e_crud_conversas_com_auto_titulo_e_legadas(tmp_path):
     import memoria
 
     db_teste = tmp_path / "conversas_004.db"
-    assert memoria.executar_migrations(db_teste) == "006_rotinas_dinamicas_e_auditoria"
+    assert memoria.executar_migrations(db_teste) == "007_board_e_recibos"
 
     with sqlite3.connect(db_teste) as c:
         cols_conv = {r[1] for r in c.execute("PRAGMA table_info(conversas)").fetchall()}
@@ -3606,7 +3606,7 @@ def test_memoria_temporal_migration_005_atualizacao_linha_do_tempo_e_grafo(monke
 
     # 1) Migration 005 cria tabela `fatos_temporais` e indice composto de forma idempotente
     db_temp = tmp_path / "temporal_005.db"
-    assert memoria.executar_migrations(db_temp) == "006_rotinas_dinamicas_e_auditoria"
+    assert memoria.executar_migrations(db_temp) == "007_board_e_recibos"
 
     with sqlite3.connect(db_temp) as c:
         cols = {r[1] for r in c.execute("PRAGMA table_info(fatos_temporais)").fetchall()}
@@ -3903,7 +3903,7 @@ def test_migration_006_rotinas_dinamicas_auto_pausa_e_auditoria_pastas(monkeypat
 
     # 1) Migration 006 cria as 3 tabelas idempotentemente em SQLite temporario
     db_006 = tmp_path / "openbot_006.db"
-    assert memoria.executar_migrations(db_006) == "006_rotinas_dinamicas_e_auditoria"
+    assert memoria.executar_migrations(db_006) == "007_board_e_recibos"
 
     with sqlite3.connect(db_006) as c:
         tabelas = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
