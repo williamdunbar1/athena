@@ -51,6 +51,9 @@ from eficiencia import (
     normalizar_texto_eficiencia,
 )
 from ferramentas_estudos import (
+    extrair_transcricao_youtube as _extrair_transcricao_youtube,
+)
+from ferramentas_estudos import (
     ler_pdf_paginas,
     listar_materias_e_aulas,
     listar_provas,
@@ -1309,6 +1312,13 @@ def ler_paginas_de_pdf(ctx: RunContext[ContextoMissao], trecho_nome: str, pagina
 
 
 @agente_estudos.tool
+async def ler_transcricao_youtube_estudos(ctx: RunContext[ContextoMissao], url_ou_id: str) -> str:
+    """Extrai a transcricao/legenda de uma videoaula do YouTube (watch?v=, youtu.be/ ou shorts/) para resumo e estudo."""
+    ctx.deps.registrar("Agente Estudos", "YouTube (Transcricao)", "ferramenta", f"extrair_transcricao_youtube({url_ou_id[:80]})")
+    return await asyncio.to_thread(_extrair_transcricao_youtube, url_ou_id)
+
+
+@agente_estudos.tool
 def registrar_prova(ctx: RunContext[ContextoMissao], materia: str, titulo: str, data_iso: str, detalhes: str = "") -> str:
     """Cadastra uma prova ou entrega no banco (data_iso no formato AAAA-MM-DD)."""
     ctx.deps.registrar("Agente Estudos", "Agenda Provas", "ferramenta", f"salvar_prova({materia} - {titulo} em {data_iso})")
@@ -2145,6 +2155,18 @@ async def buscar_pdfs_faculdade_direto(ctx: RunContext[ContextoMissao], consulta
     )
     bruto = await asyncio.to_thread(_buscar_semantico, consulta, fonte="pdf", limite=5)
     return compactar_saida_tool(bruto)
+
+
+@orquestrador.tool
+async def ler_transcricao_youtube(ctx: RunContext[ContextoMissao], url_ou_id: str) -> str:
+    """Extrai diretamente a transcricao/legenda de uma videoaula do YouTube (youtube.com/watch?v=, youtu.be/ ou shorts/), priorizando pt/pt-BR/en."""
+    ctx.deps.registrar(
+        "Athena",
+        "YouTube (Transcricao)",
+        "ferramenta",
+        f"ler_transcricao_youtube({url_ou_id[:80]})",
+    )
+    return await asyncio.to_thread(_extrair_transcricao_youtube, url_ou_id)
 
 
 @orquestrador.tool

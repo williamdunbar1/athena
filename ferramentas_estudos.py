@@ -1,3 +1,4 @@
+import importlib
 import os
 import re
 import sqlite3
@@ -5,8 +6,15 @@ import unicodedata
 from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs, urlparse
 
 from eficiencia import compactar_saida_tool
+from guardrails import sanitizar_conteudo_externo
+
+IDIOMAS_YOUTUBE_PADRAO: tuple[str, ...] = ("pt", "pt-BR", "en")
+MAX_CHARS_TRANSCRICAO_YOUTUBE = 12000
+_RE_YOUTUBE_ID = re.compile(r"^[A-Za-z0-9_-]{11}$")
 
 PASTA_FACULDADE = Path(
     os.getenv("PASTA_FACULDADE", "").strip() or (Path.home() / "Documents" / "agente-faculdade")
@@ -269,3 +277,138 @@ def marcar_progresso(materia: str, arquivo: str, status: str) -> str:
             (materia.strip(), arquivo.strip(), st, agora),
         )
     return f"Progresso atualizado: {materia}/{arquivo} -> {st}"
+
+
+def extrair_video_id_youtube(url_ou_id: str) -> str | None:
+    """Extrai o `video_id` (11 chars) de URLs do YouTube (`watch?v=`, `youtu.be/`, `shorts/`, `embed/`, `live/`) ou ID puro."""
+    bruto = (url_ou_id or "").strip()
+    if not bruto:
+        return None
+
+    if _RE_YOUTUBE_ID.match(bruto):
+        return bruto
+
+    cand_url = bruto if "://" in bruto else f"https://{bruto}"
+    parsed = urlparse(cand_url)
+    host = (parsed.hostname or "").lower().removeprefix("www.").removeprefix("m.").removeprefix("music.")
+    partes = [p for p in parsed.path.split("/") if p]
+
+    candidato: str | None = None
+    if host == "youtu.be" and partes:
+        candidato = partes[0]
+    elif host in ("youtube.com", "youtube-nocookie.com"):
+        qs = parse_qs(parsed.query)
+        if "v" in qs and qs["v"]:
+            candidato = qs["v"][0]
+        elif len(partes) >= 2 and partes[0] in ("shorts", "embed", "live", "v"):
+            candidato = partes[1]
+
+    if candidato and _RE_YOUTUBE_ID.match(candidato):
+        return candidato
+    return None
+
+
+def _extrair_texto_itens_transcricao(itens) -> str:
+    partes: list[str] = []
+    for item in itens or []:
+        txt = item.get("text") if isinstance(item, dict) else getattr(item, "text", None)
+        limpo = " ".join(str(txt or "").split())
+        if limpo:
+            partes.append(limpo)
+    return " ".join(partes).strip()
+
+
+def extrair_transcricao_youtube(
+    url_ou_id: str,
+    idiomas: tuple[str, ...] = IDIOMAS_YOUTUBE_PADRAO,
+    max_chars: int = MAX_CHARS_TRANSCRICAO_YOUTUBE,
+) -> str:
+    """Extrai a transcricao/legenda de uma videoaula do YouTube (lazy import `youtube-transcript-api`).
+
+    Prioriza `['pt', 'pt-BR', 'en']` (incluindo legendas geradas automaticamente), sanitiza com
+    `guardrails.sanitizar_conteudo_externo` e compacta com teto padrao de 12.000 chars.
+    """
+    video_id = extrair_video_id_youtube(url_ou_id)
+    if not video_id:
+        return (
+            "URL ou ID do YouTube invalido. Informe um link como "
+            "`https://www.youtube.com/watch?v=...`, `https://youtu.be/...` ou `youtube.com/shorts/...`."
+        )
+
+    try:
+        mod_yt = importlib.import_module("youtube_transcript_api")
+        api_cls = getattr(mod_yt, "YouTubeTranscriptApi", None)
+        if api_cls is None:
+            raise ImportError("YouTubeTranscriptApi indisponivel.")
+    except Exception:
+        return (
+            "Plugin opcional 'youtube-transcript-api' nao esta instalado neste ambiente. "
+            "Instale com `uv sync --extra estudos` (ou `uv sync --extra web`)."
+        )
+
+    langs = list(idiomas or IDIOMAS_YOUTUBE_PADRAO)
+    itens = None
+    ultimo_erro: Exception | None = None
+
+    # Suporte nativo a youtube-transcript-api v1.x (instancia .fetch/.list) e v0.6.x (metodos de classe)
+    try:
+        if hasattr(api_cls, "fetch"):
+            api = api_cls()
+            try:
+                itens = api.fetch(video_id, languages=langs)
+            except Exception as exc_fetch:
+                ultimo_erro = exc_fetch
+                if hasattr(api, "list"):
+                    lista_tr = api.list(video_id)
+                    escolhida: Any = None
+                    for metodo in ("find_transcript", "find_generated_transcript"):
+                        fn_find = getattr(lista_tr, metodo, None)
+                        if callable(fn_find):
+                            try:
+                                escolhida = fn_find(langs)
+                                break
+                            except Exception:
+                                continue
+                    if escolhida is None:
+                        for tr in lista_tr:
+                            escolhida = tr
+                            break
+                    if escolhida is not None:
+                        itens = escolhida.fetch()
+        elif hasattr(api_cls, "get_transcript"):
+            try:
+                itens = api_cls.get_transcript(video_id, languages=langs)
+            except Exception as exc_get:
+                ultimo_erro = exc_get
+                if hasattr(api_cls, "list_transcripts"):
+                    lista_tr = api_cls.list_transcripts(video_id)
+                    escolhida: Any = None
+                    for metodo in ("find_transcript", "find_generated_transcript"):
+                        fn_find = getattr(lista_tr, metodo, None)
+                        if callable(fn_find):
+                            try:
+                                escolhida = fn_find(langs)
+                                break
+                            except Exception:
+                                continue
+                    if escolhida is None:
+                        for tr in lista_tr:
+                            escolhida = tr
+                            break
+                    if escolhida is not None:
+                        itens = escolhida.fetch()
+    except Exception as exc:
+        ultimo_erro = exc
+
+    texto_extraido = _extrair_texto_itens_transcricao(itens)
+    if not texto_extraido:
+        det = f" ({type(ultimo_erro).__name__}: {ultimo_erro})" if ultimo_erro else ""
+        return f"Nao foi possivel obter legendas/transcricao para o video `{video_id}`{det}."
+
+    url_canonica = f"https://www.youtube.com/watch?v={video_id}"
+    bruto = (
+        f"[Transcricao de Videoaula do YouTube | ID: {video_id} | URL: {url_canonica}]\n\n"
+        f"{texto_extraido}"
+    )
+    sanitizado, _susp, _pads = sanitizar_conteudo_externo(bruto, origem=f"youtube:{video_id}")
+    return compactar_saida_tool(sanitizado, max_chars=max(500, int(max_chars or MAX_CHARS_TRANSCRICAO_YOUTUBE)))

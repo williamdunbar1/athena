@@ -15,6 +15,12 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/styles/atom-one-dark.min.css" />
+<script defer src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
 <style>
   :root {
     --bg: #111214;
@@ -970,6 +976,91 @@
     color: var(--text);
     padding: 0;
     font-size: 13px;
+  }
+
+  /* Chat rico: blocos de codigo (highlight.js + Copiar), Mermaid e KaTeX */
+  .code-block-wrap {
+    margin: 14px 0;
+    background: #14161b;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  .code-block-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-ui);
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .code-lang {
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    color: var(--muted);
+  }
+  .code-copy-btn {
+    height: 24px;
+    padding: 0 9px;
+    border-radius: 6px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: 11.5px;
+    font-weight: 600;
+    gap: 5px;
+  }
+  .code-copy-btn:hover {
+    border-color: rgba(234, 179, 8, 0.5);
+    color: #eab308;
+    background: rgba(234, 179, 8, 0.1);
+  }
+  .code-copy-btn.copied {
+    border-color: rgba(234, 179, 8, 0.65);
+    color: #facc15;
+    background: rgba(234, 179, 8, 0.16);
+  }
+  .msg.bot .code-block-wrap pre {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 13px 15px;
+  }
+  .msg.bot .code-block-wrap pre code.hljs {
+    background: transparent;
+    padding: 0;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+  .mermaid-wrap {
+    margin: 14px 0;
+    padding: 14px;
+    background: #14161b;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow-x: auto;
+    text-align: center;
+  }
+  .mermaid-wrap svg {
+    max-width: 100%;
+    height: auto;
+  }
+  .msg.bot .katex {
+    color: var(--text-strong);
+    font-size: 1.04em;
+  }
+  .msg.bot .katex-display {
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 6px 2px;
+    margin: 12px 0;
   }
 
   .msg.bot table {
@@ -3354,9 +3445,33 @@ function fmtBRL(v) {
   return Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function _protegerLatexParaMarkdown(txt) {
+  const blocos = [];
+  const guardar = (trecho) => {
+    const idx = blocos.length;
+    blocos.push(trecho);
+    return `@@ATHENAMATH${idx}@@`;
+  };
+  // Preserva code fences e inline code intactos antes de proteger $$...$$ e $...$
+  const partes = String(txt || "").split(/(```[\s\S]*?```|`[^`\n]+`)/g);
+  const protegido = partes.map((parte, idx) => {
+    if (idx % 2 === 1) return parte;
+    return parte
+      .replace(/\$\$([\s\S]+?)\$\$/g, (m) => guardar(m))
+      .replace(/\\\[([\s\S]+?)\\\]/g, (m) => guardar(m))
+      .replace(/\\\((.+?)\\\)/g, (m) => guardar(m))
+      .replace(/(^|[^\\$])\$([^\s$][^$\n]*?[^\s$\\]|[^\s$\\])\$/g, (m, pre, inner) => pre + guardar("$" + inner + "$"));
+  }).join("");
+  return { protegido, blocos };
+}
+
 function renderMD(txt) {
   if (window.marked) {
-    const html = marked.parse(txt || "");
+    const { protegido, blocos } = _protegerLatexParaMarkdown(txt || "");
+    let html = marked.parse(protegido);
+    if (blocos.length) {
+      html = html.replace(/@@ATHENAMATH(\d+)@@/g, (_m, i) => escHtml(blocos[Number(i)] || ""));
+    }
     const tmp = document.createElement("div");
     tmp.innerHTML = html;
     tmp.querySelectorAll("script, iframe, object, embed, style, form").forEach(el => el.remove());
@@ -3389,6 +3504,159 @@ function renderMD(txt) {
     return tmp.innerHTML;
   }
   return escHtml(txt || "").replace(/\n/g, "<br>");
+}
+
+let _mermaidIniciado = false;
+let _mermaidSeq = 0;
+
+function _garantirMermaidIniciado() {
+  if (_mermaidIniciado || !window.mermaid) return false;
+  try {
+    window.mermaid.initialize({
+      startOnLoad: false,
+      theme: "dark",
+      securityLevel: "strict",
+      themeVariables: {
+        darkMode: true,
+        background: "#111214",
+        mainBkg: "#181a1f",
+        primaryColor: "#1f2228",
+        primaryTextColor: "#f8fafc",
+        primaryBorderColor: "#eab308",
+        secondaryColor: "#181a1f",
+        tertiaryColor: "#14161b",
+        lineColor: "#eab308",
+        nodeBorder: "#eab308",
+        clusterBkg: "#181a1f",
+        clusterBorder: "#3c424f",
+        edgeLabelBackground: "#181a1f",
+        fontFamily: "Inter, system-ui, sans-serif",
+      },
+    });
+    _mermaidIniciado = true;
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+async function _copiarTextoSeguro(texto) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(texto);
+    return;
+  }
+  const ta = document.createElement("textarea");
+  ta.value = texto;
+  ta.style.position = "fixed";
+  ta.style.opacity = "0";
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand("copy");
+  document.body.removeChild(ta);
+}
+
+function _aplicarHighlightECopiar(preEl) {
+  if (!preEl || (preEl.parentElement && preEl.parentElement.classList.contains("code-block-wrap"))) return;
+  const codeEl = preEl.querySelector("code");
+  if (!codeEl) return;
+
+  const textoBruto = codeEl.textContent || "";
+  let linguagem = "código";
+  const mLang = (codeEl.className || "").match(/(?:language|lang)-([a-zA-Z0-9_+#.-]+)/);
+  if (mLang && mLang[1]) {
+    linguagem = mLang[1].toLowerCase();
+  }
+
+  if (window.hljs && typeof window.hljs.highlightElement === "function") {
+    try {
+      window.hljs.highlightElement(codeEl);
+      if (linguagem === "código" && codeEl.result && codeEl.result.language) {
+        linguagem = String(codeEl.result.language).toLowerCase();
+      }
+    } catch (_) {}
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "code-block-wrap";
+
+  const head = document.createElement("div");
+  head.className = "code-block-head";
+
+  const lbl = document.createElement("span");
+  lbl.className = "code-lang";
+  lbl.textContent = linguagem;
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "code-copy-btn";
+  btn.textContent = "Copiar";
+  btn.title = "Copiar código";
+  btn.onclick = async () => {
+    try {
+      await _copiarTextoSeguro(textoBruto);
+      btn.textContent = "Copiado ✓";
+      btn.classList.add("copied");
+      setTimeout(() => {
+        btn.textContent = "Copiar";
+        btn.classList.remove("copied");
+      }, 2000);
+    } catch (_) {
+      mostrarToast("Não foi possível copiar o código.", true);
+    }
+  };
+
+  head.appendChild(lbl);
+  head.appendChild(btn);
+  preEl.parentNode.insertBefore(wrap, preEl);
+  wrap.appendChild(head);
+  wrap.appendChild(preEl);
+}
+
+async function enriquecerBolhaBot(bubble) {
+  if (!bubble) return;
+
+  // 1) Mermaid: renderiza blocos ```mermaid em SVG limpo (com fallback para codigo se erro ou offline)
+  const pres = Array.from(bubble.querySelectorAll("pre"));
+  for (const pre of pres) {
+    const code = pre.querySelector("code");
+    const ehMermaid = code && /\b(?:language|lang)-mermaid\b/i.test(code.className || "");
+    if (ehMermaid && window.mermaid) {
+      const codigoFonte = (code.textContent || "").trim();
+      if (codigoFonte && _garantirMermaidIniciado()) {
+        try {
+          const idSvg = `athena-mermaid-${++_mermaidSeq}`;
+          const rendered = await window.mermaid.render(idSvg, codigoFonte);
+          if (rendered && rendered.svg) {
+            const box = document.createElement("div");
+            box.className = "mermaid-wrap";
+            box.innerHTML = rendered.svg;
+            pre.replaceWith(box);
+            continue;
+          }
+        } catch (_) {
+          // Fallback silencioso: mantem o bloco de codigo original com highlight + Copiar
+        }
+      }
+    }
+    // 2) highlight.js + cabecalho com linguagem e botao Copiar
+    _aplicarHighlightECopiar(pre);
+  }
+
+  // 3) KaTeX: renderiza formulas $$...$$ e $...$ com protecao offline
+  if (typeof window.renderMathInElement === "function") {
+    try {
+      window.renderMathInElement(bubble, {
+        delimiters: [
+          { left: "$$", right: "$$", display: true },
+          { left: "\\[", right: "\\]", display: true },
+          { left: "$", right: "$", display: false },
+          { left: "\\(", right: "\\)", display: false },
+        ],
+        throwOnError: false,
+        ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code"],
+      });
+    } catch (_) {}
+  }
 }
 
 function ajustarTextarea(el) {
@@ -4594,6 +4862,7 @@ function addMsg(cls, txt, isHtml = false, extraOpts = null, animar = true) {
       }
     }
     if (!isHtml && txt) {
+      enriquecerBolhaBot(bubble);
       anexarBotaoOuvir(wrap, txt, extraOpts);
     }
     row.appendChild(wrap);
@@ -5065,6 +5334,7 @@ async function consumirFluxoSSEChat(resp, { bubbleInicial = null, modeloInicial 
   } else {
     const textoFinal = (finalPayload && finalPayload.resposta) ? finalPayload.resposta : textoAcumulado;
     alvoFinal.innerHTML = renderMD(textoFinal || "*(Sem resposta)*");
+    enriquecerBolhaBot(alvoFinal);
     if (textoFinal && alvoFinal.parentElement && alvoFinal.parentElement.classList.contains("msg-bot-wrap")) {
       if (finalPayload && Array.isArray(finalPayload.acoes_windows)) {
         for (const ac of finalPayload.acoes_windows) {

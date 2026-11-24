@@ -37,6 +37,7 @@ DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
             "consultar_resumo_ulife_direto",
             "delegar_para_estudos",
             "escrever_nota_vault",
+            "ler_transcricao_youtube",
             "search_tools",
         }
     ),
@@ -121,10 +122,10 @@ _PADROES_DOMINIO: dict[str, tuple[re.Pattern[str], ...]] = {
     "estudos": (
         re.compile(
             r"\b(?:ulife|faculdade|provas?|notas?|pdfs?|calculo|fisica|materias?|"
-            r"disciplinas?|aulas?|simulados?|estudos?|estudar|faltas|frequencia|"
-            r"semestre|a1|a2|a3)\b"
+            r"disciplinas?|aulas?|videoaulas?|youtube|transcric(?:ao|oes)|simulados?|"
+            r"estudos?|estudar|faltas|frequencia|semestre|a1|a2|a3)\b"
         ),
-        re.compile(r"\bplano\s+de\s+estudos?\b"),
+        re.compile(r"\bplano\s+de\s+estudos?\b|youtu\.be"),
     ),
     "windows": (
         re.compile(

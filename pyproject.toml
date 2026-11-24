@@ -50,6 +50,10 @@ docs = [
 web = [
     "crawl4ai",
     "browser-use",
+    "youtube-transcript-api",
+]
+estudos = [
+    "youtube-transcript-api",
 ]
 
 [dependency-groups]
