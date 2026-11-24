@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import hashlib
+import inspect
 import json
 import os
 import re
@@ -10,18 +11,20 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from zoneinfo import ZoneInfo
 
 import httpx
+import pydantic_ai.capabilities as _pydantic_caps
 from pydantic import ValidationError
 from pydantic_ai import Agent, RunContext
 from pydantic_ai.capabilities import (
+    AbstractCapability,
     Caching,
     DynamicCapability,
     FileUnderstanding,
     PrepareTools,
-    RetryOnModelErrors,
     Thinking,
     ToolSearch,
     WebFetch,
@@ -164,6 +167,9 @@ from ferramentas_navegador import (
 )
 from ferramentas_navegador import (
     buscar_no_site as _buscar_no_site,
+)
+from ferramentas_navegador import (
+    executar_tarefa_browser_use as _executar_tarefa_browser_use,
 )
 from ferramentas_navegador import (
     ler_pagina_markdown_crawl4ai as _ler_pagina_markdown_crawl4ai,
@@ -504,6 +510,51 @@ def _thinking_adaptativo(ctx: RunContext["ContextoMissao"]) -> Thinking | None:
     return Thinking(effort="low")
 
 
+class _RetryOnModelErrorsCompat(AbstractCapability[Any]):
+    """Fallback compativel de `RetryOnModelErrors` para `pydantic-ai 2.66` (ex.: quando `browser-use` e instalado)."""
+
+    def __init__(
+        self,
+        *,
+        retry_on: tuple[Any, ...],
+        max_attempts: int = 4,
+        initial_delay: float = 2.0,
+        max_delay: float = 6.0,
+    ) -> None:
+        self.retry_on = retry_on
+        self.max_attempts = max(1, int(max_attempts))
+        self.initial_delay = float(initial_delay)
+        self.max_delay = float(max_delay)
+        handlers: list[Callable[[Exception], bool]] = []
+        for item in retry_on:
+            if isinstance(item, type) and issubclass(item, BaseException):
+                handlers.append(lambda exc, cls=item: isinstance(exc, cls))
+            elif callable(item):
+                handlers.append(item)
+        self._predicates = SimpleNamespace(exception_handlers=tuple(handlers))
+
+    async def wrap_model_request(self, ctx: Any, *, request_context: Any, handler: Any) -> Any:
+        atraso = self.initial_delay
+        for tentativa in range(1, self.max_attempts + 1):
+            try:
+                return await handler(request_context)
+            except Exception as exc:
+                deve_tentar = any(bool(fn(exc)) for fn in self._predicates.exception_handlers)
+                if not deve_tentar or tentativa >= self.max_attempts:
+                    raise
+                await asyncio.sleep(min(atraso, self.max_delay))
+                atraso = min(atraso * 2.0, self.max_delay)
+        raise RuntimeError("Falha inesperada no retry de modelo.")
+
+
+_RETRY_CAP_NATIVO: Any = getattr(_pydantic_caps, "RetryOnModelErrors", None)
+RetryOnModelErrors: type[Any] = (
+    _RETRY_CAP_NATIVO
+    if isinstance(_RETRY_CAP_NATIVO, type)
+    else _RetryOnModelErrorsCompat
+)
+
+
 def _eh_http_503_gemini(exc: Exception) -> bool:
     """Predicado estrito para `RetryOnModelErrors`: casa apenas HTTP 503 real da API do modelo."""
     return isinstance(exc, ModelHTTPError) and getattr(exc, "status_code", None) == 503
@@ -513,7 +564,7 @@ def _criar_retry_503(
     max_attempts: int = 4,
     initial_delay: float = 2.0,
     max_delay: float = 6.0,
-) -> RetryOnModelErrors:
+) -> Any:
     """Retry automatico por request HTTP em picos de 503/ModelUnavailableError sem perder resultados de tools ja executadas."""
     return RetryOnModelErrors(
         retry_on=(ModelUnavailableError, ModelOverloadedError, _eh_http_503_gemini),
@@ -521,6 +572,14 @@ def _criar_retry_503(
         initial_delay=initial_delay,
         max_delay=max_delay,
     )
+
+
+def _criar_tool_search_orquestrador() -> Any:
+    params = inspect.signature(ToolSearch.__init__).parameters
+    if "tools" in params:
+        kwargs: dict[str, Any] = {"tools": list(FERRAMENTAS_SOB_DEMANDA_ORQUESTRADOR)}
+        return ToolSearch(**kwargs)
+    return ToolSearch()
 
 
 def _preparar_tools_orquestrador(
@@ -564,7 +623,7 @@ def _criar_capabilities_orquestrador() -> list:
     return [
         _criar_retry_503(max_attempts=4, initial_delay=2.0, max_delay=6.0),
         Caching(retention=True, messages=True),
-        ToolSearch(tools=list(FERRAMENTAS_SOB_DEMANDA_ORQUESTRADOR)),
+        _criar_tool_search_orquestrador(),
         DynamicCapability(_thinking_adaptativo, id="thinking_adaptativo"),
         FileUnderstanding(fallback_subagent_model=MODELO_FALLBACK_ARQUIVOS),
         PrepareTools(_preparar_tools_orquestrador),
@@ -1106,6 +1165,8 @@ agente_pesquisador = Agent(
         "(Crawl4AI em Markdown limpo sem lixo de HTML/menus, com fallback automatico) ou `WebFetch` para ler artigos, documentacoes e paginas dinamicas. "
         "Use `ler_pagina_web` como HTTP GET simples se necessario e reserve o navegador Playwright direto "
         "(`abrir_e_ler_pagina`, `tirar_screenshot`, `buscar_no_site`) para busca de elementos interativos ou capturas de tela. "
+        "So use `executar_navegacao_autonoma` (browser-use, limite de 8 passos) quando uma pesquisa publica REALMENTE exigir "
+        "varios cliques, filtros interativos ou paginacao — NUNCA para bancos, corretoras, compras ou logins. "
         "Nunca peca, colete ou salve senhas ou credenciais."
     ),
 )
@@ -1116,6 +1177,23 @@ async def ler_pagina_markdown(ctx: RunContext[ContextoMissao], url: str) -> str:
     """Metodo preferencial para ler artigos, documentacoes e paginas dinamicas em Markdown limpo (Crawl4AI com fallback automatico)."""
     ctx.deps.registrar("Agente Pesquisador", "Web Markdown (Crawl4AI)", "ferramenta", f"ler_pagina_markdown({url})")
     return await _ler_pagina_markdown_crawl4ai(url)
+
+
+@agente_pesquisador.tool
+async def executar_navegacao_autonoma(
+    ctx: RunContext[ContextoMissao],
+    objetivo: str,
+    url_inicial: str = "",
+    max_steps: int = 8,
+) -> str:
+    """Navegacao web autonoma (browser-use headless, max 8 passos) APENAS para pesquisas publicas que exijam multiplos cliques/filtros. Bloqueia bancos/corretoras/gov.br."""
+    ctx.deps.registrar(
+        "Agente Pesquisador",
+        "Browser-Use (Autonomo)",
+        "ferramenta",
+        f"executar_navegacao_autonoma({url_inicial or 'web'}, max_steps={max_steps})",
+    )
+    return await _executar_tarefa_browser_use(objetivo, url_inicial=url_inicial, max_steps=max_steps)
 
 
 @agente_pesquisador.tool

@@ -710,7 +710,6 @@ def test_ferramentas_logfire_respeitam_limite_3000_caracteres(monkeypatch):
 
 
 def test_retry_on_model_errors_configurado_nos_agentes():
-    from pydantic_ai.capabilities import RetryOnModelErrors
     from pydantic_ai.exceptions import (
         ModelHTTPError,
         ModelOverloadedError,
@@ -719,11 +718,13 @@ def test_retry_on_model_errors_configurado_nos_agentes():
     )
     from pydantic_ai.messages import ToolReturnPart
 
-    def _extrair_retry_caps(agente) -> list[RetryOnModelErrors]:
+    retry_cls = agentes.RetryOnModelErrors
+
+    def _extrair_retry_caps(agente) -> list:
         raiz = getattr(agente, "_root_capability", None)
         caps = getattr(raiz, "capabilities", None)
         lista = list(caps) if caps is not None else ([raiz] if raiz is not None else [])
-        return [c for c in lista if isinstance(c, RetryOnModelErrors)]
+        return [c for c in lista if isinstance(c, retry_cls)]
 
     todos = [
         ("orquestrador", agentes.orquestrador, 4),
@@ -970,8 +971,9 @@ def test_voz_transcrever_e_sintetizar_com_mocks_e_fallback_sem_extras(monkeypatc
     fake_edge_mod = SimpleNamespace(Communicate=_FakeCommunicate)
     monkeypatch.setattr(voz.importlib, "import_module", lambda nome: fake_edge_mod if nome == "edge_tts" else None)
 
-    audio_mp3 = _executar_coro_sync(voz.sintetizar_fala("**Olá** mundo 🚀!"))
+    audio_mp3, mime_mp3 = _executar_coro_sync(voz.sintetizar_fala("**Olá** mundo 🚀!"))
     assert audio_mp3 == b"ID3-MP3-CHUNK-1-CHUNK-2"
+    assert mime_mp3 == "audio/mpeg"
 
     # Fallback seguro (VozIndisponivelError) quando extra opcional nao esta instalado
     def _faltando(_nome: str):
@@ -3333,9 +3335,13 @@ def test_extrair_documento_para_markdown_fallback_e_mocks_office_pdf(monkeypatch
 
     monkeypatch.setattr(servidor, "PASTA_UPLOADS", tmp_path / "uploads")
 
+    async def _inline_to_thread(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
     async def _fake_compact(txt, _cid):
         return txt
 
+    monkeypatch.setattr(servidor.asyncio, "to_thread", _inline_to_thread)
     monkeypatch.setattr(servidor, "_montar_prompt_com_compactacao", _fake_compact)
     erro_up, entrada_mod, msg_hist, nomes_ex, _caminhos = _executar_async_real_teste(
         servidor._preparar_uploads_stream("Resuma este arquivo", [_FakeUpload()], "gemini-3.5-flash-lite")
@@ -3388,6 +3394,16 @@ def test_ler_pagina_markdown_crawl4ai_guardrails_compactacao_e_fallback(monkeypa
         return orig_import(nome, *a, **kw)
 
     monkeypatch.setattr(fn.importlib, "import_module", _com_crawl4ai)
+
+    async def _inline_to_thread_c4(func, *args, **kwargs):
+        return func(*args, **kwargs)
+
+    monkeypatch.setattr(fn.asyncio, "to_thread", _inline_to_thread_c4)
+    monkeypatch.setattr(
+        fn,
+        "_rodar_crawl4ai_em_thread",
+        lambda url_valida: _executar_coro_sync(fn._executar_crawl4ai_async(url_valida)),
+    )
     res_c4 = _executar_async_real_teste(fn.ler_pagina_markdown_crawl4ai("https://docs.exemplo.dev/guia"))
     assert '<conteudo_externo_nao_confiavel origem="web:https://docs.exemplo.dev/guia">' in res_c4
     assert fake_api_key not in res_c4
@@ -3432,3 +3448,143 @@ def test_ler_pagina_markdown_crawl4ai_guardrails_compactacao_e_fallback(monkeypa
     res_fb2 = _executar_async_real_teste(fn.ler_pagina_markdown_crawl4ai("https://exemplo.com/erro"))
     assert res_fb2 == "FALLBACK_OK:https://exemplo.com/erro"
     assert len(chamadas_fb) == 2
+
+
+# ==============================================================================
+# 26. PLUGINS OPCIONAIS LAZY: KOKORO-ONNX (TTS OFFLINE) E BROWSER-USE SEGURO
+# ==============================================================================
+
+
+def test_voz_kokoro_fallback_offline_e_ausencia_arquivos(monkeypatch, tmp_path):
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    import servidor
+    import voz
+
+    # 0) pyproject.toml inclui kokoro-onnx, soundfile (voice) e browser-use (web)
+    pyproject_txt = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text(encoding="utf-8")
+    assert '"kokoro-onnx"' in pyproject_txt
+    assert '"soundfile"' in pyproject_txt
+    assert '"browser-use"' in pyproject_txt
+
+    async def _inline_to_thread(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    monkeypatch.setattr(voz.asyncio, "to_thread", _inline_to_thread)
+    monkeypatch.setattr(voz, "_KOKORO_MODEL", None)
+    monkeypatch.setattr(voz, "_KOKORO_CACHE_KEY", None)
+
+    # 1) Ausencia dos arquivos .onnx/.bin nao quebra: levanta VozIndisponivelError limpo
+    dir_vazio = tmp_path / "kokoro_vazio"
+    dir_vazio.mkdir()
+    monkeypatch.setenv("KOKORO_MODEL_DIR", str(dir_vazio))
+    monkeypatch.setenv("ATHENA_TTS_ENGINE", "kokoro")
+    with pytest.raises(voz.VozIndisponivelError):
+        voz.sintetizar_fala_kokoro("Teste sem arquivos onnx")
+    with pytest.raises(voz.VozIndisponivelError):
+        _executar_coro_sync(voz.sintetizar_fala("Teste sem arquivos onnx"))
+
+    # 2) Fallback automatico em modo `auto`: edge-tts falha (sem rede) -> cai para kokoro-onnx mockado (`audio/wav`)
+    dir_kokoro = tmp_path / "kokoro_ok"
+    dir_kokoro.mkdir()
+    (dir_kokoro / voz.KOKORO_ARQUIVO_ONNX).write_bytes(b"ONNX-FAKE")
+    (dir_kokoro / voz.KOKORO_ARQUIVO_VOZES).write_bytes(b"VOICES-FAKE")
+    monkeypatch.setenv("KOKORO_MODEL_DIR", str(dir_kokoro))
+    monkeypatch.setenv("ATHENA_TTS_ENGINE", "auto")
+
+    class _EdgeSemRede:
+        def __init__(self, _text: str, *, voice: str):
+            self.voice = voice
+
+        async def stream(self):
+            raise ConnectionError("Sem conexao com a internet")
+            yield {}  # pragma: no cover
+
+    class _FakeKokoro:
+        def __init__(self, model_path: str, voices_path: str):
+            assert model_path.endswith("kokoro-v1.0.onnx")
+            assert voices_path.endswith("voices-v1.0.bin")
+
+        def create(self, text: str, *, voice: str, speed: float = 1.0, lang: str = "pt-br"):
+            assert "**" not in text
+            assert voice == "pf_dora"
+            assert lang == "pt-br"
+            return [0.0, 0.1, -0.1], 24000
+
+    class _FakeSoundFile:
+        @staticmethod
+        def write(buf, samples, sr: int, *, format: str = "WAV", subtype: str = "PCM_16"):
+            assert format == "WAV"
+            assert sr == 24000
+            assert len(samples) == 3
+            buf.write(b"RIFF-FAKE-WAV-DATA")
+
+    orig_import = voz.importlib.import_module
+
+    def _fake_import_tts(nome: str):
+        if nome == "edge_tts":
+            return SimpleNamespace(Communicate=_EdgeSemRede)
+        if nome == "kokoro_onnx":
+            return SimpleNamespace(Kokoro=_FakeKokoro)
+        if nome == "soundfile":
+            return _FakeSoundFile
+        return orig_import(nome)
+
+    monkeypatch.setattr(voz.importlib, "import_module", _fake_import_tts)
+    wav_bytes, mime_wav = _executar_coro_sync(voz.sintetizar_fala("**Bom dia** Athena!"))
+    assert wav_bytes == b"RIFF-FAKE-WAV-DATA"
+    assert mime_wav == "audio/wav"
+
+    # 3) Endpoint /api/voz/falar retorna audio/wav quando sintetizar_fala usa Kokoro
+    async def _fake_tts_wav(_texto: str, voz: str = ""):
+        return b"RIFF-WAV-ENDPOINT", "audio/wav"
+
+    monkeypatch.setattr(servidor, "sintetizar_fala", _fake_tts_wav)
+    resp_wav = _executar_coro_sync(servidor.falar_voz(servidor.PedidoVozFalar(texto="Oi Kokoro")))
+    assert resp_wav.media_type == "audio/wav"
+    assert resp_wav.body == b"RIFF-WAV-ENDPOINT"
+
+
+def test_browser_use_denylist_bancaria_e_fallback_seguro(monkeypatch):
+    import ferramentas_navegador as fn
+
+    # 1) Exposto exclusivamente no Agente Pesquisador (nunca no orquestrador)
+    tools_pesq = set((getattr(getattr(agentes.agente_pesquisador, "_function_toolset", None), "tools", None) or {}).keys())
+    tools_orq = set((getattr(getattr(agentes.orquestrador, "_function_toolset", None), "tools", None) or {}).keys())
+    assert "executar_navegacao_autonoma" in tools_pesq
+    assert "executar_navegacao_autonoma" not in tools_orq
+
+    # 2) Bloqueia dominios bancarios/financeiros/gov ANTES de importar ou instanciar browser_use
+    chamou_import = {"n": 0}
+
+    def _import_proibido(nome: str, *a, **kw):
+        if nome == "browser_use":
+            chamou_import["n"] += 1
+            raise AssertionError("browser_use nao deveria ser importado para dominio bloqueado!")
+        raise ModuleNotFoundError(nome)
+
+    monkeypatch.setattr(fn.importlib, "import_module", _import_proibido)
+
+    for obj, url in [
+        ("Ver meu saldo", "https://www.mercadopago.com.br/home"),
+        ("Acessar fatura", "https://nubank.com.br/app"),
+        ("Consultar extrato no Itau", ""),
+        ("Baixar comprovante", "https://www.gov.br/receitafederal"),
+        ("Abrir corretora", "https://www.xpi.com.br/login"),
+    ]:
+        res_bloq = _executar_coro_sync(fn.executar_tarefa_browser_use(obj, url_inicial=url))
+        assert "bloqueado" in res_bloq.lower()
+        assert chamou_import["n"] == 0
+
+    # 3) Quando browser_use nao esta instalado em dominio publico -> fallback limpo sugerindo crawl4ai
+    monkeypatch.setattr(
+        fn.importlib,
+        "import_module",
+        lambda nome, *a, **kw: (_ for _ in ()).throw(ModuleNotFoundError(nome)),
+    )
+    res_indisp = _executar_coro_sync(
+        fn.executar_tarefa_browser_use("Filtrar docs por Python 3.12", url_inicial="https://docs.python.org")
+    )
+    assert "ler_pagina_markdown_crawl4ai" in res_indisp
+    assert "uv sync --extra web" in res_indisp

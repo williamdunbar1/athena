@@ -1186,18 +1186,23 @@ async def falar_voz(pedido: PedidoVozFalar):
 
     voz_escolhida = (pedido.voz or "").strip() or VOZ_TTS_PADRAO
     try:
-        audio_mp3 = await sintetizar_fala(texto, voz=voz_escolhida)
+        res_tts = await sintetizar_fala(texto, voz=voz_escolhida)
     except VozIndisponivelError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        _logar_erro_execucao("voz/falar", "edge-tts", exc)
+        _logar_erro_execucao("voz/falar", "tts", exc)
         raise HTTPException(status_code=502, detail=f"Falha ao sintetizar voz neural: {exc}") from exc
 
+    if isinstance(res_tts, tuple):
+        audio_bytes, media_type = res_tts
+    else:
+        audio_bytes, media_type = res_tts, "audio/mpeg"
+
     return Response(
-        content=audio_mp3,
-        media_type="audio/mpeg",
+        content=audio_bytes,
+        media_type=media_type,
         headers={"Cache-Control": "no-store"},
     )
 

@@ -1,8 +1,10 @@
 import asyncio
 import contextlib
 import importlib
+import os
 import re
 import sys
+import unicodedata
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -15,6 +17,24 @@ MAX_LINKS = 25
 MAX_RESULTADOS_BUSCA = 25
 TIMEOUT_NAVEGACAO_MS = 30000
 TIMEOUT_NETWORKIDLE_MS = 8000
+MAX_STEPS_BROWSER_USE = 8
+TIMEOUT_BROWSER_USE_SEGUNDOS = 90.0
+
+DOMINIOS_BLOQUEADOS_BROWSER_USE: frozenset[str] = frozenset(
+    {
+        "mercadopago",
+        "mercadolivre",
+        "nubank",
+        "itau",
+        "bradesco",
+        "santander",
+        "bb.com.br",
+        "caixa.gov.br",
+        "inter.co",
+        "xpi.com.br",
+        "gov.br",
+    }
+)
 
 
 def _validar_url(url: str) -> str:
@@ -391,3 +411,185 @@ async def ler_pagina_markdown_crawl4ai(url: str) -> str:
         pass
 
     return await abrir_e_ler_pagina(url_valida)
+
+
+def _normalizar_texto_seguranca(texto: str) -> str:
+    sem_acento = (
+        unicodedata.normalize("NFKD", (texto or "").strip())
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .lower()
+    )
+    return re.sub(r"\s+", " ", sem_acento).strip()
+
+
+def verificar_dominio_bloqueado_browser_use(objetivo: str, url_inicial: str = "") -> str | None:
+    """Valida `url_inicial` e `objetivo` contra `DOMINIOS_BLOQUEADOS_BROWSER_USE`.
+
+    Retorna o dominio/termo bloqueado se houver violacao, ou None se permitido.
+    """
+    alvos: list[str] = []
+    url_norm = _normalizar_texto_seguranca(url_inicial)
+    if url_norm:
+        alvos.append(url_norm)
+        try:
+            host = (urlparse(url_norm if "://" in url_norm else f"https://{url_norm}").hostname or "").lower()
+            if host:
+                alvos.append(host)
+        except Exception:
+            pass
+
+    obj_norm = _normalizar_texto_seguranca(objetivo)
+    if obj_norm:
+        alvos.append(obj_norm)
+
+    for bloqueado in sorted(DOMINIOS_BLOQUEADOS_BROWSER_USE):
+        padrao = re.compile(rf"(?:^|[^a-z0-9]){re.escape(bloqueado)}(?:$|[^a-z0-9]|\.)", re.IGNORECASE)
+        for texto in alvos:
+            if bloqueado in texto and ("." in bloqueado or padrao.search(texto) or bloqueado in texto.replace("-", "")):
+                return bloqueado
+    return None
+
+
+def _criar_llm_browser_use(mod_bu):
+    """Cria instancia de LLM compativel com `browser-use 1.0` (ChatGoogle prioritario, fallback OpenRouter)."""
+    google_key = (os.getenv("GOOGLE_API_KEY") or "").strip()
+    chat_google = getattr(mod_bu, "ChatGoogle", None)
+    if google_key and chat_google is not None:
+        modelo_bu = (os.getenv("ATHENA_BROWSER_USE_MODEL") or "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+        return chat_google(model=modelo_bu, api_key=google_key)
+
+    openrouter_key = (os.getenv("OPENROUTER_API_KEY") or "").strip()
+    chat_openai = getattr(mod_bu, "ChatOpenAI", None)
+    if openrouter_key and chat_openai is not None:
+        modelo_or = (os.getenv("ATHENA_BROWSER_USE_MODEL") or "google/gemini-2.5-flash").strip()
+        return chat_openai(
+            model=modelo_or,
+            api_key=openrouter_key,
+            base_url="https://openrouter.ai/api/v1",
+        )
+
+    raise RuntimeError(
+        "Nenhuma chave de LLM configurada para browser-use (defina GOOGLE_API_KEY ou OPENROUTER_API_KEY no .env)."
+    )
+
+
+async def _executar_browser_use_async(objetivo_completo: str, max_steps: int) -> str:
+    """Executa `browser_use.Agent` em modo headless com denylist nativa e timeout rigido."""
+    mod_bu = importlib.import_module("browser_use")
+    agent_cls = getattr(mod_bu, "Agent", None)
+    browser_cls = getattr(mod_bu, "Browser", None)
+    if agent_cls is None or browser_cls is None:
+        raise ImportError("Classes Agent/Browser indisponiveis em browser_use.")
+
+    llm = _criar_llm_browser_use(mod_bu)
+    browser = browser_cls(
+        headless=True,
+        local=True,
+        captcha_solver=False,
+        prohibited_domains=sorted(DOMINIOS_BLOQUEADOS_BROWSER_USE),
+    )
+    try:
+        agent = agent_cls(task=objetivo_completo, llm=llm, browser=browser)
+        hist = await agent.run(max_steps=max_steps, timeout=TIMEOUT_BROWSER_USE_SEGUNDOS)
+        final_fn = getattr(hist, "final_result", None)
+        if callable(final_fn):
+            res_txt = final_fn()
+            if res_txt:
+                return str(res_txt).strip()
+        return str(hist or "").strip()
+    finally:
+        for metodo in ("stop", "close"):
+            fn_close = getattr(browser, metodo, None)
+            if callable(fn_close):
+                with contextlib.suppress(Exception):
+                    ret = fn_close()
+                    if asyncio.iscoroutine(ret):
+                        await ret
+                break
+
+
+def _rodar_browser_use_em_thread(objetivo_completo: str, max_steps: int) -> str:
+    """Executa `browser-use` em event loop proprio (Proactor seguro no Windows)."""
+    if sys.platform == "win32":
+        policy_cls = getattr(asyncio, "WindowsProactorEventLoopPolicy", None)
+        if policy_cls is not None:
+            loop = asyncio.ProactorEventLoop()  # type: ignore[attr-defined]
+            try:
+                asyncio.set_event_loop(loop)
+                return loop.run_until_complete(_executar_browser_use_async(objetivo_completo, max_steps))
+            finally:
+                loop.close()
+    return asyncio.run(_executar_browser_use_async(objetivo_completo, max_steps))
+
+
+async def executar_tarefa_browser_use(
+    objetivo: str,
+    url_inicial: str = "",
+    max_steps: int = MAX_STEPS_BROWSER_USE,
+) -> str:
+    """Navegacao web autonoma segura via `browser-use` (lazy import, headless, max 8 passos, 90s).
+
+    - Bloqueia imediatamente dominios bancarios/financeiros/governamentais ANTES de abrir qualquer navegador.
+    - Sanitiza a saida com `guardrails.sanitizar_conteudo_externo` + `compactar_saida_tool`.
+    - Se `browser-use` nao estiver instalado, sugere fallback limpo para `ler_pagina_markdown_crawl4ai`.
+    """
+    obj_limpo = (objetivo or "").strip()
+    if not obj_limpo:
+        return "Erro: informe um objetivo claro para a navegacao autonoma."
+
+    bloqueado = verificar_dominio_bloqueado_browser_use(obj_limpo, url_inicial)
+    if bloqueado is not None:
+        return (
+            f"Acesso bloqueado por seguranca: o dominio ou servico sensivel '{bloqueado}' "
+            "esta na denylist do browser-use (bancos, corretoras e portais governamentais). "
+            "Navegacao autonoma permitida apenas para pesquisas publicas."
+        )
+
+    url_valida = ""
+    if (url_inicial or "").strip():
+        try:
+            url_valida = _validar_url(url_inicial)
+        except ValueError as exc:
+            return f"Erro ao validar URL inicial: {exc}"
+        bloqueado_url = verificar_dominio_bloqueado_browser_use("", url_valida)
+        if bloqueado_url is not None:
+            return (
+                f"Acesso bloqueado por seguranca: a URL '{url_valida}' corresponde ao dominio "
+                f"bloqueado '{bloqueado_url}'."
+            )
+
+    try:
+        importlib.import_module("browser_use")
+    except Exception:
+        return (
+            "Plugin opcional 'browser-use' nao esta instalado neste ambiente "
+            "(instale com `uv sync --extra web`). "
+            "Use `ler_pagina_markdown` (`ler_pagina_markdown_crawl4ai`) ou `abrir_e_ler_pagina` como alternativa."
+        )
+
+    passos = max(1, min(int(max_steps or MAX_STEPS_BROWSER_USE), MAX_STEPS_BROWSER_USE))
+    tarefa = (
+        f"Abra inicialmente {url_valida} e conclua a seguinte pesquisa publica: {obj_limpo}. "
+        "Nunca insira senhas, dados pessoais ou acesse bancos/logins."
+        if url_valida
+        else f"Conclua a seguinte pesquisa publica na web: {obj_limpo}. "
+        "Nunca insira senhas, dados pessoais ou acesse bancos/logins."
+    )
+
+    try:
+        bruto = await asyncio.to_thread(_rodar_browser_use_em_thread, tarefa, passos)
+    except Exception as exc:
+        return (
+            f"Nao foi possivel concluir a navegacao autonoma com browser-use ({type(exc).__name__}: {exc}). "
+            "Use `ler_pagina_markdown` (`ler_pagina_markdown_crawl4ai`) como fallback."
+        )
+
+    if not bruto:
+        return "Navegacao autonoma concluida sem conteudo textual retornado."
+
+    sanitizado, _susp, _pads = sanitizar_conteudo_externo(
+        bruto,
+        origem=f"browser-use:{url_valida or 'web'}",
+    )
+    return compactar_saida_tool(sanitizado)

@@ -20,7 +20,7 @@ dependencies = [
     "networkx>=3.4.0",
     "pillow>=13.0.0",
     "playwright>=1.65.2",
-    "pydantic-ai-slim[duckduckgo,google,mcp,openai,web-fetch]>=2.71.0",
+    "pydantic-ai-slim[duckduckgo,google,mcp,openai,web-fetch]>=2.66.0",
     "pypdf>=7.1.1",
     "python-dotenv>=1.0.0",
     "python-multipart>=0.0.34",
@@ -40,6 +40,8 @@ vision = [
 voice = [
     "edge-tts>=7.0.0",
     "faster-whisper>=1.1.0",
+    "kokoro-onnx",
+    "soundfile",
 ]
 docs = [
     "markitdown[all]",
@@ -47,11 +49,12 @@ docs = [
 ]
 web = [
     "crawl4ai",
+    "browser-use",
 ]
 
 [dependency-groups]
 dev = [
-    "pydantic-evals>=2.71.0",
+    "pydantic-evals>=2.66.0",
     "pyright>=1.1.390",
     "pytest>=8.3.0",
     "ruff>=0.9.0",

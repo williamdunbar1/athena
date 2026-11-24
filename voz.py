@@ -1,14 +1,17 @@
-"""Voz neural de alta qualidade para a Athena: STT local (`faster-whisper`) e TTS neural (`edge-tts`).
+"""Voz neural de alta qualidade para a Athena: STT local (`faster-whisper`) e TTS neural (`edge-tts` + `kokoro-onnx` offline).
 
-As dependencias (`faster-whisper`, `edge-tts`) sao opcionais (`[project.optional-dependencies] voice`)
-e carregadas via lazy import (`importlib.import_module`) para:
+As dependencias (`faster-whisper`, `edge-tts`, `kokoro-onnx`, `soundfile`) sao opcionais
+(`[project.optional-dependencies] voice`) e carregadas via lazy import (`importlib.import_module`) para:
 - Nao atrasar o boot da Athena nem baixar modelos de audio no GitHub Actions CI.
+- Permitir fallback automatico de `edge-tts` para `kokoro-onnx` 100% local quando sem rede.
 - Degradar com seguranca (`VozIndisponivelError`) permitindo fallback automatico no navegador.
 """
 
 from __future__ import annotations
 
+import asyncio
 import importlib
+import io
 import os
 import re
 import tempfile
@@ -17,7 +20,12 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
+BASE_DIR = Path(__file__).resolve().parent
 VOZ_TTS_PADRAO = os.getenv("ATHENA_TTS_VOICE", "pt-BR-FranciscaNeural").strip() or "pt-BR-FranciscaNeural"
+VOZ_KOKORO_PADRAO = "pf_dora"
+KOKORO_MODEL_DIR_PADRAO = "sandbox_files/modelos_voz"
+KOKORO_ARQUIVO_ONNX = "kokoro-v1.0.onnx"
+KOKORO_ARQUIVO_VOZES = "voices-v1.0.bin"
 MODELO_WHISPER_PADRAO = os.getenv("ATHENA_WHISPER_MODEL", "small").strip() or "small"
 
 EXTENSOES_AUDIO_PERMITIDAS: frozenset[str] = frozenset(
@@ -28,6 +36,9 @@ MAX_TTS_CHARS = 4000
 
 _WHISPER_LOCK = threading.Lock()
 _WHISPER_MODEL: Any = None
+_KOKORO_LOCK = threading.Lock()
+_KOKORO_MODEL: Any = None
+_KOKORO_CACHE_KEY: tuple[str, str] | None = None
 
 _RE_BLOCO_CODIGO = re.compile(r"```[\s\S]*?```")
 _RE_CODIGO_INLINE = re.compile(r"`([^`]+)`")
@@ -162,8 +173,29 @@ def transcrever_audio(audio_bytes: bytes, extensao: str = "webm") -> str:
                 tmp_path.unlink(missing_ok=True)
 
 
-async def sintetizar_fala(texto: str, voz: str = VOZ_TTS_PADRAO) -> bytes:
-    """Sintetiza fala neural pt-BR em MP3 via `edge-tts` a partir do texto limpo."""
+def _obter_tts_engine() -> str:
+    motor = (os.getenv("ATHENA_TTS_ENGINE", "auto") or "auto").strip().lower()
+    if motor in ("auto", "kokoro", "edge"):
+        return motor
+    return "auto"
+
+
+def _obter_dir_kokoro() -> Path:
+    bruto = (os.getenv("KOKORO_MODEL_DIR", KOKORO_MODEL_DIR_PADRAO) or KOKORO_MODEL_DIR_PADRAO).strip()
+    p = Path(bruto).expanduser()
+    if not p.is_absolute():
+        p = BASE_DIR / p
+    return p
+
+
+def _resolver_voz_kokoro(voz: str | None) -> str:
+    v = (voz or "").strip()
+    if v and "_" in v and len(v) <= 32 and "Neural" not in v:
+        return v
+    return VOZ_KOKORO_PADRAO
+
+
+def _preparar_texto_tts(texto: str) -> str:
     texto_limpo = limpar_texto_para_fala(texto)
     if not texto_limpo:
         raise ValueError("Texto vazio apos limpeza para sintese de fala.")
@@ -175,7 +207,70 @@ async def sintetizar_fala(texto: str, voz: str = VOZ_TTS_PADRAO) -> bytes:
             texto_limpo = corte[: ultimo_ponto + 1].strip()
         else:
             texto_limpo = corte.rsplit(" ", 1)[0].strip() + "."
+    return texto_limpo
 
+
+def _obter_modelo_kokoro() -> Any:
+    """Lazy-loading thread-safe do modelo Kokoro ONNX a partir de `KOKORO_MODEL_DIR`."""
+    global _KOKORO_MODEL, _KOKORO_CACHE_KEY
+
+    pasta = _obter_dir_kokoro()
+    arq_onnx = pasta / KOKORO_ARQUIVO_ONNX
+    arq_vozes = pasta / KOKORO_ARQUIVO_VOZES
+    if not arq_onnx.is_file() or not arq_vozes.is_file():
+        raise VozIndisponivelError(
+            f"Arquivos do Kokoro nao encontrados em '{pasta}' "
+            f"(esperados: {KOKORO_ARQUIVO_ONNX} e {KOKORO_ARQUIVO_VOZES})."
+        )
+
+    chave = (str(arq_onnx.resolve()), str(arq_vozes.resolve()))
+    if _KOKORO_MODEL is not None and chave == _KOKORO_CACHE_KEY:
+        return _KOKORO_MODEL
+
+    with _KOKORO_LOCK:
+        if _KOKORO_MODEL is not None and chave == _KOKORO_CACHE_KEY:
+            return _KOKORO_MODEL
+        try:
+            mod_kokoro = importlib.import_module("kokoro_onnx")
+            kokoro_cls = mod_kokoro.Kokoro
+        except (ModuleNotFoundError, AttributeError) as exc:
+            raise VozIndisponivelError(
+                "kokoro-onnx nao esta instalado. Instale com `uv sync --extra voice`."
+            ) from exc
+
+        _KOKORO_MODEL = kokoro_cls(chave[0], chave[1])
+        _KOKORO_CACHE_KEY = chave
+        return _KOKORO_MODEL
+
+
+def sintetizar_fala_kokoro(texto: str, voz: str = VOZ_KOKORO_PADRAO) -> tuple[bytes, str]:
+    """Sintetiza fala neural pt-BR 100% offline em WAV via `kokoro-onnx` + `soundfile`."""
+    texto_limpo = _preparar_texto_tts(texto)
+    modelo = _obter_modelo_kokoro()
+    try:
+        sf = importlib.import_module("soundfile")
+    except ModuleNotFoundError as exc:
+        raise VozIndisponivelError(
+            "soundfile nao esta instalado. Instale com `uv sync --extra voice`."
+        ) from exc
+
+    voz_limpa = _resolver_voz_kokoro(voz)
+    amostras, taxa_amostragem = modelo.create(
+        texto_limpo,
+        voice=voz_limpa,
+        speed=1.0,
+        lang="pt-br",
+    )
+    buf = io.BytesIO()
+    sf.write(buf, amostras, int(taxa_amostragem), format="WAV", subtype="PCM_16")
+    wav_bytes = buf.getvalue()
+    if not wav_bytes:
+        raise RuntimeError("Nenhum audio WAV gerado pelo motor kokoro-onnx.")
+    return wav_bytes, "audio/wav"
+
+
+async def _sintetizar_fala_edge(texto_limpo: str, voz: str = VOZ_TTS_PADRAO) -> tuple[bytes, str]:
+    """Sintetiza fala neural pt-BR em MP3 via `edge-tts`."""
     try:
         edge_tts = importlib.import_module("edge_tts")
         communicate_cls = edge_tts.Communicate
@@ -195,4 +290,33 @@ async def sintetizar_fala(texto: str, voz: str = VOZ_TTS_PADRAO) -> bytes:
 
     if not blocos:
         raise RuntimeError("Nenhum audio retornado pelo servico edge-tts.")
-    return bytes(blocos)
+    return bytes(blocos), "audio/mpeg"
+
+
+async def sintetizar_fala(texto: str, voz: str = VOZ_TTS_PADRAO) -> tuple[bytes, str]:
+    """Sintetiza fala neural pt-BR retornando `(audio_bytes, mime_type)`.
+
+    - `ATHENA_TTS_ENGINE=kokoro`: usa `kokoro-onnx` 100% offline (`audio/wav`).
+    - `ATHENA_TTS_ENGINE=auto` (padrao): tenta `edge-tts` (`audio/mpeg`) e cai automaticamente
+      para `kokoro-onnx` (`audio/wav`) se sem rede ou se `edge-tts` falhar.
+    - `ATHENA_TTS_ENGINE=edge`: usa apenas `edge-tts` (`audio/mpeg`).
+    """
+    texto_limpo = _preparar_texto_tts(texto)
+    engine = _obter_tts_engine()
+
+    if engine == "kokoro":
+        return await asyncio.to_thread(sintetizar_fala_kokoro, texto_limpo, _resolver_voz_kokoro(voz))
+
+    if engine == "edge":
+        return await _sintetizar_fala_edge(texto_limpo, voz=voz)
+
+    # Modo auto: edge-tts -> fallback automatico para kokoro-onnx offline
+    try:
+        return await _sintetizar_fala_edge(texto_limpo, voz=voz)
+    except Exception as exc_edge:
+        try:
+            return await asyncio.to_thread(sintetizar_fala_kokoro, texto_limpo, _resolver_voz_kokoro(voz))
+        except VozIndisponivelError:
+            raise exc_edge from None
+        except Exception:
+            raise exc_edge from None
