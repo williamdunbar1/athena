@@ -72,6 +72,12 @@ from athena_lab import (
     sentinel_ativo,
     verificar_erros_logfire_sentinel,
 )
+from auditoria import (
+    aprovar_pasta,
+    listar_atividades,
+    listar_pastas_aprovadas,
+    revogar_pasta,
+)
 from compactador import (
     agendar_extracao_memorias,
     limpar_resumos_conversa,
@@ -143,11 +149,16 @@ from otimizador_midia import (
 )
 from rag_qdrant import obter_estatisticas_rag, sincronizar_indice_vetorial
 from rotinas import (
+    alterar_status_rotina,
     atualizar_rotina,
+    criar_rotina_dinamica,
     encerrar_agendador,
+    excluir_rotina_dinamica,
     executar_rotina_agora,
+    executar_rotina_dinamica,
     iniciar_agendador,
     listar_rotinas,
+    listar_rotinas_dinamicas,
 )
 from semantic_cache import (
     MODELO_CACHE_SEMANTICO,
@@ -1255,9 +1266,74 @@ def desfazer_acao_faxina(acao_id: int):
     return desfazer_movimentacao(acao_id)
 
 
+class CriarRotinaDinamicaPayload(BaseModel):
+    nome: str
+    instrucao: str
+    cron_expr: str
+    agente_alvo: str = "athena"
+
+
+class StatusRotinaDinamicaPayload(BaseModel):
+    ativa: bool
+
+
+class AprovarPastaPayload(BaseModel):
+    caminho: str
+    somente_leitura: bool = True
+
+
 @app.get("/api/rotinas")
 def ver_rotinas():
     return {"rotinas": listar_rotinas()}
+
+
+@app.get("/api/rotinas/dinamicas")
+def api_listar_rotinas_dinamicas():
+    """Lista rotinas dinamicas criadas pelo chat/painel."""
+    return {"ok": True, "rotinas": listar_rotinas_dinamicas()}
+
+
+@app.post("/api/rotinas/dinamicas")
+def api_criar_rotina_dinamica(payload: CriarRotinaDinamicaPayload):
+    """Cria uma nova rotina dinamica agendada por cron de 5 campos."""
+    try:
+        rot = criar_rotina_dinamica(
+            payload.nome,
+            payload.instrucao,
+            payload.cron_expr,
+            agente_alvo=payload.agente_alvo,
+        )
+        return {"ok": True, "rotina": rot}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.patch("/api/rotinas/dinamicas/{rotina_id}")
+def api_status_rotina_dinamica(rotina_id: str, payload: StatusRotinaDinamicaPayload):
+    """Pausa ou reativa uma rotina dinamica."""
+    res = alterar_status_rotina(rotina_id, payload.ativa)
+    if not res.get("ok"):
+        raise HTTPException(status_code=404, detail=str(res.get("erro") or "Rotina nao encontrada."))
+    return res
+
+
+@app.delete("/api/rotinas/dinamicas/{rotina_id}")
+def api_excluir_rotina_dinamica(rotina_id: str):
+    """Exclui uma rotina dinamica e remove seu agendamento."""
+    res = excluir_rotina_dinamica(rotina_id)
+    if not res.get("ok"):
+        raise HTTPException(status_code=404, detail=str(res.get("erro") or "Rotina nao encontrada."))
+    return res
+
+
+@app.post("/api/rotinas/dinamicas/{rotina_id}/executar")
+async def api_executar_rotina_dinamica(rotina_id: str):
+    """Executa uma rotina dinamica imediatamente."""
+    return await executar_rotina_dinamica(
+        rotina_id,
+        pasta_raiz=Path(CONFIG["pasta_raiz"]),
+        modelo=CONFIG["modelo"],
+    )
 
 
 @app.post("/api/rotinas/{rotina_id}")
@@ -1272,6 +1348,41 @@ async def rodar_rotina(rotina_id: str):
         pasta_raiz=Path(CONFIG["pasta_raiz"]),
         modelo=CONFIG["modelo"],
     )
+
+
+@app.get("/api/auditoria/atividades")
+def api_listar_atividades(agente: str | None = None, limite: int = 80):
+    """Retorna a trilha unificada de auditoria (Activity) em ordem cronologica reversa."""
+    return {"ok": True, "atividades": listar_atividades(limite=limite, agente=agente)}
+
+
+@app.get("/api/permissoes/pastas")
+def api_listar_pastas_aprovadas():
+    """Lista pastas aprovadas na tabela `pastas_aprovadas`."""
+    return {"ok": True, "pastas": listar_pastas_aprovadas()}
+
+
+@app.post("/api/permissoes/pastas")
+def api_aprovar_pasta(payload: AprovarPastaPayload):
+    """Aprova uma pasta local (somente leitura por padrao)."""
+    try:
+        pasta = aprovar_pasta(payload.caminho, somente_leitura=payload.somente_leitura)
+        return {"ok": True, "pasta": pasta}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.delete("/api/permissoes/pastas")
+def api_revogar_pasta(
+    caminho: str | None = None,
+    payload: AprovarPastaPayload | None = Body(default=None),
+):
+    """Revoga a permissao de uma pasta (aceita query `?caminho=...` ou JSON body)."""
+    alvo = (caminho or (payload.caminho if payload is not None else "") or "").strip()
+    if not alvo:
+        raise HTTPException(status_code=400, detail="Informe o caminho da pasta a revogar.")
+    ok = revogar_pasta(alvo)
+    return {"ok": ok, "caminho": alvo}
 
 
 @app.get("/api/status-atual")

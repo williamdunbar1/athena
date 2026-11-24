@@ -1088,7 +1088,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
 
     # 1) Primeira execucao em banco novo: cria schema completo (ate a migration 004) e registra revisao
     revisao_1 = memoria.executar_migrations(db_teste)
-    assert revisao_1 == "005_memoria_temporal"
+    assert revisao_1 == "006_rotinas_dinamicas_e_auditoria"
     assert db_teste.is_file()
 
     with sqlite3.connect(db_teste) as c:
@@ -1119,7 +1119,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
 
     # 2) Segunda execucao (idempotencia): mantem revisao e 100% dos dados intactos
     revisao_2 = memoria.executar_migrations(db_teste)
-    assert revisao_2 == "005_memoria_temporal"
+    assert revisao_2 == "006_rotinas_dinamicas_e_auditoria"
 
     with sqlite3.connect(db_teste) as c:
         fato = c.execute("SELECT valor FROM fatos WHERE chave = 'curso'").fetchone()
@@ -1127,7 +1127,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
         ver = c.execute("SELECT version_num FROM alembic_version").fetchone()
     assert fato == ("Engenharia",)
     assert msg == ("mensagem preservada",)
-    assert ver == ("005_memoria_temporal",)
+    assert ver == ("006_rotinas_dinamicas_e_auditoria",)
 
 
 # ==============================================================================
@@ -2475,7 +2475,7 @@ def test_athena_lab_migration_003_e_bloqueio_arquivos_sensiveis(tmp_path):
 
     # 1) Migration 003_lab_propostas cria tabela `lab_propostas` com todas as colunas esperadas
     db_teste = tmp_path / "lab_migration.db"
-    assert memoria.executar_migrations(db_teste) == "005_memoria_temporal"
+    assert memoria.executar_migrations(db_teste) == "006_rotinas_dinamicas_e_auditoria"
     with sqlite3.connect(db_teste) as c:
         cols = {r[1] for r in c.execute("PRAGMA table_info(lab_propostas)").fetchall()}
     assert {
@@ -2834,7 +2834,7 @@ def test_migration_004_e_crud_conversas_com_auto_titulo_e_legadas(tmp_path):
     import memoria
 
     db_teste = tmp_path / "conversas_004.db"
-    assert memoria.executar_migrations(db_teste) == "005_memoria_temporal"
+    assert memoria.executar_migrations(db_teste) == "006_rotinas_dinamicas_e_auditoria"
 
     with sqlite3.connect(db_teste) as c:
         cols_conv = {r[1] for r in c.execute("PRAGMA table_info(conversas)").fetchall()}
@@ -3606,7 +3606,7 @@ def test_memoria_temporal_migration_005_atualizacao_linha_do_tempo_e_grafo(monke
 
     # 1) Migration 005 cria tabela `fatos_temporais` e indice composto de forma idempotente
     db_temp = tmp_path / "temporal_005.db"
-    assert memoria.executar_migrations(db_temp) == "005_memoria_temporal"
+    assert memoria.executar_migrations(db_temp) == "006_rotinas_dinamicas_e_auditoria"
 
     with sqlite3.connect(db_temp) as c:
         cols = {r[1] for r in c.execute("PRAGMA table_info(fatos_temporais)").fetchall()}
@@ -3885,3 +3885,124 @@ def test_exportar_grafo_visual_obsidian_tags_temporal_e_ui(monkeypatch, tmp_path
 
 async def _coro_retorno(valor):
     return valor
+
+
+# ==============================================================================
+# 30. ROTINAS DINAMICAS (AUTO-PAUSA 3 FALHAS) + AUDITORIA + PERMISSOES DE PASTA
+# ==============================================================================
+
+
+def test_migration_006_rotinas_dinamicas_auto_pausa_e_auditoria_pastas(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    import auditoria
+    import eficiencia as ef
+    import memoria
+    import rotinas
+    import servidor
+
+    # 1) Migration 006 cria as 3 tabelas idempotentemente em SQLite temporario
+    db_006 = tmp_path / "openbot_006.db"
+    assert memoria.executar_migrations(db_006) == "006_rotinas_dinamicas_e_auditoria"
+
+    with sqlite3.connect(db_006) as c:
+        tabelas = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    assert {"rotinas_dinamicas", "atividade_agentes", "pastas_aprovadas"}.issubset(tabelas)
+
+    # 2) Auditoria: registra atividade com mascaramento de segredos e filtra por agente
+    fake_api = "AIza" + ("W" * 35)
+    auditoria.registrar_atividade(
+        "Agente Sistema",
+        "podman_exec",
+        "ls /workspace",
+        "sucesso",
+        detalhes=f"Saida com token vazado {fake_api}",
+        db_path=db_006,
+    )
+    auditoria.registrar_atividade(
+        "Agente Faxineiro",
+        "faxina_mover",
+        "Downloads/a.pdf",
+        "sucesso",
+        detalhes="Movido com aprovacao",
+        db_path=db_006,
+    )
+    todas_atv = auditoria.listar_atividades(limite=20, db_path=db_006)
+    assert len(todas_atv) == 2
+    assert todas_atv[0]["agente"] == "Agente Faxineiro"  # ordem cronologica reversa
+    so_sis = auditoria.listar_atividades(limite=20, agente="Agente Sistema", db_path=db_006)
+    assert len(so_sis) == 1
+    assert fake_api not in so_sis[0]["detalhes"]
+    assert "[MASCARADO:api_key]" in so_sis[0]["detalhes"]
+
+    # 3) Permissoes por pasta: aprovar, listar e revogar (e bloquear pasta de sistema)
+    pasta_ok = tmp_path / "minha_pasta"
+    pasta_ok.mkdir()
+    aprov = auditoria.aprovar_pasta(str(pasta_ok), somente_leitura=True, db_path=db_006)
+    assert aprov["somente_leitura"] is True
+    assert len(auditoria.listar_pastas_aprovadas(db_path=db_006)) == 1
+    assert auditoria.revogar_pasta(str(pasta_ok), db_path=db_006) is True
+    assert auditoria.listar_pastas_aprovadas(db_path=db_006) == []
+
+    # 4) Rotina dinamica: auto-desligamento apos 3 falhas consecutivas + alerta na auditoria
+    monkeypatch.setattr(rotinas, "_SCHEDULER", None)
+    rot = rotinas.criar_rotina_dinamica(
+        "Resumo Matinal",
+        "Resuma as noticias de IA de hoje",
+        "0 9 * * 1-5",
+        agente_alvo="pesquisador",
+        db_path=db_006,
+    )
+    assert rot["ativa"] is True
+    assert rot["falhas_consecutivas"] == 0
+
+    async def _falhar_exec(_rot, **_kw):
+        raise RuntimeError("Erro simulado na API")
+
+    monkeypatch.setattr(rotinas, "_executar_agente_rotina_dinamica", _falhar_exec)
+    r1 = _executar_coro_sync(rotinas.executar_rotina_dinamica(rot["id"], db_path=db_006))
+    assert r1["ok"] is False and r1["auto_pausada"] is False and r1["falhas_consecutivas"] == 1
+    assert r1["rotina"]["ativa"] is True
+
+    r2 = _executar_coro_sync(rotinas.executar_rotina_dinamica(rot["id"], db_path=db_006))
+    assert r2["ok"] is False and r2["auto_pausada"] is False and r2["falhas_consecutivas"] == 2
+    assert r2["rotina"]["ativa"] is True
+
+    r3 = _executar_coro_sync(rotinas.executar_rotina_dinamica(rot["id"], db_path=db_006))
+    assert r3["ok"] is False and r3["auto_pausada"] is True and r3["falhas_consecutivas"] == 3
+    assert r3["rotina"]["ativa"] is False
+    assert r3["rotina"]["pausada_por_falha"] is True
+
+    alertas = [a for a in auditoria.listar_atividades(db_path=db_006) if a["status"] == "alerta_auto_pausa"]
+    assert len(alertas) == 1
+
+    # Reativar zera contador de falhas e permite execucao bem-sucedida
+    reat = rotinas.alterar_status_rotina(rot["id"], True, db_path=db_006)
+    assert reat["ok"] is True and reat["rotina"]["ativa"] is True and reat["rotina"]["falhas_consecutivas"] == 0
+
+    async def _ok_exec(_rot, **_kw):
+        return "Resumo matinal gerado com sucesso!"
+
+    monkeypatch.setattr(rotinas, "_executar_agente_rotina_dinamica", _ok_exec)
+    r_ok = _executar_coro_sync(rotinas.executar_rotina_dinamica(rot["id"], db_path=db_006))
+    assert r_ok["ok"] is True and "Resumo matinal" in r_ok["rotina"]["ultimo_resultado"]
+
+    # 5) Tools na Orquestradora, eficiencia, endpoints REST e UI na aba Rotinas
+    tools_orq = set((getattr(getattr(agentes.orquestrador, "_function_toolset", None), "tools", None) or {}).keys())
+    assert {"criar_rotina_agendada_tool", "listar_rotinas_tool", "pausar_rotina_tool"}.issubset(tools_orq)
+    assert "criar_rotina_agendada_tool" in ef.DOMINIO_PARA_TOOLS["rotinas"]
+    dom_rot = ef.selecionar_dominios_para_mensagem("Quero agendar um lembrete recorrente todo dia as 9h")
+    assert dom_rot is not None and "rotinas" in dom_rot
+
+    monkeypatch.setenv("ATHENA_DB_PATH", str(db_006))
+    assert servidor.api_listar_rotinas_dinamicas()["ok"] is True
+    assert servidor.api_listar_atividades()["ok"] is True
+    assert servidor.api_listar_pastas_aprovadas()["ok"] is True
+
+    html = (Path(__file__).resolve().parent.parent / "index.html").read_text(encoding="utf-8")
+    assert 'id="box-rotinas-dinamicas"' in html
+    assert 'id="box-auditoria-atividades"' in html
+    assert 'id="box-pastas-aprovadas"' in html
+    assert "/api/rotinas/dinamicas" in html
+    assert "/api/auditoria/atividades" in html
+    assert "/api/permissoes/pastas" in html

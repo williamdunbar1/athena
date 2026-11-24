@@ -115,6 +115,13 @@ DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
             "gerar_imagem",
         }
     ),
+    "rotinas": frozenset(
+        {
+            "criar_rotina_agendada_tool",
+            "listar_rotinas_tool",
+            "pausar_rotina_tool",
+        }
+    ),
 }
 
 # Padroes compilados por dominio (aplicados sobre texto normalizado sem acento e minusculo).
@@ -198,6 +205,10 @@ _PADROES_DOMINIO: dict[str, tuple[re.Pattern[str], ...]] = {
             r"banner|poster|wallpaper)\b"
         ),
         re.compile(r"\b(?:gerar|gere|gera|criar|crie|cria|fazer|faca|faz)\s+(?:uma\s+)?imagem\b"),
+    ),
+    "rotinas": (
+        re.compile(r"\b(?:rotinas?|agendar|agendad[ao]s?|cron)\b"),
+        re.compile(r"\b(?:todo\s+dia|todos\s+os\s+dias|toda\s+semana|lembrete\s+recorrente|pausar\s+rotina)\b"),
     ),
 }
 

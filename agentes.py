@@ -2079,6 +2079,64 @@ def consultar_memoria_temporal_tool(
 
 
 @orquestrador.tool
+def criar_rotina_agendada_tool(
+    ctx: RunContext[ContextoMissao],
+    nome: str,
+    instrucao: str,
+    cron_expr: str,
+    agente_alvo: str = "athena",
+) -> str:
+    """Cria uma rotina dinamica recorrente no APScheduler usando cron de 5 campos (ex.: '0 9 * * 1-5' para 09:00 seg-sex)."""
+    from rotinas import criar_rotina_dinamica
+
+    ctx.deps.registrar("Athena", "Rotinas (APScheduler)", "ferramenta", f"criar_rotina({nome}, cron={cron_expr})")
+    try:
+        rot = criar_rotina_dinamica(nome, instrucao, cron_expr, agente_alvo=agente_alvo)
+    except ValueError as exc:
+        return f"Erro ao criar rotina: {exc}"
+    return (
+        f"Rotina agendada criada com sucesso!\n"
+        f"- ID: `{rot['id']}`\n"
+        f"- Nome: **{rot['nome']}**\n"
+        f"- Cron: `{rot['cron_expr']}` (America/Sao_Paulo)\n"
+        f"- Agente: `{rot['agente_alvo']}`\n"
+        f"- Auto-protecao: pausa automaticamente apos 3 falhas consecutivas."
+    )
+
+
+@orquestrador.tool
+def listar_rotinas_tool(ctx: RunContext[ContextoMissao]) -> str:
+    """Lista todas as rotinas dinamicas recorrentes criadas pelo chat com status, cron e ultima execucao."""
+    from rotinas import listar_rotinas_dinamicas
+
+    ctx.deps.registrar("Athena", "Rotinas (APScheduler)", "ferramenta", "listar_rotinas_dinamicas()")
+    itens = listar_rotinas_dinamicas()
+    if not itens:
+        return "Nenhuma rotina dinamica agendada ainda."
+    linhas = ["=== ROTINAS DINAMICAS AGENDADAS ==="]
+    for r in itens:
+        st = "PAUSADA POR FALHA" if r.get("pausada_por_falha") else ("ATIVA" if r.get("ativa") else "PAUSADA")
+        linhas.append(
+            f"- `{r['id']}` | **{r['nome']}** | cron: `{r['cron_expr']}` | agente: `{r['agente_alvo']}` | status: {st} (falhas: {r['falhas_consecutivas']})"
+        )
+    return compactar_saida_tool("\n".join(linhas))
+
+
+@orquestrador.tool
+def pausar_rotina_tool(ctx: RunContext[ContextoMissao], rotina_id: str, ativa: bool = False) -> str:
+    """Pausa (`ativa=False`) ou reativa (`ativa=True`) uma rotina dinamica pelo ID."""
+    from rotinas import alterar_status_rotina
+
+    ctx.deps.registrar("Athena", "Rotinas (APScheduler)", "ferramenta", f"alterar_status_rotina({rotina_id}, ativa={ativa})")
+    res = alterar_status_rotina(rotina_id, ativa)
+    if not res.get("ok"):
+        return f"Erro: {res.get('erro')}"
+    rot = res.get("rotina") or {}
+    estado = "reativada" if ativa else "pausada"
+    return f"Rotina **{rot.get('nome', rotina_id)}** (`{rotina_id}`) {estado} com sucesso."
+
+
+@orquestrador.tool
 def solicitar_abrir_app(ctx: RunContext[ContextoMissao], nome_app: str, args: str = "") -> str:
     """Solicita permissao no card do chat (ou abre direto se estiver em 'Sempre permitir') para abrir um aplicativo nativo no Windows 11 (ex.: Brave, VS Code, Obsidian, Spotify, Discord)."""
     ctx.deps.registrar("Athena", "Windows 11 Local", "ferramenta", f"solicitar_abrir_app({nome_app}, args={args})")

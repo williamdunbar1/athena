@@ -999,6 +999,18 @@ def aprovar_acao_windows(acao_id: int, sempre_permitir: bool = False) -> dict:
         ).fetchone()
 
     acao_att = _row_para_dict(row_att)
+    try:
+        from auditoria import registrar_atividade
+
+        registrar_atividade(
+            agente="Windows Nativo",
+            acao=str(acao_att.get("tipo") or "acao_windows"),
+            alvo=str(acao_att.get("alvo") or ""),
+            status="sucesso",
+            detalhes=str(acao_att.get("descricao") or ""),
+        )
+    except Exception:
+        pass
     msg = f"Executado: {acao_att['descricao']}"
     if whitelist_add:
         msg += " (adicionado a 'Sempre permitir')."

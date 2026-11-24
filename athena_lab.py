@@ -987,6 +987,17 @@ def aprovar_proposta_lab(
 
     _rodar_cmd(["git", "branch", "-d", branch], cwd=repo, timeout=30)
     _atualizar_status_proposta(proposta_id, "aprovada", db_path=db_path)
+    with suppress(Exception):
+        from auditoria import registrar_atividade
+
+        registrar_atividade(
+            agente="Athena Lab",
+            acao="aprovar_merge_lab",
+            alvo=branch,
+            status="sucesso",
+            detalhes=f"Proposta {proposta_id}: {prop['titulo']}",
+            db_path=db_path,
+        )
     _log.info("athena_lab_proposta_aprovada", proposta_id=proposta_id, branch=branch)
     return {
         "ok": True,

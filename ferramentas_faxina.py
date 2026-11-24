@@ -1103,6 +1103,19 @@ def executar_acao_aprovada(acao_id: int) -> dict:
             (destino_real_gravar, acao_id),
         )
 
+    try:
+        from auditoria import registrar_atividade
+
+        registrar_atividade(
+            agente="Agente Faxineiro",
+            acao=f"faxina_{tipo}",
+            alvo=str(origem_res),
+            status="sucesso",
+            detalhes=f"{mensagem} | motivo: {motivo}",
+        )
+    except Exception:
+        pass
+
     return {
         "ok": True,
         "id": acao_id,

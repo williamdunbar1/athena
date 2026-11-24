@@ -11,25 +11,38 @@ import asyncio
 import os
 import sqlite3
 import time
-from contextlib import contextmanager
+import uuid
+from contextlib import contextmanager, suppress
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from agentes import MODELO_PADRAO, ContextoMissao, agente_analista, obter_modelo
+from agentes import (
+    MODELO_PADRAO,
+    ContextoMissao,
+    agente_analista,
+    normalizar_agente_alvo,
+    obter_agente_direto,
+    obter_modelo,
+)
+from auditoria import registrar_atividade
 from ferramentas_estudos import listar_provas
 from ferramentas_google import TOKEN_PATH, buscar_emails, listar_proximos_eventos
 from ferramentas_investimentos import ver_carteira
 from ferramentas_obsidian import escrever_nota_vault
 from logging_config import obter_logger
+from memoria import obter_db_path
 from ulife_v2 import consultar_dados_ulife, sincronizar_ulife
 
 _log = obter_logger("rotinas")
 TIMEOUT_FONTE_BRIEFING_SEGUNDOS = 30.0
+MAX_FALHAS_AUTO_PAUSA = 3
+JOB_PREFIXO_DINAMICA = "dyn:"
 
 DB_PATH = Path(__file__).resolve().parent / "memoria.db"
 FUSO_NOME = "America/Sao_Paulo"
@@ -205,6 +218,7 @@ def iniciar_agendador() -> None:
     _SCHEDULER = AsyncIOScheduler(timezone=_obter_fuso())
     for rotina in listar_rotinas():
         _sincronizar_job_scheduler(rotina)
+    carregar_rotinas_dinamicas_no_scheduler()
 
     from athena_lab import sentinel_ativo, sentinel_intervalo_minutos
 
@@ -479,3 +493,339 @@ async def _disparar_logfire_sentinel() -> None:
         await verificar_erros_logfire_sentinel()
     except Exception as exc:
         _log.warning("sentinel_agendado_falhou", erro=str(exc))
+
+
+# ==============================================================================
+# ROTINAS DINAMICAS CRIADAS PELO CHAT (CRON 5 CAMPOS + AUTO-PAUSA APOS 3 FALHAS)
+# ==============================================================================
+
+
+def _garantir_tabela_rotinas_dinamicas(c: sqlite3.Connection) -> None:
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS rotinas_dinamicas (
+            id TEXT PRIMARY KEY,
+            nome TEXT NOT NULL,
+            instrucao TEXT NOT NULL,
+            cron_expr TEXT NOT NULL,
+            agente_alvo TEXT NOT NULL DEFAULT 'athena',
+            ativa INTEGER NOT NULL DEFAULT 1,
+            falhas_consecutivas INTEGER NOT NULL DEFAULT 0,
+            ultima_execucao TEXT,
+            ultimo_resultado TEXT,
+            criado_em TEXT NOT NULL
+        )
+        """
+    )
+
+
+@contextmanager
+def _conn_dinamicas(db_path: str | Path | None = None):
+    alvo = obter_db_path(db_path)
+    alvo.parent.mkdir(parents=True, exist_ok=True)
+    c = sqlite3.connect(alvo, timeout=5.0)
+    try:
+        c.execute("PRAGMA journal_mode=WAL;")
+        c.execute("PRAGMA busy_timeout=5000;")
+        _garantir_tabela_rotinas_dinamicas(c)
+        yield c
+        c.commit()
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        c.close()
+
+
+def _validar_cron_expr(cron_expr: str) -> str:
+    expr = " ".join((cron_expr or "").split())
+    partes = expr.split(" ")
+    if len(partes) != 5:
+        raise ValueError(
+            f"Expressao cron invalida ('{cron_expr}'). Use exatamente 5 campos (ex.: '0 9 * * 1-5')."
+        )
+    try:
+        CronTrigger.from_crontab(expr, timezone=_obter_fuso())
+    except Exception as exc:
+        raise ValueError(f"Expressao cron invalida ('{expr}'): {exc}") from exc
+    return expr
+
+
+def _row_para_rotina_dinamica(row: tuple[Any, ...]) -> dict[str, Any]:
+    rid = str(row[0])
+    ativa = bool(row[5])
+    falhas = int(row[6] or 0)
+    proxima = ""
+    if _SCHEDULER is not None and _SCHEDULER.running:
+        job = _SCHEDULER.get_job(f"{JOB_PREFIXO_DINAMICA}{rid}")
+        if job is not None and job.next_run_time is not None:
+            proxima = job.next_run_time.strftime("%Y-%m-%d %H:%M")
+    return {
+        "id": rid,
+        "nome": str(row[1]),
+        "instrucao": str(row[2]),
+        "cron_expr": str(row[3]),
+        "agente_alvo": str(row[4] or "athena"),
+        "ativa": ativa,
+        "falhas_consecutivas": falhas,
+        "pausada_por_falha": (not ativa) and falhas >= MAX_FALHAS_AUTO_PAUSA,
+        "ultima_execucao": str(row[7] or ""),
+        "ultimo_resultado": str(row[8] or ""),
+        "criado_em": str(row[9]),
+        "proxima_execucao": proxima,
+    }
+
+
+def _sincronizar_job_dinamico(rotina: dict[str, Any]) -> None:
+    if _SCHEDULER is None:
+        return
+    job_id = f"{JOB_PREFIXO_DINAMICA}{rotina['id']}"
+    existente = _SCHEDULER.get_job(job_id)
+    if not rotina.get("ativa"):
+        if existente is not None:
+            with suppress(Exception):
+                _SCHEDULER.remove_job(job_id)
+        return
+    trigger = CronTrigger.from_crontab(rotina["cron_expr"], timezone=_obter_fuso())
+    _SCHEDULER.add_job(
+        _disparar_rotina_dinamica_agendada,
+        trigger=trigger,
+        id=job_id,
+        args=[rotina["id"]],
+        replace_existing=True,
+        misfire_grace_time=1800,
+        coalesce=True,
+    )
+
+
+def criar_rotina_dinamica(
+    nome: str,
+    instrucao: str,
+    cron_expr: str,
+    agente_alvo: str = "athena",
+    *,
+    db_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Cria uma rotina dinamica agendada por expressao cron de 5 campos e registra no scheduler."""
+    nome_limpo = " ".join((nome or "").split())[:120]
+    inst_limpa = (instrucao or "").strip()[:2000]
+    if not nome_limpo or not inst_limpa:
+        raise ValueError("Informe nome e instrucao nao vazios para criar a rotina.")
+
+    cron_valido = _validar_cron_expr(cron_expr)
+    agente_norm = normalizar_agente_alvo(agente_alvo)
+    rid = f"rd_{uuid.uuid4().hex[:10]}"
+    agora = datetime.now().isoformat(timespec="seconds")
+
+    with _conn_dinamicas(db_path) as c:
+        c.execute(
+            """
+            INSERT INTO rotinas_dinamicas
+                (id, nome, instrucao, cron_expr, agente_alvo, ativa, falhas_consecutivas, ultima_execucao, ultimo_resultado, criado_em)
+            VALUES (?, ?, ?, ?, ?, 1, 0, '', '', ?)
+            """,
+            (rid, nome_limpo, inst_limpa, cron_valido, agente_norm, agora),
+        )
+        row = c.execute(
+            """
+            SELECT id, nome, instrucao, cron_expr, agente_alvo, ativa, falhas_consecutivas, ultima_execucao, ultimo_resultado, criado_em
+            FROM rotinas_dinamicas WHERE id = ?
+            """,
+            (rid,),
+        ).fetchone()
+
+    rotina = _row_para_rotina_dinamica(row)
+    _sincronizar_job_dinamico(rotina)
+    with suppress(Exception):
+        registrar_atividade(
+            agente=agente_norm,
+            acao="criar_rotina_dinamica",
+            alvo=nome_limpo,
+            status="sucesso",
+            detalhes=f"cron={cron_valido} | id={rid}",
+            db_path=db_path,
+        )
+    return rotina
+
+
+def listar_rotinas_dinamicas(*, db_path: str | Path | None = None) -> list[dict[str, Any]]:
+    """Lista todas as rotinas dinamicas criadas pelo chat ou painel."""
+    with _conn_dinamicas(db_path) as c:
+        rows = c.execute(
+            """
+            SELECT id, nome, instrucao, cron_expr, agente_alvo, ativa, falhas_consecutivas, ultima_execucao, ultimo_resultado, criado_em
+            FROM rotinas_dinamicas
+            ORDER BY criado_em DESC, rowid DESC
+            """
+        ).fetchall()
+    return [_row_para_rotina_dinamica(r) for r in rows]
+
+
+def _obter_rotina_dinamica(rotina_id: str, *, db_path: str | Path | None = None) -> dict[str, Any] | None:
+    with _conn_dinamicas(db_path) as c:
+        row = c.execute(
+            """
+            SELECT id, nome, instrucao, cron_expr, agente_alvo, ativa, falhas_consecutivas, ultima_execucao, ultimo_resultado, criado_em
+            FROM rotinas_dinamicas WHERE id = ?
+            """,
+            (rotina_id,),
+        ).fetchone()
+    return _row_para_rotina_dinamica(row) if row else None
+
+
+def alterar_status_rotina(
+    rotina_id: str,
+    ativa: bool,
+    *,
+    db_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Ativa ou pausa uma rotina dinamica (ao reativar, zera falhas_consecutivas)."""
+    ativo_int = 1 if bool(ativa) else 0
+    with _conn_dinamicas(db_path) as c:
+        existe = c.execute("SELECT 1 FROM rotinas_dinamicas WHERE id = ?", (rotina_id,)).fetchone()
+        if not existe:
+            return {"ok": False, "erro": f"Rotina dinamica '{rotina_id}' nao encontrada."}
+        if ativo_int == 1:
+            c.execute(
+                "UPDATE rotinas_dinamicas SET ativa = 1, falhas_consecutivas = 0 WHERE id = ?",
+                (rotina_id,),
+            )
+        else:
+            c.execute("UPDATE rotinas_dinamicas SET ativa = 0 WHERE id = ?", (rotina_id,))
+
+    rotina = _obter_rotina_dinamica(rotina_id, db_path=db_path)
+    if rotina is not None:
+        _sincronizar_job_dinamico(rotina)
+        rotina = _obter_rotina_dinamica(rotina_id, db_path=db_path)
+    return {"ok": True, "rotina": rotina}
+
+
+def excluir_rotina_dinamica(rotina_id: str, *, db_path: str | Path | None = None) -> dict[str, Any]:
+    """Remove do scheduler e exclui permanentemente uma rotina dinamica."""
+    if _SCHEDULER is not None:
+        with suppress(Exception):
+            _SCHEDULER.remove_job(f"{JOB_PREFIXO_DINAMICA}{rotina_id}")
+
+    with _conn_dinamicas(db_path) as c:
+        cur = c.execute("DELETE FROM rotinas_dinamicas WHERE id = ?", (rotina_id,))
+        removida = int(cur.rowcount or 0) > 0
+
+    if not removida:
+        return {"ok": False, "erro": f"Rotina dinamica '{rotina_id}' nao encontrada."}
+    return {"ok": True, "id": rotina_id}
+
+
+def carregar_rotinas_dinamicas_no_scheduler(*, db_path: str | Path | None = None) -> int:
+    """Registra todas as rotinas dinamicas ativas no APScheduler."""
+    if _SCHEDULER is None:
+        return 0
+    carregadas = 0
+    for rot in listar_rotinas_dinamicas(db_path=db_path):
+        if rot.get("ativa"):
+            with suppress(Exception):
+                _sincronizar_job_dinamico(rot)
+                carregadas += 1
+    return carregadas
+
+
+async def _executar_agente_rotina_dinamica(
+    rotina: dict[str, Any],
+    *,
+    pasta_raiz: Path | None = None,
+    modelo: str | None = None,
+) -> str:
+    pasta_padrao = pasta_raiz or (Path(__file__).resolve().parent / "sandbox_files")
+    modelo_uso = modelo or MODELO_PADRAO
+    info_ag = obter_agente_direto(str(rotina.get("agente_alvo") or "athena"))
+    ctx = ContextoMissao(
+        pasta_raiz=pasta_padrao,
+        modelo=modelo_uso,
+        mensagem_atual=str(rotina.get("instrucao") or ""),
+    )
+    res = await info_ag["agente"].run(
+        str(rotina["instrucao"]),
+        deps=ctx,
+        model=obter_modelo(modelo_uso),
+    )
+    return str(getattr(res, "output", res) or "").strip()
+
+
+async def executar_rotina_dinamica(
+    rotina_id: str,
+    *,
+    pasta_raiz: Path | None = None,
+    modelo: str | None = None,
+    db_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Executa uma rotina dinamica com auto-pausa segura apos 3 falhas consecutivas e auditoria."""
+    rotina = _obter_rotina_dinamica(rotina_id, db_path=db_path)
+    if rotina is None:
+        return {"ok": False, "erro": f"Rotina dinamica '{rotina_id}' nao encontrada."}
+
+    agora_str = _agora_sp().strftime("%Y-%m-%d %H:%M")
+    agente_nome = str(rotina.get("agente_alvo") or "athena")
+
+    try:
+        saida = await _executar_agente_rotina_dinamica(rotina, pasta_raiz=pasta_raiz, modelo=modelo)
+        with _conn_dinamicas(db_path) as c:
+            c.execute(
+                """
+                UPDATE rotinas_dinamicas
+                SET falhas_consecutivas = 0, ultima_execucao = ?, ultimo_resultado = ?
+                WHERE id = ?
+                """,
+                (agora_str, saida[:4000], rotina_id),
+            )
+        registrar_atividade(
+            agente=agente_nome,
+            acao="rotina_dinamica",
+            alvo=rotina["nome"],
+            status="sucesso",
+            detalhes=saida[:300],
+            db_path=db_path,
+        )
+        return {"ok": True, "rotina": _obter_rotina_dinamica(rotina_id, db_path=db_path)}
+    except Exception as exc:
+        novas_falhas = int(rotina.get("falhas_consecutivas") or 0) + 1
+        auto_pausada = novas_falhas >= MAX_FALHAS_AUTO_PAUSA
+        novo_ativa = 0 if auto_pausada else (1 if rotina.get("ativa") else 0)
+        msg_erro = f"Erro ({agora_str}) [falha {novas_falhas}/{MAX_FALHAS_AUTO_PAUSA}]: {exc}"
+        if auto_pausada:
+            msg_erro += " — Rotina pausada automaticamente por seguranca."
+
+        with _conn_dinamicas(db_path) as c:
+            c.execute(
+                """
+                UPDATE rotinas_dinamicas
+                SET falhas_consecutivas = ?, ativa = ?, ultima_execucao = ?, ultimo_resultado = ?
+                WHERE id = ?
+                """,
+                (novas_falhas, novo_ativa, agora_str, msg_erro[:4000], rotina_id),
+            )
+
+        if auto_pausada and _SCHEDULER is not None:
+            with suppress(Exception):
+                _SCHEDULER.remove_job(f"{JOB_PREFIXO_DINAMICA}{rotina_id}")
+
+        registrar_atividade(
+            agente=agente_nome,
+            acao="rotina_auto_pausada" if auto_pausada else "rotina_dinamica",
+            alvo=rotina["nome"],
+            status="alerta_auto_pausa" if auto_pausada else "erro",
+            detalhes=msg_erro,
+            db_path=db_path,
+        )
+        return {
+            "ok": False,
+            "erro": str(exc),
+            "auto_pausada": auto_pausada,
+            "falhas_consecutivas": novas_falhas,
+            "rotina": _obter_rotina_dinamica(rotina_id, db_path=db_path),
+        }
+
+
+async def _disparar_rotina_dinamica_agendada(rotina_id: str) -> None:
+    try:
+        await executar_rotina_dinamica(rotina_id)
+    except Exception as exc:
+        _log.warning("rotina_dinamica_agendada_falhou", rotina_id=rotina_id, erro=str(exc))

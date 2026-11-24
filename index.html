@@ -3278,6 +3278,55 @@
                 <div id="box-rotinas" class="empty-note">Carregando rotinas...</div>
               </div>
 
+              <div class="panel" id="panel-rotinas-dinamicas">
+                <h3>
+                  <span style="display:inline-flex;align-items:center;gap:8px;">
+                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></svg>
+                    <span>Rotinas Dinâmicas (Criadas pelo Chat · Auto-pausa em 3 falhas)</span>
+                  </span>
+                  <button type="button" class="ghost mini" onclick="carregarRotinasDinamicas()">
+                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span>Atualizar</span>
+                  </button>
+                </h3>
+                <div id="box-rotinas-dinamicas" class="empty-note">Carregando rotinas dinâmicas...</div>
+              </div>
+
+              <div class="panel" id="panel-atividade-permissoes">
+                <h3>
+                  <span style="display:inline-flex;align-items:center;gap:8px;">
+                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    <span>Atividade &amp; Permissões (Auditoria Unificada)</span>
+                  </span>
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <select id="filtro-auditoria-agente" class="field-dark" style="height:32px;font-size:12px;" onchange="carregarAuditoriaAtividades()" aria-label="Filtrar auditoria por agente">
+                      <option value="">Todos os agentes</option>
+                      <option value="Windows Nativo">Windows Nativo</option>
+                      <option value="Agente Faxineiro">Agente Faxineiro</option>
+                      <option value="Agente Sistema">Agente Sistema</option>
+                      <option value="Athena Lab">Athena Lab</option>
+                      <option value="Permissoes">Permissões</option>
+                      <option value="athena">Athena (Rotinas)</option>
+                    </select>
+                    <button type="button" class="ghost mini" onclick="carregarAuditoriaEPermissoes()">
+                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                      <span>Atualizar</span>
+                    </button>
+                  </div>
+                </h3>
+                <div id="box-auditoria-atividades" class="table-wrap empty-note" style="margin-bottom:16px;">Carregando trilha de atividade...</div>
+                <div style="border-top:1px solid var(--border);padding-top:14px;">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+                    <strong style="font-size:13px;color:var(--text-strong);">Pastas Aprovadas (Revogáveis)</strong>
+                    <button type="button" class="ghost mini" onclick="adicionarPastaAprovadaUI(this)">
+                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>
+                      <span>Adicionar Pasta</span>
+                    </button>
+                  </div>
+                  <div id="box-pastas-aprovadas" class="empty-note">Carregando pastas aprovadas...</div>
+                </div>
+              </div>
+
               <div class="rotinas-side-grid">
                 <div class="panel">
                   <h3>
@@ -6744,6 +6793,8 @@ function renderRotinas(lista) {
 async function carregarRotinas() {
   carregarServidoresMcp();
   carregarTelemetria();
+  carregarRotinasDinamicas();
+  carregarAuditoriaEPermissoes();
   try {
     const r = await fetch("/api/rotinas").then(x => x.json());
     renderRotinas(r.rotinas || []);
@@ -6751,6 +6802,213 @@ async function carregarRotinas() {
     document.getElementById("box-rotinas").innerHTML = '<span class="empty-note">Não foi possível carregar as rotinas agendadas.</span>';
     mostrarToast("Erro ao carregar rotinas.", true);
   }
+}
+
+async function carregarRotinasDinamicas() {
+  const box = document.getElementById("box-rotinas-dinamicas");
+  if (!box) return;
+  try {
+    const r = await fetch("/api/rotinas/dinamicas").then(x => x.json());
+    const lista = Array.isArray(r && r.rotinas) ? r.rotinas : [];
+    if (!lista.length) {
+      box.innerHTML = '<span class="empty-note">Nenhuma rotina dinâmica criada ainda. Peça no chat, ex.: "Agende todo dia às 09:00 um resumo das notícias do mercado".</span>';
+      return;
+    }
+    box.innerHTML = lista.map(rot => {
+      const badge = rot.pausada_por_falha
+        ? '<span class="lab-badge fail">Pausada por falha (3/3)</span>'
+        : (rot.ativa ? '<span class="lab-badge ok">Ativa</span>' : '<span class="lab-badge">Pausada</span>');
+      const lblToggle = rot.ativa ? "Pausar" : "Ativar";
+      const prox = rot.proxima_execucao ? ` · Próx.: ${escHtml(rot.proxima_execucao)}` : "";
+      const ult = rot.ultima_execucao ? `Última: ${escHtml(rot.ultima_execucao)}` : "Nunca executada";
+      const resTxt = rot.ultimo_resultado
+        ? `<div style="margin-top:6px;font-size:12px;color:var(--muted);white-space:pre-wrap;max-height:110px;overflow:auto;">${escHtml(rot.ultimo_resultado.slice(0, 420))}</div>`
+        : "";
+      return `
+        <div class="lab-card">
+          <div class="lab-card-head">
+            <div>
+              <div class="lab-card-title">${escHtml(rot.nome)}</div>
+              <div style="font-size:12px;color:var(--muted);margin-top:2px;">${escHtml(rot.instrucao)}</div>
+            </div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+              <span class="lab-badge accent"><code>${escHtml(rot.cron_expr)}</code></span>
+              <span class="lab-badge">${escHtml(rot.agente_alvo)}</span>
+              ${badge}
+            </div>
+          </div>
+          <div style="font-size:11.5px;color:var(--muted);">${ult}${prox} · Falhas consecutivas: ${Number(rot.falhas_consecutivas || 0)}/3</div>
+          ${resTxt}
+          <div class="lab-actions">
+            <button type="button" class="ghost mini" onclick="alternarRotinaDinamicaUI('${escHtml(rot.id)}', ${rot.ativa ? "false" : "true"}, this)">${lblToggle}</button>
+            <button type="button" class="ghost mini" onclick="executarRotinaDinamicaUI('${escHtml(rot.id)}', this)">Executar agora</button>
+            <button type="button" class="btn-recusar mini" onclick="excluirRotinaDinamicaUI('${escHtml(rot.id)}', this)">Excluir</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (_) {
+    box.innerHTML = '<span class="empty-note">Não foi possível carregar as rotinas dinâmicas.</span>';
+  }
+}
+
+async function alternarRotinaDinamicaUI(id, ativa, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`/api/rotinas/dinamicas/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ativa: !!ativa }),
+    }).then(x => x.json());
+    if (r && r.ok) {
+      mostrarToast(ativa ? "Rotina reativada!" : "Rotina pausada.");
+      await carregarRotinasDinamicas();
+    } else {
+      mostrarToast((r && r.detail) || "Erro ao atualizar rotina.", true);
+    }
+  } catch (_) {
+    mostrarToast("Falha ao atualizar rotina dinâmica.", true);
+  }
+}
+
+async function executarRotinaDinamicaUI(id, btn) {
+  if (btn) btn.disabled = true;
+  mostrarToast("Executando rotina dinâmica...");
+  try {
+    const r = await fetch(`/api/rotinas/dinamicas/${encodeURIComponent(id)}/executar`, { method: "POST" }).then(x => x.json());
+    if (r && r.ok) mostrarToast("Rotina dinâmica concluída ✓");
+    else mostrarToast((r && r.erro) || "Falha na execução da rotina.", true);
+    await carregarRotinasDinamicas();
+    await carregarAuditoriaAtividades();
+  } catch (_) {
+    mostrarToast("Erro ao executar rotina dinâmica.", true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function excluirRotinaDinamicaUI(id, btn) {
+  if (!window.confirm("Excluir esta rotina dinâmica permanentemente?")) return;
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`/api/rotinas/dinamicas/${encodeURIComponent(id)}`, { method: "DELETE" }).then(x => x.json());
+    if (r && r.ok) {
+      mostrarToast("Rotina dinâmica excluída.");
+      await carregarRotinasDinamicas();
+    } else {
+      mostrarToast((r && r.detail) || "Erro ao excluir rotina.", true);
+    }
+  } catch (_) {
+    mostrarToast("Erro de rede ao excluir rotina.", true);
+  }
+}
+
+async function carregarAuditoriaAtividades() {
+  const box = document.getElementById("box-auditoria-atividades");
+  if (!box) return;
+  const sel = document.getElementById("filtro-auditoria-agente");
+  const ag = sel ? sel.value.trim() : "";
+  const url = ag ? `/api/auditoria/atividades?agente=${encodeURIComponent(ag)}&limite=60` : "/api/auditoria/atividades?limite=60";
+  try {
+    const r = await fetch(url).then(x => x.json());
+    const lista = Array.isArray(r && r.atividades) ? r.atividades : [];
+    if (!lista.length) {
+      box.innerHTML = '<span class="empty-note">Nenhuma atividade auditada registrada ainda.</span>';
+      return;
+    }
+    let h = '<table class="grid"><thead><tr><th>Quando</th><th>Agente</th><th>Ação</th><th>Alvo</th><th>Status</th><th>Detalhes</th></tr></thead><tbody>';
+    for (const item of lista) {
+      const dt = String(item.criado_em || "").replace("T", " ").slice(0, 19);
+      const st = String(item.status || "ok").toLowerCase();
+      const badgeCls = st === "sucesso" || st === "ok" ? "badge-exec" : "badge-rec";
+      h += `<tr>
+        <td style="white-space:nowrap;color:var(--muted);font-size:12px;">${escHtml(dt)}</td>
+        <td><span class="badge-tipo">${escHtml(item.agente)}</span></td>
+        <td><code>${escHtml(item.acao)}</code></td>
+        <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(item.alvo)}">${escHtml(item.alvo)}</td>
+        <td><span class="${badgeCls}">${escHtml(item.status)}</span></td>
+        <td style="font-size:12px;color:var(--muted);max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escHtml(item.detalhes || "")}">${escHtml(item.detalhes || "-")}</td>
+      </tr>`;
+    }
+    box.innerHTML = h + "</tbody></table>";
+  } catch (_) {
+    box.innerHTML = '<span class="empty-note">Não foi possível carregar a trilha de auditoria.</span>';
+  }
+}
+
+async function carregarPastasAprovadas() {
+  const box = document.getElementById("box-pastas-aprovadas");
+  if (!box) return;
+  try {
+    const r = await fetch("/api/permissoes/pastas").then(x => x.json());
+    const lista = Array.isArray(r && r.pastas) ? r.pastas : [];
+    if (!lista.length) {
+      box.innerHTML = '<span class="empty-note">Nenhuma pasta extra aprovada. Clique em "Adicionar Pasta" para autorizar uma pasta local.</span>';
+      return;
+    }
+    box.innerHTML = lista.map(p => {
+      const modo = p.somente_leitura ? "Somente leitura" : "Leitura e escrita";
+      const camEsc = escHtml(p.caminho);
+      return `
+        <div class="acao-card" style="padding:10px 12px;">
+          <div class="acao-info">
+            <div style="font-family:var(--font-mono);font-size:12.5px;color:var(--text-strong);word-break:break-all;">${camEsc}</div>
+            <div style="font-size:11.5px;color:var(--muted);margin-top:3px;">${modo} · aprovada em ${escHtml(p.criado_em || "-")}</div>
+          </div>
+          <div class="acao-btns">
+            <button type="button" class="btn-recusar mini" onclick="revogarPastaAprovadaUI('${camEsc.replace(/'/g, "&#39;")}', this)">Revogar</button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (_) {
+    box.innerHTML = '<span class="empty-note">Erro ao carregar pastas aprovadas.</span>';
+  }
+}
+
+async function adicionarPastaAprovadaUI(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const sel = await fetch("/api/escolher-pasta", { method: "POST" }).then(x => x.json());
+    if (!sel || !sel.ok || !sel.pasta_raiz) {
+      if (sel && !sel.cancelado) mostrarToast((sel && sel.erro) || "Nenhuma pasta selecionada.", true);
+      return;
+    }
+    const r = await fetch("/api/permissoes/pastas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ caminho: sel.pasta_raiz, somente_leitura: true }),
+    }).then(x => x.json());
+    if (r && r.ok) {
+      mostrarToast("Pasta aprovada com sucesso!");
+      await carregarAuditoriaEPermissoes();
+    } else {
+      mostrarToast((r && r.detail) || "Não foi possível aprovar a pasta.", true);
+    }
+  } catch (_) {
+    mostrarToast("Erro ao selecionar/aprovar pasta.", true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function revogarPastaAprovadaUI(caminho, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`/api/permissoes/pastas?caminho=${encodeURIComponent(caminho)}`, { method: "DELETE" }).then(x => x.json());
+    if (r && r.ok) {
+      mostrarToast("Permissão da pasta revogada.");
+      await carregarAuditoriaEPermissoes();
+    } else {
+      mostrarToast("Pasta não encontrada para revogação.", true);
+    }
+  } catch (_) {
+    mostrarToast("Erro ao revogar pasta.", true);
+  }
+}
+
+async function carregarAuditoriaEPermissoes() {
+  await Promise.all([carregarAuditoriaAtividades(), carregarPastasAprovadas()]);
 }
 
 function fmtDuracaoMs(ms) {

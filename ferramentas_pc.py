@@ -74,6 +74,18 @@ def rodar_comando_seguro(pasta_raiz: Path, comando: str) -> str:
         timeout=25,
     )
     saida = (res.stdout or "") + ("\n[STDERR]\n" + res.stderr if res.stderr else "")
+    try:
+        from auditoria import registrar_atividade
+
+        registrar_atividade(
+            agente="Agente Sistema",
+            acao="podman_exec",
+            alvo=comando[:200],
+            status="sucesso" if res.returncode == 0 else "erro",
+            detalhes=f"exit={res.returncode} | {saida[:300]}",
+        )
+    except Exception:
+        pass
     return f"[SANDBOX LINUX | exit={res.returncode}]\n{saida[:5000]}"
 
 
