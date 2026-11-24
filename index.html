@@ -26,15 +26,15 @@
 <style>
   :root {
     --bg: #111214;
-    --bg-elev: #181a1f;
-    --surface: #1f2228;
-    --surface-2: #262a32;
-    --bubble-user: #252932;
-    --border: #2c3038;
-    --border-hover: #3c424f;
+    --bg-elev: #15171b;
+    --surface: #17191d;
+    --surface-2: #20232a;
+    --bubble-user: #1e2128;
+    --border: rgba(255, 255, 255, 0.075);
+    --border-hover: rgba(255, 255, 255, 0.14);
     --accent: #eab308;
     --accent-hover: #facc15;
-    --accent-soft: rgba(234, 179, 8, 0.14);
+    --accent-soft: rgba(234, 179, 8, 0.12);
     --text: #e5e7eb;
     --text-strong: #f8fafc;
     --muted: #9ca3af;
@@ -352,7 +352,21 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  }
+  .nav-item.agent-row:hover .agent-new-btn,
+  .nav-item.agent-row.active .agent-new-btn,
+  .nav-item.agent-row:focus-within .agent-new-btn {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  @media (hover: none) {
+    .agent-new-btn {
+      opacity: 0.78;
+      pointer-events: auto;
+    }
   }
   .agent-new-btn .ico {
     width: 14px;
@@ -444,7 +458,6 @@
     transition: opacity var(--dur-fast) var(--ease);
   }
   .conv-item:hover .conv-actions,
-  .conv-item.active .conv-actions,
   .conv-item:focus-within .conv-actions {
     opacity: 1;
   }
@@ -769,7 +782,7 @@
   }
 
   .chat-column {
-    max-width: 840px;
+    max-width: 780px;
     width: 100%;
     margin: 0 auto;
     display: flex;
@@ -1121,24 +1134,25 @@
     align-items: center;
     gap: 5px;
     font-family: var(--font-ui);
-    font-size: 11.5px;
-    font-weight: 600;
-    color: var(--muted);
-    background: var(--bg-elev);
-    border: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--muted-2);
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.06);
     border-radius: 999px;
-    padding: 3px 9px;
+    padding: 2px 8px;
     white-space: nowrap;
   }
   .msg-model-tag.is-auto {
-    color: var(--accent-hover);
-    border-color: rgba(234, 179, 8, 0.35);
-    background: var(--accent-soft);
+    color: #b4a26b;
+    border-color: rgba(234, 179, 8, 0.2);
+    background: rgba(234, 179, 8, 0.05);
   }
 
   .msg-meta-stats {
-    font-size: 12px;
-    color: #9ca3af;
+    font-size: 11px;
+    color: var(--muted-2);
+    opacity: 0.85;
     white-space: nowrap;
     letter-spacing: 0.01em;
   }
@@ -1369,10 +1383,10 @@
   }
 
   .composer {
-    max-width: 840px;
+    max-width: 780px;
     width: 100%;
     margin: 0 auto;
-    background: var(--bg-elev);
+    background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 22px;
     padding: 12px 14px 10px 16px;
@@ -2318,33 +2332,37 @@
     }
   }
 
-  /* Toast (z-index 9000) */
+  /* Toast unificado discreto no canto superior direito (z-index 9000) */
   .toast {
     position: fixed;
-    bottom: 20px;
-    right: 20px;
-    background: var(--surface-2);
+    top: 16px;
+    right: 18px;
+    bottom: auto;
+    background: rgba(23, 25, 29, 0.96);
+    backdrop-filter: blur(10px);
     color: var(--text-strong);
-    border: 1px solid var(--accent);
-    padding: 11px 16px;
-    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-left: 3px solid var(--accent);
+    padding: 10px 15px;
+    border-radius: 11px;
     font-family: var(--font-ui);
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 600;
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.48);
     z-index: 9000;
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(-8px);
     pointer-events: none;
     transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
-    max-width: 440px;
+    max-width: min(400px, calc(100vw - 32px));
     word-break: break-word;
   }
   .toast.show { opacity: 1; transform: translateY(0); }
   .toast.erro {
-    background: #2b1416;
+    background: rgba(43, 20, 22, 0.96);
     color: #fecaca;
-    border-color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.45);
+    border-left-color: #ef4444;
   }
 
   /* Tela de bloqueio fullscreen por PIN + Biometria (z-index 10000) */
@@ -2585,7 +2603,8 @@
     .toast {
       left: 12px;
       right: 12px;
-      bottom: max(12px, env(safe-area-inset-bottom));
+      top: max(12px, env(safe-area-inset-top));
+      bottom: auto;
       max-width: none;
     }
   }
@@ -2837,6 +2856,451 @@
     color: var(--text);
   }
   .grafo-detail-card.hidden { display: none; }
+
+  /* ===== REORGANIZACAO UX/UI & QoL (Menu Paineis, Sub-abas, Voltar, Ctrl+K, Scroll-Bottom) ===== */
+  .sidebar { overflow: visible; }
+  .sidebar-footer { position: relative; }
+
+  .paineis-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    background: var(--accent);
+    box-shadow: 0 0 8px rgba(234, 179, 8, 0.65);
+    margin-left: auto;
+    flex-shrink: 0;
+  }
+  .paineis-dot.hidden { display: none; }
+  .sidebar.collapsed .paineis-dot {
+    position: absolute;
+    top: 7px;
+    right: 12px;
+    margin-left: 0;
+  }
+
+  .paineis-popover {
+    position: fixed;
+    left: 12px;
+    bottom: 96px;
+    width: 264px;
+    max-width: calc(100vw - 24px);
+    background: #17191d;
+    border: 1px solid var(--border-hover);
+    border-radius: 14px;
+    padding: 8px;
+    box-shadow: 0 20px 48px rgba(0, 0, 0, 0.62);
+    z-index: 80;
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+    pointer-events: none;
+    transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  }
+  .paineis-popover.open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+  .paineis-cat {
+    padding: 8px 10px 4px;
+    font-family: var(--font-ui);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted-2);
+  }
+  .paineis-cat:first-child { padding-top: 4px; }
+  .paineis-item {
+    width: 100%;
+    height: 36px;
+    padding: 0 10px;
+    border-radius: 9px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    text-align: left;
+  }
+  .paineis-item:hover {
+    background: var(--surface-2);
+    color: var(--text-strong);
+  }
+  .paineis-item.active {
+    background: var(--accent-soft);
+    border-color: rgba(234, 179, 8, 0.3);
+    color: var(--accent-hover);
+  }
+  .paineis-item .ico { width: 15px; height: 15px; color: var(--muted); }
+  .paineis-item.active .ico,
+  .paineis-item:hover .ico { color: var(--accent-hover); }
+  .paineis-item .nav-badge { margin-left: auto; }
+
+  /* Chip discreto do modelo + popover "+" no composer */
+  .composer-model-chip {
+    height: var(--composer-btn);
+    padding: 0 12px 0 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.035);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 600;
+    position: relative;
+  }
+  .composer-model-chip:hover {
+    background: var(--surface-2);
+    color: var(--text-strong);
+    border-color: var(--border-hover);
+  }
+  .composer-model-chip.active-chip {
+    color: var(--text-strong);
+    border-color: rgba(234, 179, 8, 0.35);
+    background: rgba(234, 179, 8, 0.08);
+  }
+  .composer-model-chip .chip-dot {
+    position: static;
+    width: 6px;
+    height: 6px;
+    flex-shrink: 0;
+  }
+  .composer-plus-popover {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 10px);
+    min-width: 248px;
+    background: #17191d;
+    border: 1px solid var(--border-hover);
+    border-radius: 14px;
+    padding: 6px;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.58);
+    z-index: 65;
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+    pointer-events: none;
+    transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+  }
+  .composer-plus-popover.open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+  .composer-plus-item {
+    width: 100%;
+    height: 38px;
+    padding: 0 11px;
+    border-radius: 9px;
+    background: transparent;
+    border: 0;
+    color: var(--text);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    text-align: left;
+  }
+  .composer-plus-item:hover {
+    background: var(--surface-2);
+    color: var(--text-strong);
+  }
+  .composer-plus-item .ico { width: 16px; height: 16px; color: var(--muted); }
+  .composer-plus-item:hover .ico { color: var(--accent-hover); }
+
+  /* Botao flutuante discreto para rolar ate a ultima mensagem */
+  .scroll-bottom-btn {
+    position: absolute;
+    left: 50%;
+    bottom: 112px;
+    transform: translateX(-50%) translateY(8px);
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    border-radius: 999px;
+    background: rgba(23, 25, 29, 0.94);
+    border: 1px solid var(--border-hover);
+    color: var(--text);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+    z-index: 25;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+  }
+  .scroll-bottom-btn.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+  }
+  .scroll-bottom-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent-hover);
+    background: var(--surface-2);
+  }
+
+  /* Cabecalho padrao dos paineis secundarios + botao Voltar ao Chat */
+  .panel-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .panel-topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .btn-voltar-chat {
+    height: 32px;
+    padding: 0 11px;
+    border-radius: 9px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    font-weight: 600;
+    gap: 6px;
+  }
+  .btn-voltar-chat:hover {
+    background: var(--surface);
+    color: var(--text-strong);
+    border-color: var(--border-hover);
+  }
+  .panel-page-title {
+    margin: 0;
+    font-family: var(--font-ui);
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-strong);
+    letter-spacing: -0.02em;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Sub-abas internas limpas */
+  .subtabs-bar {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 11px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .subtab-btn {
+    height: 32px;
+    padding: 0 13px;
+    border-radius: 8px;
+    background: transparent;
+    border: 0;
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    font-weight: 600;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  }
+  .subtab-btn:hover { color: var(--text-strong); background: rgba(255, 255, 255, 0.04); }
+  .subtab-btn.active {
+    background: var(--surface-2);
+    color: var(--accent-hover);
+    box-shadow: inset 0 0 0 1px rgba(234, 179, 8, 0.28);
+  }
+  .subtab-pane { display: none; flex-direction: column; gap: 16px; }
+  .subtab-pane.active { display: flex; }
+
+  /* Botao Ctrl+K discreto na topbar */
+  .btn-cmd-trigger {
+    height: 32px;
+    padding: 0 10px;
+    border-radius: 9px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 500;
+    gap: 8px;
+  }
+  .btn-cmd-trigger:hover {
+    background: var(--surface);
+    color: var(--text-strong);
+    border-color: var(--border-hover);
+  }
+  .kbd-hint {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: var(--muted-2);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1px 5px;
+  }
+
+  /* Paleta de Comandos (Ctrl+K estilo Raycast/Linear) */
+  .cmd-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9500;
+    background: rgba(8, 9, 11, 0.72);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 12vh 16px 24px;
+  }
+  .cmd-overlay.hidden { display: none; }
+  .cmd-card {
+    width: 100%;
+    max-width: 560px;
+    background: #17191d;
+    border: 1px solid var(--border-hover);
+    border-radius: 16px;
+    box-shadow: 0 28px 68px rgba(0, 0, 0, 0.68);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    max-height: 70vh;
+  }
+  .cmd-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .cmd-input {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    outline: none;
+    color: var(--text-strong);
+    font-family: var(--font-body);
+    font-size: 14.5px;
+  }
+  .cmd-input::placeholder { color: var(--muted-2); }
+  .cmd-list {
+    overflow-y: auto;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .cmd-group-lbl {
+    padding: 8px 10px 4px;
+    font-family: var(--font-ui);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted-2);
+  }
+  .cmd-item {
+    width: 100%;
+    min-height: 38px;
+    padding: 7px 11px;
+    border-radius: 9px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    text-align: left;
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .cmd-item:hover,
+  .cmd-item.selected {
+    background: var(--surface-2);
+    border-color: rgba(234, 179, 8, 0.25);
+    color: var(--text-strong);
+  }
+  .cmd-item-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    overflow: hidden;
+  }
+  .cmd-item-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .cmd-item-meta {
+    font-size: 11px;
+    color: var(--muted-2);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .cmd-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--muted-2);
+    background: var(--bg-elev);
+  }
+
+  /* Linhas limpas no Modal de Configuracoes */
+  .config-card-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 13px 14px;
+    border-radius: 11px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+  }
+  .config-row-info {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+    flex: 1;
+  }
+  .config-row-title {
+    font-family: var(--font-ui);
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--text-strong);
+  }
+  .config-row-sub {
+    font-size: 12px;
+    color: var(--muted);
+    word-break: break-word;
+  }
+
+  @media (max-width: 768px) {
+    .paineis-popover { left: 12px; right: 12px; width: auto; bottom: 84px; }
+    .btn-cmd-trigger .kbd-hint { display: none; }
+    .scroll-bottom-btn { bottom: 122px; }
+  }
 </style>
 </head>
 <body>
@@ -2853,7 +3317,7 @@
       </div>
 
       <nav class="sidebar-nav" aria-label="Seções da Athena">
-        <!-- BLOCO 1: AGENTES (CHAT DIRETO) -->
+        <!-- AREA 1: AGENTES (CHAT DIRETO) -->
         <div class="sb-section" id="sec-agentes">
           <button type="button" class="sb-section-head" onclick="alternarSecaoSidebar('sec-agentes')" aria-expanded="true">
             <span>Agentes (Chat Direto)</span>
@@ -2862,7 +3326,7 @@
           <div id="lista-agentes" class="sb-section-body"></div>
         </div>
 
-        <!-- BLOCO 2: CONVERSAS RECENTES -->
+        <!-- AREA 2: CONVERSAS RECENTES -->
         <div class="sb-section" id="sec-conversas">
           <button type="button" class="sb-section-head" onclick="alternarSecaoSidebar('sec-conversas')" aria-expanded="true">
             <span>Conversas Recentes</span>
@@ -2872,56 +3336,57 @@
             <div class="conv-empty">Carregando conversas...</div>
           </div>
         </div>
-
-        <!-- BLOCO 3: PAINEIS -->
-        <div class="sb-section" id="sec-paineis">
-          <button type="button" class="sb-section-head" onclick="alternarSecaoSidebar('sec-paineis')" aria-expanded="true">
-            <span>Painéis</span>
-            <svg class="ico sb-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
-          </button>
-          <div class="sb-section-body">
-            <button type="button" class="nav-item" data-aba="carteira" onclick="abrirAba('carteira', this)" title="Carteira">
-              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-              <span class="nav-label">Carteira</span>
-            </button>
-            <button type="button" class="nav-item" data-aba="estudos" onclick="abrirAba('estudos', this)" title="Estudos">
-              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-              <span class="nav-label">Estudos</span>
-            </button>
-            <button type="button" class="nav-item" data-aba="faxina" onclick="abrirAba('faxina', this)" title="Faxina">
-              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.8L20 10.7l-5.1 3.7 1.9 5.8L12 16.5l-4.8 3.7 1.9-5.8L4 10.7l6.1-1.9z"/></svg>
-              <span class="nav-label">Faxina</span>
-            </button>
-            <button type="button" class="nav-item" data-aba="rotinas" onclick="abrirAba('rotinas', this)" title="Rotinas">
-              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              <span class="nav-label">Rotinas</span>
-            </button>
-            <button type="button" class="nav-item" data-aba="lab" onclick="abrirAba('lab', this)" title="Athena Lab (R&D)">
-              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9.5V3"/><path d="M8.5 14h7"/></svg>
-              <span class="nav-label">Athena Lab</span>
-              <span id="nav-badge-lab" class="nav-badge hidden" title="Propostas pendentes no Athena Lab">0</span>
-            </button>
-          </div>
-        </div>
       </nav>
 
+      <!-- AREA 3: RODAPE COMPACTO (2 BOTOES DISCRETOS) -->
       <div class="sidebar-footer">
-        <button type="button" class="nav-item nav-util" id="btn-escolher-pasta" onclick="escolherPasta()" title="Pasta autorizada para os agentes">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>
-          <span class="nav-label" id="pasta-label">Pasta ativa</span>
+        <button type="button" class="nav-item nav-util" id="btn-paineis-menu" onclick="alternarMenuPaineis(event)" title="Abrir Painéis (Estudos, Carteira, Automação, Lab)" aria-haspopup="true" aria-expanded="false">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          <span class="nav-label">Painéis</span>
+          <span id="paineis-dot" class="paineis-dot hidden" title="Há itens pendentes na Faxina ou no Athena Lab"></span>
         </button>
 
-        <button type="button" class="nav-item nav-util" id="btn-ativar-biometria" onclick="ativarBiometria()" title="Cadastrar digital/biometria deste dispositivo" style="display:none;">
-          <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M17.29 21.02c.12-.6.43-2.3.5-3.02"/><path d="M2 12a10 10 0 0 1 18-6"/><path d="M2 16h.01"/><path d="M21.8 16c.2-2 .131-5.354 0-6"/><path d="M5 19.5C5.5 18 6 15 6 12a6 6 0 0 1 .34-2"/><path d="M8.65 22c.21-.66.45-1.32.57-2"/><path d="M9 6.8a6 6 0 0 1 9 5.2v2"/></svg>
-          <span class="nav-label">Biometria</span>
-        </button>
-
-        <button type="button" class="nav-item nav-util" id="btn-bloquear" onclick="bloquearPainel()" title="Bloquear Athena (PIN)" style="display:none;">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-          <span class="nav-label">Bloquear</span>
+        <button type="button" class="nav-item nav-util" id="btn-abrir-config" onclick="abrirModalMemorias('memorias')" title="Configurações, Memórias, Segurança e Sistema">
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+          <span class="nav-label">Configurações</span>
         </button>
       </div>
     </aside>
+
+    <!-- POPOVER CATEGORIZADO DE PAINEIS -->
+    <div id="paineis-popover" class="paineis-popover" role="menu" aria-label="Navegar para Painéis">
+      <div class="paineis-cat">Pessoal</div>
+      <button type="button" class="paineis-item" data-aba="estudos" onclick="abrirPainelPeloMenu('estudos')" role="menuitem">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+        <span>Estudos &amp; Grafo</span>
+      </button>
+      <button type="button" class="paineis-item" data-aba="carteira" onclick="abrirPainelPeloMenu('carteira')" role="menuitem">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        <span>Carteira</span>
+      </button>
+
+      <div class="paineis-cat">Automação</div>
+      <button type="button" class="paineis-item" data-aba="faxina" onclick="abrirPainelPeloMenu('faxina')" role="menuitem">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.8L20 10.7l-5.1 3.7 1.9 5.8L12 16.5l-4.8 3.7 1.9-5.8L4 10.7l6.1-1.9z"/></svg>
+        <span>Faxina &amp; Aprovações</span>
+        <span id="nav-badge-faxina" class="nav-badge hidden" title="Ações pendentes na Faxina">0</span>
+      </button>
+      <button type="button" class="paineis-item" data-aba="rotinas" onclick="abrirPainelPeloMenu('rotinas')" role="menuitem">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span>Rotinas &amp; Skills</span>
+      </button>
+      <button type="button" class="paineis-item" data-aba="atividade" onclick="abrirPainelPeloMenu('atividade')" role="menuitem">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span>Atividade &amp; Permissões</span>
+      </button>
+
+      <div class="paineis-cat">Engenharia</div>
+      <button type="button" class="paineis-item" data-aba="lab" onclick="abrirPainelPeloMenu('lab')" role="menuitem">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9.5V3"/><path d="M8.5 14h7"/></svg>
+        <span>Athena Lab (R&amp;D)</span>
+        <span id="nav-badge-lab" class="nav-badge hidden" title="Propostas pendentes no Athena Lab">0</span>
+      </button>
+    </div>
 
     <!-- AREA PRINCIPAL -->
     <div class="app-main">
@@ -2930,7 +3395,7 @@
           <button type="button" class="menu-btn mobile-menu-btn" onclick="abrirSidebarMobile()" aria-label="Abrir menu">
             <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
           </button>
-          <div class="brand">
+          <div class="brand" style="cursor:pointer;" onclick="abrirAba('chat')" title="Voltar ao Chat">
             <img class="brand-icon" src="/athena-icon?v=2" alt="Athena" />
             <span>Athena</span>
           </div>
@@ -2940,10 +3405,10 @@
         </div>
 
         <div class="topbar-right">
-          <button type="button" class="ghost btn-memorias" id="btn-abrir-memorias" onclick="abrirModalMemorias()" title="Ver e gerenciar memórias de longo prazo e skills">
-            <svg class="ico ico-sm ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 2.5 1.3 4.7 3.3 6 .5.3.7.9.7 1.5V18a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-1.5c0-.6.2-1.2.7-1.5 2-1.3 3.3-3.5 3.3-6a7 7 0 0 0-7-7z"/><line x1="9" y1="22" x2="15" y2="22"/></svg>
-            <span class="btn-label">Memórias</span>
-            <span id="mem-count-badge" class="mem-count-badge">0</span>
+          <button type="button" class="btn-cmd-trigger" id="btn-cmd-palette" onclick="abrirPaletaComandos()" title="Paleta de Comandos (Ctrl+K)">
+            <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <span class="btn-label">Buscar</span>
+            <span class="kbd-hint">Ctrl K</span>
           </button>
         </div>
       </header>
@@ -2960,9 +3425,13 @@
               <div class="drop-overlay-sub">Até 6 arquivos por mensagem · JPG, PNG, WebP ou PDF · soma máxima de 18 MB</div>
             </div>
 
-            <div id="chat-scroll" class="chat-scroll">
+            <div id="chat-scroll" class="chat-scroll" onscroll="atualizarBotaoScrollFim()">
               <div id="chat" class="chat-column"></div>
             </div>
+
+            <button type="button" id="btn-scroll-bottom" class="scroll-bottom-btn" onclick="rolarChatParaFim(true)" title="Ir para a última mensagem" aria-label="Rolar até a última mensagem">
+              <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+            </button>
 
             <div class="composer-wrap">
               <div class="composer">
@@ -2988,20 +3457,49 @@
                     <button
                       type="button"
                       id="btn-modelo-chip"
-                      class="composer-icon-btn active-chip"
+                      class="composer-model-chip active-chip"
                       onclick="alternarPopoverModelo(event)"
                       title="Modelo ativo: Auto · Inteligente"
                       aria-haspopup="true"
                       aria-expanded="false"
                       aria-label="Escolher modelo de IA"
                     >
-                      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true">
+                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true">
                         <rect x="6" y="6" width="12" height="12" rx="2"/>
                         <rect x="9.5" y="9.5" width="5" height="5" rx="0.8"/>
-                        <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>
+                        <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M15 2v4M2 15h4M18 9h4M18 15h4"/>
                       </svg>
+                      <span id="modelo-chip-label">Auto</span>
                       <span id="chip-dot" class="chip-dot" style="display:block;"></span>
                     </button>
+
+                    <button
+                      type="button"
+                      id="btn-composer-mais"
+                      class="composer-icon-btn"
+                      onclick="alternarPopoverMais(event)"
+                      title="Anexar arquivo, capturar tela ou ensinar tarefa"
+                      aria-haspopup="true"
+                      aria-expanded="false"
+                      aria-label="Mais ações de entrada"
+                    >
+                      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    </button>
+
+                    <div id="composer-plus-popover" class="composer-plus-popover" role="menu" aria-label="Ações de entrada">
+                      <button type="button" id="btn-anexar" class="composer-plus-item" onclick="fecharPopoverMais(); abrirSeletorArquivo()" role="menuitem">
+                        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                        <span>Anexar arquivo / PDF</span>
+                      </button>
+                      <button type="button" id="btn-capturar-tela" class="composer-plus-item" onclick="fecharPopoverMais(); capturarTelaParaChat()" role="menuitem">
+                        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                        <span>Capturar tela</span>
+                      </button>
+                      <button type="button" class="composer-plus-item" onclick="fecharPopoverMais(); iniciarTeachBotUI()" role="menuitem">
+                        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
+                        <span>Ensinar tarefa (Teach a Bot)</span>
+                      </button>
+                    </div>
 
                     <div id="model-popover" class="model-popover" role="menu" aria-label="Selecionar modelo de IA">
                       <div class="model-popover-title">Modelo da Athena</div>
@@ -3044,12 +3542,6 @@
                   </div>
 
                   <div class="composer-group">
-                    <button type="button" id="btn-anexar" class="composer-icon-btn" onclick="abrirSeletorArquivo()" title="Anexar fotos ou PDFs (até 6 arquivos · máx. 18 MB)" aria-label="Anexar arquivos">
-                      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                    </button>
-                    <button type="button" id="btn-capturar-tela" class="composer-icon-btn" onclick="capturarTelaParaChat()" title="Capturar tela atual e anexar à mensagem" aria-label="Capturar tela">
-                      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                    </button>
                     <button type="button" id="btn-mic" class="composer-icon-btn" onclick="alternarMicrofone()" title="Falar mensagem (microfone pt-BR)" aria-label="Microfone">
                       <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
                     </button>
@@ -3066,210 +3558,242 @@
           </section>
         </main>
 
-        <!-- ABA 2: CARTEIRA (REAL MERCADO PAGO + SIMULADOR) -->
+        <!-- ABA 2: CARTEIRA (SUB-ABAS: VISAO GERAL & GRAFICOS | ATIVOS & APORTES) -->
         <main id="view-carteira" class="view">
           <div class="page-scroll">
             <div class="page">
-              <div class="section-divider">
-                <h2>
-                  <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                  <span>Carteira Real (Mercado Pago)</span>
-                </h2>
+              <div class="panel-topbar">
+                <div class="panel-topbar-left">
+                  <button type="button" class="btn-voltar-chat" onclick="abrirAba('chat')">← Voltar ao Chat</button>
+                  <h2 class="panel-page-title">
+                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                    <span>Carteira</span>
+                  </h2>
+                </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
                   <input type="file" id="input-extrato-mp" accept=".csv,.pdf" style="display:none;" onchange="importarExtratoMP(event)" />
-                  <button type="button" class="ghost" id="btn-importar-extrato" onclick="document.getElementById('input-extrato-mp').click()">
+                  <button type="button" class="ghost mini" id="btn-importar-extrato" onclick="document.getElementById('input-extrato-mp').click()">
                     <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                     <span class="btn-label">Importar Extrato CSV/PDF</span>
                   </button>
-                  <button type="button" onclick="carregarCarteira(true)">
+                  <button type="button" class="mini" onclick="carregarCarteira(true)">
                     <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
                     <span>Atualizar</span>
                   </button>
                 </div>
               </div>
 
-              <div class="kpis">
-                <div class="kpi">
-                  <div class="lbl">Patrimônio Real</div>
-                  <div id="kpi-real-pat" class="val">--</div>
-                  <div id="kpi-real-base-cdi" class="sub">Base CDI/RF: --</div>
+              <div class="subtabs-bar" role="tablist" aria-label="Seções da Carteira">
+                <button type="button" class="subtab-btn active" data-subtab-group="carteira" data-subtab="carteira-visao" onclick="selecionarSubAba('carteira', 'carteira-visao', this)" role="tab" aria-selected="true">Visão Geral &amp; Gráficos</button>
+                <button type="button" class="subtab-btn" data-subtab-group="carteira" data-subtab="carteira-ativos" onclick="selecionarSubAba('carteira', 'carteira-ativos', this)" role="tab" aria-selected="false">Ativos &amp; Aportes</button>
+              </div>
+
+              <div id="subtab-carteira-visao" class="subtab-pane active" data-subtab-pane="carteira">
+                <div class="kpis">
+                  <div class="kpi">
+                    <div class="lbl">Patrimônio Real</div>
+                    <div id="kpi-real-pat" class="val">--</div>
+                    <div id="kpi-real-base-cdi" class="sub">Base CDI/RF: --</div>
+                  </div>
+                  <div class="kpi">
+                    <div class="lbl">Selic / CDI (BCB)</div>
+                    <div id="kpi-real-selic" class="val" style="color:var(--accent-hover);">--</div>
+                    <div id="kpi-real-cdi-sub" class="sub">100% CDI: --</div>
+                  </div>
+                  <div class="kpi">
+                    <div class="lbl">Est. 100% CDI / Mês</div>
+                    <div id="kpi-real-rend" class="val pos">--</div>
+                    <div id="kpi-real-rend-ano" class="sub">Anual bruto est.: --</div>
+                  </div>
+                  <div class="kpi">
+                    <div class="lbl">Propostas Pendentes</div>
+                    <div id="kpi-real-prop" class="val">--</div>
+                    <div class="sub">Aguardando sua aprovação</div>
+                  </div>
                 </div>
-                <div class="kpi">
-                  <div class="lbl">Selic / CDI (BCB)</div>
-                  <div id="kpi-real-selic" class="val" style="color:var(--accent-hover);">--</div>
-                  <div id="kpi-real-cdi-sub" class="sub">100% CDI: --</div>
+
+                <div class="charts-grid">
+                  <div class="panel">
+                    <h3>
+                      <span>Alocação da Carteira (Donut)</span>
+                      <span id="chart-donut-meta" style="font-size:11.5px;font-weight:500;color:var(--muted);">R$ e % por categoria</span>
+                    </h3>
+                    <div id="chart-carteira-donut" class="chart-canvas"></div>
+                  </div>
+                  <div class="panel">
+                    <h3>
+                      <span>Principais Ativos &amp; Rendimento vs CDI</span>
+                      <span id="chart-barras-meta" style="font-size:11.5px;font-weight:500;color:var(--muted);">Valor em R$</span>
+                    </h3>
+                    <div id="chart-carteira-barras" class="chart-canvas"></div>
+                  </div>
                 </div>
-                <div class="kpi">
-                  <div class="lbl">Est. 100% CDI / Mês</div>
-                  <div id="kpi-real-rend" class="val pos">--</div>
-                  <div id="kpi-real-rend-ano" class="sub">Anual bruto est.: --</div>
-                </div>
-                <div class="kpi">
-                  <div class="lbl">Propostas Pendentes</div>
-                  <div id="kpi-real-prop" class="val">--</div>
-                  <div class="sub">Aguardando sua aprovação</div>
+
+                <div class="panel">
+                  <h3>
+                    <span>Propostas de Investimento da Athena</span>
+                    <span style="font-size:12px;font-weight:500;color:var(--muted);">Aprovação humana obrigatória · Obsidian <code>03-Financas/Aportes.md</code></span>
+                  </h3>
+                  <div id="box-real-propostas" class="empty-note">Carregando propostas...</div>
+                  <div id="box-real-propostas-hist" class="table-wrap" style="margin-top:14px;"></div>
                 </div>
               </div>
 
-              <div class="charts-grid">
+              <div id="subtab-carteira-ativos" class="subtab-pane" data-subtab-pane="carteira">
                 <div class="panel">
                   <h3>
-                    <span>Alocação da Carteira (Donut)</span>
-                    <span id="chart-donut-meta" style="font-size:11.5px;font-weight:500;color:var(--muted);">R$ e % por categoria</span>
+                    <span>Saldos e Ativos Reais (Mercado Pago)</span>
+                    <span id="real-alocacao-chips" style="display:inline-flex;gap:6px;flex-wrap:wrap;font-weight:500;"></span>
                   </h3>
-                  <div id="chart-carteira-donut" class="chart-canvas"></div>
+                  <form class="form-inline-grid" onsubmit="salvarAtivoRealForm(event)">
+                    <select id="real-tipo" class="field-dark" aria-label="Tipo de ativo">
+                      <option value="conta_cdi">Conta CDI</option>
+                      <option value="renda_fixa">Renda Fixa</option>
+                      <option value="cripto">Cripto</option>
+                      <option value="acoes_fiis">Ações / FIIs</option>
+                      <option value="etf">ETF</option>
+                    </select>
+                    <input id="real-nome" class="field-dark" placeholder="Nome (ex.: Saldo Mercado Pago)" required />
+                    <input id="real-valor" class="field-dark" type="number" step="0.01" min="0" placeholder="Valor R$" required />
+                    <input id="real-ticker" class="field-dark" placeholder="Ticker (opc.)" />
+                    <input id="real-taxa" class="field-dark" placeholder="Taxa (ex.: 105% CDI)" />
+                    <button type="submit" id="btn-salvar-ativo-real">
+                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      <span>Salvar</span>
+                    </button>
+                  </form>
+                  <div id="box-real-ativos" class="table-wrap empty-note">Carregando carteira real...</div>
                 </div>
-                <div class="panel">
-                  <h3>
-                    <span>Principais Ativos &amp; Rendimento vs CDI</span>
-                    <span id="chart-barras-meta" style="font-size:11.5px;font-weight:500;color:var(--muted);">Valor em R$</span>
-                  </h3>
-                  <div id="chart-carteira-barras" class="chart-canvas"></div>
-                </div>
-              </div>
 
-              <div class="panel">
-                <h3>
-                  <span>Saldos e Ativos Reais (Mercado Pago)</span>
-                  <span id="real-alocacao-chips" style="display:inline-flex;gap:6px;flex-wrap:wrap;font-weight:500;"></span>
-                </h3>
-                <form class="form-inline-grid" onsubmit="salvarAtivoRealForm(event)">
-                  <select id="real-tipo" class="field-dark" aria-label="Tipo de ativo">
-                    <option value="conta_cdi">Conta CDI</option>
-                    <option value="renda_fixa">Renda Fixa</option>
-                    <option value="cripto">Cripto</option>
-                    <option value="acoes_fiis">Ações / FIIs</option>
-                    <option value="etf">ETF</option>
-                  </select>
-                  <input id="real-nome" class="field-dark" placeholder="Nome (ex.: Saldo Mercado Pago)" required />
-                  <input id="real-valor" class="field-dark" type="number" step="0.01" min="0" placeholder="Valor R$" required />
-                  <input id="real-ticker" class="field-dark" placeholder="Ticker (opc.)" />
-                  <input id="real-taxa" class="field-dark" placeholder="Taxa (ex.: 105% CDI)" />
-                  <button type="submit" id="btn-salvar-ativo-real">
-                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    <span>Salvar</span>
+                <div class="panel">
+                  <h3>
+                    <span>Extrato Importado (Mercado Pago)</span>
+                    <span id="real-extrato-resumo" style="font-size:12px;font-weight:500;color:var(--muted);"></span>
+                  </h3>
+                  <div id="box-real-extrato" class="table-wrap empty-note">Nenhum extrato importado ainda. Use o botão "Importar Extrato CSV/PDF".</div>
+                </div>
+
+                <div class="section-divider" style="margin-top:6px;">
+                  <h2>
+                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+                    <span>Simulador (Paper Trading)</span>
+                  </h2>
+                  <button type="button" class="ghost mini" onclick="carregarCarteiraSimulada(true)">
+                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span>Atualizar cotações</span>
                   </button>
-                </form>
-                <div id="box-real-ativos" class="table-wrap empty-note">Carregando carteira real...</div>
-              </div>
+                </div>
 
-              <div class="panel">
-                <h3>
-                  <span>Propostas de Investimento da Athena</span>
-                  <span style="font-size:12px;font-weight:500;color:var(--muted);">Aprovação humana obrigatória · Obsidian <code>03-Financas/Aportes.md</code></span>
-                </h3>
-                <div id="box-real-propostas" class="empty-note">Carregando propostas...</div>
-                <div id="box-real-propostas-hist" class="table-wrap" style="margin-top:14px;"></div>
-              </div>
-
-              <div class="panel">
-                <h3>
-                  <span>Extrato Importado (Mercado Pago)</span>
-                  <span id="real-extrato-resumo" style="font-size:12px;font-weight:500;color:var(--muted);"></span>
-                </h3>
-                <div id="box-real-extrato" class="table-wrap empty-note">Nenhum extrato importado ainda. Use o botão "Importar Extrato CSV/PDF".</div>
-              </div>
-
-              <div class="section-divider" style="margin-top:12px;">
-                <h2>
-                  <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-                  <span>Simulador (Paper Trading)</span>
-                </h2>
-                <button type="button" class="ghost" onclick="carregarCarteiraSimulada(true)">
-                  <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                  <span>Atualizar cotações</span>
-                </button>
-              </div>
-
-              <div class="kpis">
-                <div class="kpi"><div class="lbl">Patrimônio Total (Simulado)</div><div id="kpi-pat" class="val">--</div></div>
-                <div class="kpi"><div class="lbl">Em Ativos</div><div id="kpi-atv" class="val">--</div></div>
-                <div class="kpi"><div class="lbl">Caixa Disponível</div><div id="kpi-cxa" class="val">--</div></div>
-              </div>
-              <div class="panel">
-                <h3><span>Posições Abertas (Simulador)</span></h3>
-                <div id="box-posicoes" class="table-wrap empty-note">Carregando...</div>
-              </div>
-              <div class="panel">
-                <h3><span>Histórico de Operações Simuladas</span></h3>
-                <div id="box-ops" class="table-wrap empty-note">Carregando...</div>
+                <div class="kpis">
+                  <div class="kpi"><div class="lbl">Patrimônio Total (Simulado)</div><div id="kpi-pat" class="val">--</div></div>
+                  <div class="kpi"><div class="lbl">Em Ativos</div><div id="kpi-atv" class="val">--</div></div>
+                  <div class="kpi"><div class="lbl">Caixa Disponível</div><div id="kpi-cxa" class="val">--</div></div>
+                </div>
+                <div class="panel">
+                  <h3><span>Posições Abertas (Simulador)</span></h3>
+                  <div id="box-posicoes" class="table-wrap empty-note">Carregando...</div>
+                </div>
+                <div class="panel">
+                  <h3><span>Histórico de Operações Simuladas</span></h3>
+                  <div id="box-ops" class="table-wrap empty-note">Carregando...</div>
+                </div>
               </div>
             </div>
           </div>
         </main>
 
-        <!-- ABA 3: ESTUDOS & PROVAS -->
+        <!-- ABA 3: ESTUDOS & GRAFO (SUB-ABAS: ULIFE & NOTAS | PROGRESSO PDFs | GRAFO DO SEGUNDO CEREBRO) -->
         <main id="view-estudos" class="view">
           <div class="page-scroll">
             <div class="page">
-              <div class="panel">
-                <h3>
-                  <span class="ulife-head-info">
-                    <span>Ulife (API Direta)</span>
-                    <span id="ulife-meta" class="ulife-sub">Carregando dados salvos...</span>
-                  </span>
-                  <button type="button" id="btn-sync-ulife" onclick="sincronizarUlife()">
-                    <svg class="ico ico-sm" id="ico-sync-ulife" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                    <span class="btn-label">Sincronizar Ulife</span>
-                  </button>
-                </h3>
-                <div id="box-ulife" class="empty-note">Carregando...</div>
+              <div class="panel-topbar">
+                <div class="panel-topbar-left">
+                  <button type="button" class="btn-voltar-chat" onclick="abrirAba('chat')">← Voltar ao Chat</button>
+                  <h2 class="panel-page-title">
+                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                    <span>Estudos &amp; Grafo</span>
+                  </h2>
+                </div>
+                <button type="button" class="ghost mini" onclick="carregarEstudos()">
+                  <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  <span>Atualizar</span>
+                </button>
               </div>
 
-              <div class="panel">
-                <h3>
-                  <span>Agenda de Provas e Entregas</span>
-                  <button type="button" class="ghost" onclick="carregarEstudos()">
-                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                    <span>Atualizar</span>
-                  </button>
-                </h3>
-                <div id="box-provas" class="empty-note">Carregando...</div>
+              <div class="subtabs-bar" role="tablist" aria-label="Seções de Estudos">
+                <button type="button" class="subtab-btn active" data-subtab-group="estudos" data-subtab="estudos-ulife" onclick="selecionarSubAba('estudos', 'estudos-ulife', this)" role="tab" aria-selected="true">Ulife &amp; Notas</button>
+                <button type="button" class="subtab-btn" data-subtab-group="estudos" data-subtab="estudos-pdfs" onclick="selecionarSubAba('estudos', 'estudos-pdfs', this)" role="tab" aria-selected="false">Progresso PDFs</button>
+                <button type="button" class="subtab-btn" data-subtab-group="estudos" data-subtab="estudos-grafo" onclick="selecionarSubAba('estudos', 'estudos-grafo', this)" role="tab" aria-selected="false">Grafo do Segundo Cérebro</button>
               </div>
 
-              <div class="panel">
-                <h3>
-                  <span class="ulife-head-info">
-                    <span>Progresso por Matéria (PDFs da Faculdade)</span>
-                    <span id="rag-meta" class="ulife-sub">Qdrant Vetorial: verificando índice...</span>
-                  </span>
-                  <button type="button" class="ghost mini" id="btn-sync-rag" onclick="sincronizarQdrant()" title="Reindexar incrementalmente PDFs e notas do Obsidian no Qdrant">
-                    <svg class="ico ico-sm" id="ico-sync-rag" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
-                    <span class="btn-label">Reindexar Qdrant</span>
-                  </button>
-                </h3>
-                <div id="box-materias" class="empty-note">Carregando...</div>
+              <div id="subtab-estudos-ulife" class="subtab-pane active" data-subtab-pane="estudos">
+                <div class="panel">
+                  <h3>
+                    <span class="ulife-head-info">
+                      <span>Ulife (API Direta)</span>
+                      <span id="ulife-meta" class="ulife-sub">Carregando dados salvos...</span>
+                    </span>
+                    <button type="button" id="btn-sync-ulife" onclick="sincronizarUlife()">
+                      <svg class="ico ico-sm" id="ico-sync-ulife" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                      <span class="btn-label">Sincronizar Ulife</span>
+                    </button>
+                  </h3>
+                  <div id="box-ulife" class="empty-note">Carregando...</div>
+                </div>
+
+                <div class="panel">
+                  <h3><span>Agenda de Provas e Entregas</span></h3>
+                  <div id="box-provas" class="empty-note">Carregando...</div>
+                </div>
               </div>
 
-              <div class="panel" id="panel-grafo-visual">
-                <h3>
-                  <span class="ulife-head-info">
-                    <span>Grafo do Segundo Cérebro (Obsidian + Memória Temporal)</span>
-                    <span id="grafo-vis-meta" class="ulife-sub">Carregando grafo interativo...</span>
-                  </span>
-                  <button type="button" class="ghost mini" onclick="carregarGrafoVisual()">
-                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                    <span>Atualizar</span>
-                  </button>
-                </h3>
-                <div class="grafo-toolbar">
-                  <div class="grafo-filter-group" role="group" aria-label="Filtros do grafo">
-                    <button type="button" class="grafo-filter-btn active" data-grafo-filtro="todos" onclick="aplicarFiltroGrafo('todos', this)">Todos</button>
-                    <button type="button" class="grafo-filter-btn" data-grafo-filtro="obsidian" onclick="aplicarFiltroGrafo('obsidian', this)">Obsidian</button>
-                    <button type="button" class="grafo-filter-btn" data-grafo-filtro="memoria" onclick="aplicarFiltroGrafo('memoria', this)">Memória Temporal</button>
+              <div id="subtab-estudos-pdfs" class="subtab-pane" data-subtab-pane="estudos">
+                <div class="panel">
+                  <h3>
+                    <span class="ulife-head-info">
+                      <span>Progresso por Matéria (PDFs da Faculdade)</span>
+                      <span id="rag-meta" class="ulife-sub">Qdrant Vetorial: verificando índice...</span>
+                    </span>
+                    <button type="button" class="ghost mini" id="btn-sync-rag" onclick="sincronizarQdrant()" title="Reindexar incrementalmente PDFs e notas do Obsidian no Qdrant">
+                      <svg class="ico ico-sm" id="ico-sync-rag" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>
+                      <span class="btn-label">Reindexar Qdrant</span>
+                    </button>
+                  </h3>
+                  <div id="box-materias" class="empty-note">Carregando...</div>
+                </div>
+              </div>
+
+              <div id="subtab-estudos-grafo" class="subtab-pane" data-subtab-pane="estudos">
+                <div class="panel" id="panel-grafo-visual">
+                  <h3>
+                    <span class="ulife-head-info">
+                      <span>Grafo do Segundo Cérebro (Obsidian + Memória Temporal)</span>
+                      <span id="grafo-vis-meta" class="ulife-sub">Carregando grafo interativo...</span>
+                    </span>
+                    <button type="button" class="ghost mini" onclick="carregarGrafoVisual()">
+                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                      <span>Atualizar</span>
+                    </button>
+                  </h3>
+                  <div class="grafo-toolbar">
+                    <div class="grafo-filter-group" role="group" aria-label="Filtros do grafo">
+                      <button type="button" class="grafo-filter-btn active" data-grafo-filtro="todos" onclick="aplicarFiltroGrafo('todos', this)">Todos</button>
+                      <button type="button" class="grafo-filter-btn" data-grafo-filtro="obsidian" onclick="aplicarFiltroGrafo('obsidian', this)">Obsidian</button>
+                      <button type="button" class="grafo-filter-btn" data-grafo-filtro="memoria" onclick="aplicarFiltroGrafo('memoria', this)">Memória Temporal</button>
+                    </div>
+                    <input id="grafo-busca-input" class="field-dark grafo-search" type="search" placeholder="Buscar nó no grafo..." oninput="buscarNoNoGrafo(this.value)" />
                   </div>
-                  <input id="grafo-busca-input" class="field-dark grafo-search" type="search" placeholder="Buscar nó no grafo..." oninput="buscarNoNoGrafo(this.value)" />
+                  <div class="grafo-canvas-wrap">
+                    <div id="grafo-vis-canvas"></div>
+                  </div>
+                  <div class="grafo-legend">
+                    <span><span class="grafo-dot" style="background:#eab308;"></span>Notas Obsidian</span>
+                    <span><span class="grafo-dot" style="background:#64748b;"></span>#Tags</span>
+                    <span><span class="grafo-dot" style="background:#34d399;"></span>Memória Temporal</span>
+                    <span style="margin-left:auto;">Clique em um nó para ver detalhes · Arraste ou dê zoom</span>
+                  </div>
+                  <div id="grafo-node-detalhe" class="grafo-detail-card hidden"></div>
                 </div>
-                <div class="grafo-canvas-wrap">
-                  <div id="grafo-vis-canvas"></div>
-                </div>
-                <div class="grafo-legend">
-                  <span><span class="grafo-dot" style="background:#eab308;"></span>Notas Obsidian</span>
-                  <span><span class="grafo-dot" style="background:#64748b;"></span>#Tags</span>
-                  <span><span class="grafo-dot" style="background:#34d399;"></span>Memória Temporal</span>
-                  <span style="margin-left:auto;">Clique em um nó para ver detalhes · Arraste ou dê zoom</span>
-                </div>
-                <div id="grafo-node-detalhe" class="grafo-detail-card hidden"></div>
               </div>
             </div>
           </div>
@@ -3279,95 +3803,200 @@
         <main id="view-faxina" class="view">
           <div class="page-scroll">
             <div class="page">
+              <div class="panel-topbar">
+                <div class="panel-topbar-left">
+                  <button type="button" class="btn-voltar-chat" onclick="abrirAba('chat')">← Voltar ao Chat</button>
+                  <h2 class="panel-page-title">
+                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.8L20 10.7l-5.1 3.7 1.9 5.8L12 16.5l-4.8 3.7 1.9-5.8L4 10.7l6.1-1.9z"/></svg>
+                    <span>Faxina &amp; Aprovações</span>
+                  </h2>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                  <button type="button" id="btn-aprovar-todas" class="btn-aprovar mini" onclick="aprovarTodasAcoes(this)" style="display:none;">
+                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                    <span class="btn-label">Aprovar Tudo</span>
+                  </button>
+                  <button type="button" class="ghost mini" onclick="carregarFaxina()">
+                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span>Atualizar</span>
+                  </button>
+                </div>
+              </div>
+
               <div class="kpis">
                 <div class="kpi"><div class="lbl">Ações Pendentes</div><div id="kpi-fax-pend" class="val">--</div></div>
                 <div class="kpi"><div class="lbl">Ações Executadas</div><div id="kpi-fax-exec" class="val pos">--</div></div>
                 <div class="kpi"><div class="lbl">Ações Recusadas</div><div id="kpi-fax-rec" class="val neg">--</div></div>
               </div>
               <div class="panel">
-                <h3>
-                  <span>Ações Pendentes de Aprovação</span>
-                  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                    <button type="button" id="btn-aprovar-todas" class="btn-aprovar" onclick="aprovarTodasAcoes(this)" style="display:none;">
-                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                      <span class="btn-label">Aprovar Tudo</span>
-                    </button>
-                    <button type="button" class="ghost" onclick="carregarFaxina()">
-                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                      <span>Atualizar</span>
-                    </button>
-                  </div>
-                </h3>
+                <h3><span>Ações Pendentes de Aprovação</span></h3>
                 <div id="box-fax-pendentes" class="empty-note">Carregando...</div>
               </div>
               <div class="panel">
-                <h3><span>Histórico de Faxina (Executadas, Recusadas & Desfeitas)</span></h3>
+                <h3><span>Histórico de Faxina (Executadas, Recusadas &amp; Desfeitas)</span></h3>
                 <div id="box-fax-historico" class="table-wrap empty-note">Carregando...</div>
               </div>
             </div>
           </div>
         </main>
 
-        <!-- ABA 5: ROTINAS AGENDADAS + MCP -->
+        <!-- ABA 5: ROTINAS & SKILLS (SUB-ABAS: ROTINAS AGENDADAS | SKILLS & TEACH A BOT) -->
         <main id="view-rotinas" class="view">
           <div class="page-scroll">
             <div class="page">
-              <div class="panel">
-                <h3>
-                  <span style="display:inline-flex;align-items:center;gap:8px;">
+              <div class="panel-topbar">
+                <div class="panel-topbar-left">
+                  <button type="button" class="btn-voltar-chat" onclick="abrirAba('chat')">← Voltar ao Chat</button>
+                  <h2 class="panel-page-title">
                     <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    <span>Rotinas Agendadas (America/Sao_Paulo)</span>
-                  </span>
-                  <button type="button" class="ghost" onclick="carregarRotinas()">
-                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                    <span>Atualizar</span>
-                  </button>
-                </h3>
-                <div id="box-rotinas" class="empty-note">Carregando rotinas...</div>
+                    <span>Rotinas &amp; Skills</span>
+                  </h2>
+                </div>
+                <button type="button" class="ghost mini" onclick="carregarRotinas()">
+                  <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  <span>Atualizar</span>
+                </button>
               </div>
 
-              <div class="panel" id="panel-rotinas-dinamicas">
-                <h3>
-                  <span style="display:inline-flex;align-items:center;gap:8px;">
-                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></svg>
-                    <span>Rotinas Dinâmicas (Criadas pelo Chat · Auto-pausa em 3 falhas)</span>
-                  </span>
-                  <button type="button" class="ghost mini" onclick="carregarRotinasDinamicas()">
-                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                    <span>Atualizar</span>
-                  </button>
-                </h3>
-                <div id="box-rotinas-dinamicas" class="empty-note">Carregando rotinas dinâmicas...</div>
+              <div class="subtabs-bar" role="tablist" aria-label="Seções de Rotinas e Skills">
+                <button type="button" class="subtab-btn active" data-subtab-group="rotinas" data-subtab="rotinas-agendadas" onclick="selecionarSubAba('rotinas', 'rotinas-agendadas', this)" role="tab" aria-selected="true">Rotinas Agendadas</button>
+                <button type="button" class="subtab-btn" data-subtab-group="rotinas" data-subtab="rotinas-skills" onclick="selecionarSubAba('rotinas', 'rotinas-skills', this)" role="tab" aria-selected="false">Skills &amp; Teach a Bot</button>
               </div>
 
-              <div class="panel" id="panel-teach-bot">
-                <h3>
-                  <span style="display:inline-flex;align-items:center;gap:8px;">
-                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
-                    <span>Teach a Bot (Gravar Tarefa → SKILL.md)</span>
-                  </span>
-                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                    <button type="button" id="btn-teach-bot-iniciar" class="accent mini" onclick="iniciarTeachBotUI()">
-                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
-                      <span>Ensinar Tarefa (Teach a Bot)</span>
+              <div id="subtab-rotinas-agendadas" class="subtab-pane active" data-subtab-pane="rotinas">
+                <div class="panel">
+                  <h3><span>Rotinas Agendadas (America/Sao_Paulo)</span></h3>
+                  <div id="box-rotinas" class="empty-note">Carregando rotinas...</div>
+                </div>
+
+                <div class="panel" id="panel-rotinas-dinamicas">
+                  <h3>
+                    <span style="display:inline-flex;align-items:center;gap:8px;">
+                      <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></svg>
+                      <span>Rotinas Dinâmicas (Criadas pelo Chat · Auto-pausa em 3 falhas)</span>
+                    </span>
+                    <button type="button" class="ghost mini" onclick="carregarRotinasDinamicas()">
+                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                      <span>Atualizar</span>
                     </button>
-                    <button type="button" id="btn-teach-bot-finalizar" class="btn-win-permitir hidden" onclick="finalizarTeachBotUI(this)">
-                      Finalizar e Salvar Skill
-                    </button>
+                  </h3>
+                  <div id="box-rotinas-dinamicas" class="empty-note">Carregando rotinas dinâmicas...</div>
+                </div>
+
+                <div class="rotinas-side-grid">
+                  <div class="panel">
+                    <h3>
+                      <span style="display:inline-flex;align-items:center;gap:8px;">
+                        <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v6"/><path d="M12 16v6"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="M2 12h6"/><path d="M16 12h6"/><path d="m4.93 19.07 4.24-4.24"/><path d="m14.83 9.17 4.24-4.24"/></svg>
+                        <span>Servidores MCP Conectados</span>
+                      </span>
+                      <button type="button" class="ghost mini" onclick="carregarServidoresMcp()">
+                        <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                        <span>Atualizar</span>
+                      </button>
+                    </h3>
+                    <div id="box-mcp-servidores" class="empty-note">Carregando servidores MCP...</div>
                   </div>
-                </h3>
-                <div id="teach-bot-status" class="teach-bot-bar">
-                  <span class="empty-note">Clique em <strong>Ensinar Tarefa (Teach a Bot)</strong> para abrir o navegador visível, executar os passos e salvar automaticamente em <code>skills/&lt;nome&gt;/SKILL.md</code>. Bancos são bloqueados e campos de senha nunca são gravados.</span>
+
+                  <div class="panel">
+                    <h3>
+                      <span style="display:inline-flex;align-items:center;gap:8px;">
+                        <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                        <span>Telemetria da Athena</span>
+                      </span>
+                      <button type="button" class="ghost mini" onclick="carregarTelemetria()">
+                        <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                        <span>Atualizar</span>
+                      </button>
+                    </h3>
+                    <div class="tele-kpis">
+                      <div class="tele-kpi">
+                        <div class="lbl">Tempo Médio</div>
+                        <div id="kpi-tele-ms" class="val" style="color:var(--accent-hover);">--</div>
+                        <div class="sub">latência média</div>
+                      </div>
+                      <div class="tele-kpi">
+                        <div class="lbl">Tokens Hoje</div>
+                        <div id="kpi-tele-tok" class="val">--</div>
+                        <div id="kpi-tele-tok-sub" class="sub">in / out</div>
+                      </div>
+                      <div class="tele-kpi">
+                        <div class="lbl">Execuções</div>
+                        <div id="kpi-tele-exec" class="val">--</div>
+                        <div id="kpi-tele-hoje" class="sub">hoje: --</div>
+                      </div>
+                      <div class="tele-kpi">
+                        <div class="lbl">Sucesso</div>
+                        <div id="kpi-tele-ok" class="val pos">--</div>
+                        <div class="sub">taxa geral</div>
+                      </div>
+                    </div>
+                    <div id="box-telemetria" class="table-wrap empty-note">Carregando telemetria...</div>
+                  </div>
                 </div>
               </div>
 
-              <div class="panel" id="panel-atividade-permissoes">
-                <h3>
-                  <span style="display:inline-flex;align-items:center;gap:8px;">
+              <div id="subtab-rotinas-skills" class="subtab-pane" data-subtab-pane="rotinas">
+                <div class="panel" id="panel-teach-bot">
+                  <h3>
+                    <span style="display:inline-flex;align-items:center;gap:8px;">
+                      <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
+                      <span>Teach a Bot (Gravar Tarefa → SKILL.md)</span>
+                    </span>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                      <button type="button" id="btn-teach-bot-iniciar" class="accent mini" onclick="iniciarTeachBotUI()">
+                        <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
+                        <span>Ensinar Tarefa (Teach a Bot)</span>
+                      </button>
+                      <button type="button" id="btn-teach-bot-finalizar" class="btn-win-permitir hidden" onclick="finalizarTeachBotUI(this)">
+                        Finalizar e Salvar Skill
+                      </button>
+                    </div>
+                  </h3>
+                  <div id="teach-bot-status" class="teach-bot-bar">
+                    <span class="empty-note">Clique em <strong>Ensinar Tarefa (Teach a Bot)</strong> para abrir o navegador visível, executar os passos e salvar automaticamente em <code>skills/&lt;nome&gt;/SKILL.md</code>. Bancos são bloqueados e campos de senha nunca são gravados.</span>
+                  </div>
+                </div>
+
+                <div class="panel">
+                  <h3>
+                    <span>Agent Skills Instaladas</span>
+                    <span id="skills-count-rotinas" class="skill-count">0</span>
+                  </h3>
+                  <div id="skills-lista-rotinas" class="skills-bar"><span class="empty-note">Carregando skills...</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+
+        <!-- ABA 6: ATIVIDADE & PERMISSOES (SUB-ABAS: TRILHA DE AUDITORIA | PASTAS APROVADAS) -->
+        <main id="view-atividade" class="view">
+          <div class="page-scroll">
+            <div class="page">
+              <div class="panel-topbar">
+                <div class="panel-topbar-left">
+                  <button type="button" class="btn-voltar-chat" onclick="abrirAba('chat')">← Voltar ao Chat</button>
+                  <h2 class="panel-page-title">
                     <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                    <span>Atividade &amp; Permissões (Auditoria Unificada)</span>
-                  </span>
-                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <span>Atividade &amp; Permissões</span>
+                  </h2>
+                </div>
+                <button type="button" class="ghost mini" onclick="carregarAuditoriaEPermissoes()">
+                  <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  <span>Atualizar</span>
+                </button>
+              </div>
+
+              <div class="subtabs-bar" role="tablist" aria-label="Seções de Atividade e Permissões">
+                <button type="button" class="subtab-btn active" data-subtab-group="atividade" data-subtab="atividade-trilha" onclick="selecionarSubAba('atividade', 'atividade-trilha', this)" role="tab" aria-selected="true">Trilha de Auditoria</button>
+                <button type="button" class="subtab-btn" data-subtab-group="atividade" data-subtab="atividade-pastas" onclick="selecionarSubAba('atividade', 'atividade-pastas', this)" role="tab" aria-selected="false">Pastas Aprovadas</button>
+              </div>
+
+              <div id="subtab-atividade-trilha" class="subtab-pane active" data-subtab-pane="atividade">
+                <div class="panel" id="panel-atividade-permissoes">
+                  <h3>
+                    <span>Trilha de Auditoria Unificada</span>
                     <select id="filtro-auditoria-agente" class="field-dark" style="height:32px;font-size:12px;" onchange="carregarAuditoriaAtividades()" aria-label="Filtrar auditoria por agente">
                       <option value="">Todos os agentes</option>
                       <option value="Windows Nativo">Windows Nativo</option>
@@ -3379,96 +4008,47 @@
                       <option value="Permissoes">Permissões</option>
                       <option value="athena">Athena (Rotinas)</option>
                     </select>
-                    <button type="button" class="ghost mini" onclick="carregarAuditoriaEPermissoes()">
-                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                      <span>Atualizar</span>
-                    </button>
-                  </div>
-                </h3>
-                <div id="box-auditoria-atividades" class="table-wrap empty-note" style="margin-bottom:16px;">Carregando trilha de atividade...</div>
-                <div style="border-top:1px solid var(--border);padding-top:14px;">
-                  <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
-                    <strong style="font-size:13px;color:var(--text-strong);">Pastas Aprovadas (Revogáveis)</strong>
+                  </h3>
+                  <div id="box-auditoria-atividades" class="table-wrap empty-note">Carregando trilha de atividade...</div>
+                </div>
+              </div>
+
+              <div id="subtab-atividade-pastas" class="subtab-pane" data-subtab-pane="atividade">
+                <div class="panel">
+                  <h3>
+                    <span>Pastas Aprovadas (Revogáveis)</span>
                     <button type="button" class="ghost mini" onclick="adicionarPastaAprovadaUI(this)">
                       <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>
                       <span>Adicionar Pasta</span>
                     </button>
-                  </div>
+                  </h3>
                   <div id="box-pastas-aprovadas" class="empty-note">Carregando pastas aprovadas...</div>
-                </div>
-              </div>
-
-              <div class="rotinas-side-grid">
-                <div class="panel">
-                  <h3>
-                    <span style="display:inline-flex;align-items:center;gap:8px;">
-                      <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v6"/><path d="M12 16v6"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="M2 12h6"/><path d="M16 12h6"/><path d="m4.93 19.07 4.24-4.24"/><path d="m14.83 9.17 4.24-4.24"/></svg>
-                      <span>Servidores MCP Conectados</span>
-                    </span>
-                    <button type="button" class="ghost mini" onclick="carregarServidoresMcp()">
-                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                      <span>Atualizar</span>
-                    </button>
-                  </h3>
-                  <div id="box-mcp-servidores" class="empty-note">Carregando servidores MCP...</div>
-                </div>
-
-                <div class="panel">
-                  <h3>
-                    <span style="display:inline-flex;align-items:center;gap:8px;">
-                      <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                      <span>Telemetria da Athena</span>
-                    </span>
-                    <button type="button" class="ghost mini" onclick="carregarTelemetria()">
-                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                      <span>Atualizar</span>
-                    </button>
-                  </h3>
-                  <div class="tele-kpis">
-                    <div class="tele-kpi">
-                      <div class="lbl">Tempo Médio</div>
-                      <div id="kpi-tele-ms" class="val" style="color:var(--accent-hover);">--</div>
-                      <div class="sub">latência média</div>
-                    </div>
-                    <div class="tele-kpi">
-                      <div class="lbl">Tokens Hoje</div>
-                      <div id="kpi-tele-tok" class="val">--</div>
-                      <div id="kpi-tele-tok-sub" class="sub">in / out</div>
-                    </div>
-                    <div class="tele-kpi">
-                      <div class="lbl">Execuções</div>
-                      <div id="kpi-tele-exec" class="val">--</div>
-                      <div id="kpi-tele-hoje" class="sub">hoje: --</div>
-                    </div>
-                    <div class="tele-kpi">
-                      <div class="lbl">Sucesso</div>
-                      <div id="kpi-tele-ok" class="val pos">--</div>
-                      <div class="sub">taxa geral</div>
-                    </div>
-                  </div>
-                  <div id="box-telemetria" class="table-wrap empty-note">Carregando telemetria...</div>
                 </div>
               </div>
             </div>
           </div>
         </main>
 
-        <!-- ABA 6: ATHENA LAB (R&D — AUTO-EVOLUCAO CONTROLADA) -->
+        <!-- ABA 7: ATHENA LAB (R&D — AUTO-EVOLUCAO CONTROLADA) -->
         <main id="view-lab" class="view">
           <div class="page-scroll">
             <div class="page">
-              <div class="panel">
-                <h3>
-                  <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
+              <div class="panel-topbar">
+                <div class="panel-topbar-left">
+                  <button type="button" class="btn-voltar-chat" onclick="abrirAba('chat')">← Voltar ao Chat</button>
+                  <h2 class="panel-page-title">
                     <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9.5V3"/><path d="M8.5 14h7"/></svg>
-                    <span>Athena Lab (R&amp;D — Auto-Evolução Controlada)</span>
+                    <span>Athena Lab (R&amp;D)</span>
                     <span id="lab-cli-badge" class="lab-badge" title="Status do motor Google Antigravity CLI">Modo Briefing VS Code</span>
-                  </span>
-                  <button type="button" class="ghost mini" onclick="carregarAthenaLab()">
-                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                    <span>Atualizar</span>
-                  </button>
-                </h3>
+                  </h2>
+                </div>
+                <button type="button" class="ghost mini" onclick="carregarAthenaLab()">
+                  <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                  <span>Atualizar</span>
+                </button>
+              </div>
+
+              <div class="panel">
                 <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">
                   Pipeline multi-agente (<strong>Scout → Arquiteto → Crítico Adversarial</strong>) com validação isolada em
                   <code>git worktree</code> (<code>ruff</code> + <code>pyright</code> + <code>pytest</code>). Nenhuma alteração toca sua branch principal sem aprovação explícita.
@@ -3507,44 +4087,128 @@
     </div>
   </div>
 
-  <!-- MODAL DE MEMORIAS & SKILLS -->
+  <!-- MODAL UNIFICADO DE CONFIGURACOES (MEMORIAS & TEMPORAL | SEGURANCA | SISTEMA) -->
   <div id="modal-memorias" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-memorias-title" onclick="if(event.target===this) fecharModalMemorias()">
-    <div class="modal-card">
+    <div class="modal-card" style="max-width:680px;">
       <div class="modal-head">
         <h3 id="modal-memorias-title">
-          <svg class="ico ico-sm ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 2.5 1.3 4.7 3.3 6 .5.3.7.9.7 1.5V18a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-1.5c0-.6.2-1.2.7-1.5 2-1.3 3.3-3.5 3.3-6a7 7 0 0 0-7-7z"/><line x1="9" y1="22" x2="15" y2="22"/></svg>
-          <span>Memórias de Longo Prazo &amp; Skills</span>
+          <svg class="ico ico-sm ico-accent" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>
+          <span>Configurações da Athena</span>
         </h3>
-        <button type="button" class="ghost modal-close-btn" onclick="fecharModalMemorias()" aria-label="Fechar modal de memórias">
+        <button type="button" class="ghost modal-close-btn" onclick="fecharModalMemorias()" aria-label="Fechar configurações">
           <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
       </div>
       <div class="modal-body">
-        <div>
-          <div class="modal-sub-title">
-            <span>Memórias Salvas</span>
-          </div>
-          <div id="fatos" class="mem-bar"></div>
+        <div class="subtabs-bar" role="tablist" aria-label="Abas de Configurações" style="margin-bottom:4px;">
+          <button type="button" class="subtab-btn active" data-subtab-group="config" data-subtab="config-memorias" onclick="selecionarSubAba('config', 'config-memorias', this)" role="tab" aria-selected="true">
+            Memórias &amp; Temporal <span id="mem-count-badge" class="mem-count-badge" style="margin-left:5px;">0</span>
+          </button>
+          <button type="button" class="subtab-btn" data-subtab-group="config" data-subtab="config-seguranca" onclick="selecionarSubAba('config', 'config-seguranca', this)" role="tab" aria-selected="false">Segurança</button>
+          <button type="button" class="subtab-btn" data-subtab-group="config" data-subtab="config-sistema" onclick="selecionarSubAba('config', 'config-sistema', this)" role="tab" aria-selected="false">Sistema</button>
         </div>
-        <div>
-          <div class="modal-sub-title">
-            <span>Memória Temporal (Grafo)</span>
-            <span id="mem-temporal-count" class="skill-count">0 vigentes · 0 históricos</span>
+
+        <!-- ABA CONFIG 1: MEMORIAS & TEMPORAL + SKILLS -->
+        <div id="subtab-config-memorias" class="subtab-pane active" data-subtab-pane="config">
+          <div>
+            <div class="modal-sub-title"><span>Memórias Salvas</span></div>
+            <div id="fatos" class="mem-bar"></div>
           </div>
-          <div id="fatos-temporais" class="mem-bar"></div>
+          <div>
+            <div class="modal-sub-title">
+              <span>Memória Temporal (Grafo)</span>
+              <span id="mem-temporal-count" class="skill-count">0 vigentes · 0 históricos</span>
+            </div>
+            <div id="fatos-temporais" class="mem-bar"></div>
+          </div>
+          <div>
+            <div class="modal-sub-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+              <span style="display:inline-flex;align-items:center;gap:8px;">
+                <span>Agent Skills Ativas</span>
+                <span id="skills-count" class="skill-count">0</span>
+              </span>
+              <button type="button" class="ghost mini" onclick="fecharModalMemorias(); iniciarTeachBotUI();">
+                Ensinar Tarefa (Teach a Bot)
+              </button>
+            </div>
+            <div id="skills-lista" class="skills-bar"></div>
+          </div>
         </div>
-        <div>
-          <div class="modal-sub-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-            <span style="display:inline-flex;align-items:center;gap:8px;">
-              <span>Agent Skills Ativas</span>
-              <span id="skills-count" class="skill-count">0</span>
-            </span>
-            <button type="button" class="ghost mini" onclick="fecharModalMemorias(); iniciarTeachBotUI();">
-              Ensinar Tarefa (Teach a Bot)
+
+        <!-- ABA CONFIG 2: SEGURANCA (BIOMETRIA / PIN / BLOQUEAR) -->
+        <div id="subtab-config-seguranca" class="subtab-pane" data-subtab-pane="config">
+          <div class="config-card-row">
+            <div class="config-row-info">
+              <span class="config-row-title">Proteção por PIN</span>
+              <span id="config-pin-status" class="config-row-sub">Verificando status do PIN...</span>
+            </div>
+            <button type="button" class="ghost mini" id="btn-bloquear" onclick="bloquearPainel()" style="display:none;">
+              <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span class="nav-label">Bloquear agora</span>
             </button>
           </div>
-          <div id="skills-lista" class="skills-bar"></div>
+          <div class="config-card-row">
+            <div class="config-row-info">
+              <span class="config-row-title">Biometria / Passkeys (WebAuthn)</span>
+              <span id="config-bio-status" class="config-row-sub">Cadastre a digital ou Windows Hello deste dispositivo para desbloquear em 1 toque.</span>
+            </div>
+            <button type="button" class="ghost mini" id="btn-ativar-biometria" onclick="ativarBiometria()" style="display:none;">
+              <svg class="ico ico-sm ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10a2 2 0 0 0-2 2c0 1.02-.1 2.51-.26 4"/><path d="M14 13.12c0 2.38 0 6.38-1 8.88"/><path d="M2 12a10 10 0 0 1 18-6"/></svg>
+              <span class="nav-label">Cadastrar Biometria</span>
+            </button>
+          </div>
         </div>
+
+        <!-- ABA CONFIG 3: SISTEMA (SANDBOX / CACHE SEMANTICO / OLLAMA & CLI) -->
+        <div id="subtab-config-sistema" class="subtab-pane" data-subtab-pane="config">
+          <div class="config-card-row">
+            <div class="config-row-info">
+              <span class="config-row-title">Pasta Ativa / Sandbox</span>
+              <span id="config-pasta-caminho" class="config-row-sub">Nenhuma pasta carregada</span>
+            </div>
+            <button type="button" class="ghost mini" id="btn-escolher-pasta" onclick="escolherPasta()">
+              <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>
+              <span class="nav-label" id="pasta-label">Alterar pasta</span>
+            </button>
+          </div>
+          <div class="config-card-row">
+            <div class="config-row-info">
+              <span class="config-row-title">Cache Semântico Local (0 tokens)</span>
+              <span id="config-cache-stats" class="config-row-sub">Consultando estatísticas do cache...</span>
+            </div>
+            <button type="button" class="ghost mini" onclick="limparCacheSemanticoUI(this)">Limpar Cache</button>
+          </div>
+          <div class="config-card-row">
+            <div class="config-row-info">
+              <span class="config-row-title">Ollama Local (Fallback Offline)</span>
+              <span id="config-ollama-status" class="config-row-sub">Verificando disponibilidade local...</span>
+            </div>
+            <span id="config-ollama-badge" class="lab-badge">Verificando</span>
+          </div>
+          <div class="config-card-row">
+            <div class="config-row-info">
+              <span class="config-row-title">Google Antigravity CLI (Athena Lab)</span>
+              <span id="config-cli-status" class="config-row-sub">Verificando CLI no sistema...</span>
+            </div>
+            <span id="config-cli-badge" class="lab-badge">Verificando</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PALETA DE COMANDOS (CTRL + K) -->
+  <div id="modal-cmd-palette" class="cmd-overlay hidden" role="dialog" aria-modal="true" aria-label="Paleta de Comandos" onclick="if(event.target===this) fecharPaletaComandos()">
+    <div class="cmd-card">
+      <div class="cmd-input-wrap">
+        <svg class="ico ico-sm ico-accent" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="cmd-palette-input" class="cmd-input" type="text" placeholder="Ir para agente, conversa, painel ou executar ação..." oninput="renderPaletaComandos(this.value)" autocomplete="off" />
+        <span class="kbd-hint">ESC</span>
+      </div>
+      <div id="cmd-palette-list" class="cmd-list" role="listbox"></div>
+      <div class="cmd-foot">
+        <span>↑↓ navegar · Enter abrir</span>
+        <span>Athena Command Palette</span>
       </div>
     </div>
   </div>
@@ -3994,10 +4658,144 @@ function alternarSecaoSidebar(secId) {
   if (btn) btn.setAttribute("aria-expanded", fechada ? "false" : "true");
 }
 
-function abrirModalMemorias() {
+/* ===== SUB-ABAS, MENU PAINEIS, CONFIGURACOES & SCROLL-BOTTOM ===== */
+let _pendenciasLab = 0;
+let _pendenciasFaxina = 0;
+
+function atualizarIndicadorPaineis() {
+  const dot = document.getElementById("paineis-dot");
+  const badgeFax = document.getElementById("nav-badge-faxina");
+  const temPend = (_pendenciasLab > 0) || (_pendenciasFaxina > 0);
+  if (dot) dot.classList.toggle("hidden", !temPend);
+  if (badgeFax) {
+    badgeFax.textContent = _pendenciasFaxina > 99 ? "99+" : String(_pendenciasFaxina);
+    badgeFax.classList.toggle("hidden", _pendenciasFaxina <= 0);
+  }
+}
+
+async function atualizarBadgeFaxina() {
+  try {
+    const r = await fetch("/api/painel/faxina").then(x => x.json());
+    const pend = Number((r && r.resumo && r.resumo.pendentes) ?? (Array.isArray(r && r.pendentes) ? r.pendentes.length : 0));
+    _pendenciasFaxina = Math.max(0, pend);
+    atualizarIndicadorPaineis();
+  } catch (_) {}
+}
+
+function alternarMenuPaineis(ev) {
+  if (ev) ev.stopPropagation();
+  const pop = document.getElementById("paineis-popover");
+  const btn = document.getElementById("btn-paineis-menu");
+  if (!pop || !btn) return;
+  const abrindo = !pop.classList.contains("open");
+  fecharPopoverModelo();
+  fecharPopoverMais();
+  pop.classList.toggle("open", abrindo);
+  btn.setAttribute("aria-expanded", abrindo ? "true" : "false");
+}
+
+function fecharMenuPaineis() {
+  const pop = document.getElementById("paineis-popover");
+  const btn = document.getElementById("btn-paineis-menu");
+  if (pop) pop.classList.remove("open");
+  if (btn) btn.setAttribute("aria-expanded", "false");
+}
+
+function abrirPainelPeloMenu(nome) {
+  fecharMenuPaineis();
+  abrirAba(nome);
+}
+
+function selecionarSubAba(grupo, abaId, btn) {
+  document.querySelectorAll(`.subtab-btn[data-subtab-group="${grupo}"]`).forEach(b => {
+    const ativo = b === btn || (!btn && b.dataset.subtab === abaId);
+    b.classList.toggle("active", ativo);
+    b.setAttribute("aria-selected", ativo ? "true" : "false");
+  });
+  document.querySelectorAll(`.subtab-pane[data-subtab-pane="${grupo}"]`).forEach(p => {
+    p.classList.toggle("active", p.id === "subtab-" + abaId);
+  });
+
+  if (abaId === "carteira-visao") {
+    requestAnimationFrame(() => redimensionarGraficosCarteira());
+    setTimeout(() => redimensionarGraficosCarteira(), 100);
+  } else if (abaId === "estudos-grafo") {
+    setTimeout(() => redimensionarGrafoVisual(), 90);
+  } else if (abaId === "rotinas-skills") {
+    carregarSkills();
+    atualizarStatusTeachBot();
+  } else if (abaId === "config-sistema") {
+    carregarConfigSistema();
+  } else if (abaId === "config-seguranca") {
+    atualizarBotoesAuthUI();
+  }
+}
+
+async function carregarConfigSistema() {
+  const elPasta = document.getElementById("config-pasta-caminho");
+  if (elPasta) elPasta.textContent = _pastaRaizAtual || "Pasta padrão da Athena";
+  const elCache = document.getElementById("config-cache-stats");
+  if (elCache) {
+    try {
+      const r = await fetch("/api/cache/semantico/stats").then(x => x.json());
+      const entradas = Number(r.entradas ?? r.tamanho ?? 0);
+      const hits = Number(r.hits ?? 0);
+      const misses = Number(r.misses ?? 0);
+      elCache.textContent = `${entradas} entrada(s) em RAM · ${hits} acerto(s) · ${misses} miss(es)`;
+    } catch (_) {
+      elCache.textContent = "Cache semântico indisponível no momento.";
+    }
+  }
+  try {
+    const rLab = await fetch("/api/lab/propostas").then(x => x.json());
+    if (rLab && (rLab.cli_antigravity || (rLab.status && rLab.status.cli_antigravity))) {
+      atualizarBadgeCliLab(rLab.cli_antigravity || rLab.status.cli_antigravity);
+    }
+  } catch (_) {}
+}
+
+async function limparCacheSemanticoUI(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch("/api/cache/semantico/limpar", { method: "POST" }).then(x => x.json());
+    if (r && r.ok !== false) {
+      mostrarToast("Cache limpo ✓");
+      await carregarConfigSistema();
+    } else {
+      mostrarToast("Não foi possível limpar o cache semântico.", true);
+    }
+  } catch (_) {
+    mostrarToast("Erro ao limpar cache semântico.", true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function atualizarBotaoScrollFim() {
+  const sc = document.getElementById("chat-scroll");
+  const btn = document.getElementById("btn-scroll-bottom");
+  if (!sc || !btn) return;
+  const dist = sc.scrollHeight - sc.scrollTop - sc.clientHeight;
+  btn.classList.toggle("visible", dist > 160);
+}
+
+function rolarChatParaFim(suave = true) {
+  const sc = document.getElementById("chat-scroll");
+  if (!sc) return;
+  sc.scrollTo({ top: sc.scrollHeight, behavior: suave ? "smooth" : "auto" });
+}
+
+function abrirModalMemorias(abaInicial = "memorias") {
+  fecharMenuPaineis();
   const modal = document.getElementById("modal-memorias");
   if (modal) modal.classList.remove("hidden");
+  const mapaAba = { memorias: "config-memorias", seguranca: "config-seguranca", sistema: "config-sistema" };
+  const alvo = mapaAba[abaInicial] || "config-memorias";
+  const btnAba = document.querySelector(`.subtab-btn[data-subtab-group="config"][data-subtab="${alvo}"]`);
+  selecionarSubAba("config", alvo, btnAba);
   carregarMemoriasModal();
+  atualizarBotoesAuthUI();
+  carregarConfigSistema();
 }
 
 function fecharModalMemorias() {
@@ -4007,8 +4805,13 @@ function fecharModalMemorias() {
 
 function abrirAba(nome, btn) {
   _abaAtiva = nome || "chat";
+  fecharMenuPaineis();
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-  document.querySelectorAll("#sec-paineis .nav-item").forEach(t => t.classList.remove("active"));
+  document.querySelectorAll("#paineis-popover .paineis-item").forEach(t => {
+    t.classList.toggle("active", t.dataset.aba === _abaAtiva);
+  });
+  const btnPaineis = document.getElementById("btn-paineis-menu");
+  if (btnPaineis) btnPaineis.classList.toggle("active", _abaAtiva !== "chat");
   const alvo = document.getElementById("view-" + _abaAtiva);
   if (alvo) alvo.classList.add("active");
   if (btn) btn.classList.add("active");
@@ -4035,20 +4838,32 @@ function abrirAba(nome, btn) {
   }
   if (_abaAtiva === "faxina") carregarFaxina();
   if (_abaAtiva === "rotinas") carregarRotinas();
+  if (_abaAtiva === "atividade") carregarAuditoriaEPermissoes();
   if (_abaAtiva === "lab") carregarAthenaLab();
 }
 
-/* ===== MODELO CHIP POPOVER ===== */
+/* ===== MODELO CHIP POPOVER + POPOVER "+" DO COMPOSER ===== */
+const MODELO_ROTULOS_CURTOS = {
+  "auto": "Auto",
+  "gemini-3.5-flash-lite": "Flash-Lite",
+  "gemini-4-hydrogen": "Hydrogen",
+  "gemini-4-neon": "Neon",
+  "ollama-local": "Ollama",
+};
+
 function atualizarUIModelo(modeloId) {
   _modeloAtual = modeloId || "auto";
   const rotulo = MODELO_ROTULOS[_modeloAtual] || _modeloAtual;
+  const curto = MODELO_ROTULOS_CURTOS[_modeloAtual] || rotulo;
   const btn = document.getElementById("btn-modelo-chip");
+  const lbl = document.getElementById("modelo-chip-label");
   const dot = document.getElementById("chip-dot");
   const destacarAmarelo = _modeloAtual === "auto" || _modeloAtual === "gemini-4-hydrogen" || _modeloAtual === "gemini-4-neon";
   if (btn) {
     btn.title = `Modelo ativo: ${rotulo} (${_modeloAtual})`;
     btn.classList.toggle("active-chip", destacarAmarelo);
   }
+  if (lbl) lbl.textContent = curto;
   if (dot) {
     dot.style.display = destacarAmarelo ? "block" : "none";
   }
@@ -4057,12 +4872,33 @@ function atualizarUIModelo(modeloId) {
   });
 }
 
+function alternarPopoverMais(ev) {
+  if (ev) ev.stopPropagation();
+  const pop = document.getElementById("composer-plus-popover");
+  const btn = document.getElementById("btn-composer-mais");
+  if (!pop || !btn) return;
+  const abrindo = !pop.classList.contains("open");
+  fecharPopoverModelo();
+  fecharMenuPaineis();
+  pop.classList.toggle("open", abrindo);
+  btn.setAttribute("aria-expanded", abrindo ? "true" : "false");
+}
+
+function fecharPopoverMais() {
+  const pop = document.getElementById("composer-plus-popover");
+  const btn = document.getElementById("btn-composer-mais");
+  if (pop) pop.classList.remove("open");
+  if (btn) btn.setAttribute("aria-expanded", "false");
+}
+
 function alternarPopoverModelo(ev) {
   if (ev) ev.stopPropagation();
   const pop = document.getElementById("model-popover");
   const btn = document.getElementById("btn-modelo-chip");
   if (!pop || !btn) return;
   const abrindo = !pop.classList.contains("open");
+  fecharPopoverMais();
+  fecharMenuPaineis();
   pop.classList.toggle("open", abrindo);
   btn.setAttribute("aria-expanded", abrindo ? "true" : "false");
 }
@@ -4077,6 +4913,8 @@ function fecharPopoverModelo() {
 function atualizarStatusOllamaUI(info) {
   const pill = document.getElementById("ollama-status-pill");
   const desc = document.getElementById("ollama-status-desc");
+  const cfgSub = document.getElementById("config-ollama-status");
+  const cfgBadge = document.getElementById("config-ollama-badge");
   const online = !!(info && info.disponivel);
   if (pill) {
     pill.textContent = online ? "• online" : "• offline";
@@ -4087,6 +4925,161 @@ function atualizarStatusOllamaUI(info) {
       ? `100% offline na sua máquina (${info.modelo})`
       : "100% offline na sua máquina (Ollama desligado)";
   }
+  if (cfgSub) {
+    cfgSub.textContent = online && info.modelo
+      ? `Conectado localmente (${info.modelo})`
+      : "Ollama desligado ou não detectado localmente";
+  }
+  if (cfgBadge) {
+    cfgBadge.className = "lab-badge " + (online ? "ok" : "");
+    cfgBadge.textContent = online ? "Online" : "Offline";
+  }
+}
+
+/* ===== PALETA DE COMANDOS (CTRL + K) ===== */
+let _cmdItensAtuais = [];
+let _cmdIndiceAtivo = 0;
+
+function _montarItensPaletaComandos() {
+  const itens = [];
+
+  // Acoes rapidas
+  itens.push({
+    grupo: "Ações rápidas",
+    titulo: "Novo chat com Athena",
+    meta: "Chat",
+    run: () => iniciarNovoChat("athena"),
+  });
+  itens.push({
+    grupo: "Ações rápidas",
+    titulo: "Capturar tela e anexar ao chat",
+    meta: "Visão",
+    run: () => { abrirAba("chat"); capturarTelaParaChat(); },
+  });
+  itens.push({
+    grupo: "Ações rápidas",
+    titulo: "Ensinar Tarefa (Teach a Bot)",
+    meta: "Skills",
+    run: () => iniciarTeachBotUI(),
+  });
+  itens.push({
+    grupo: "Ações rápidas",
+    titulo: "Limpar Cache Semântico",
+    meta: "Sistema",
+    run: () => limparCacheSemanticoUI(),
+  });
+  if (_authProtegido) {
+    itens.push({
+      grupo: "Ações rápidas",
+      titulo: "Bloquear Athena (PIN)",
+      meta: "Segurança",
+      run: () => bloquearPainel(),
+    });
+  }
+
+  // Paineis
+  const paineisCmd = [
+    ["Estudos & Grafo", "Pessoal", () => abrirAba("estudos")],
+    ["Grafo do Segundo Cérebro", "Estudos", () => { abrirAba("estudos"); selecionarSubAba("estudos", "estudos-grafo"); }],
+    ["Carteira", "Pessoal", () => abrirAba("carteira")],
+    ["Faxina & Aprovações", "Automação", () => abrirAba("faxina")],
+    ["Rotinas & Skills", "Automação", () => abrirAba("rotinas")],
+    ["Atividade & Permissões", "Automação", () => abrirAba("atividade")],
+    ["Athena Lab (R&D)", "Engenharia", () => abrirAba("lab")],
+    ["Configurações (Memórias, Segurança e Sistema)", "Config", () => abrirModalMemorias("memorias")],
+  ];
+  for (const [titulo, meta, run] of paineisCmd) {
+    itens.push({ grupo: "Painéis", titulo, meta, run });
+  }
+
+  // Agentes
+  for (const ag of (_agentesLista || [])) {
+    const nome = ag.id === "athena" ? "Athena" : ag.nome;
+    itens.push({
+      grupo: "Agentes",
+      titulo: `Conversar com ${nome}`,
+      meta: ag.descricao || "Chat Direto",
+      run: () => selecionarAgenteChat(ag.id),
+    });
+  }
+
+  // Conversas recentes
+  for (const c of (_conversasLista || []).slice(0, 12)) {
+    const agInfo = obterInfoAgente(c.agente_alvo);
+    itens.push({
+      grupo: "Conversas Recentes",
+      titulo: c.titulo || "Nova conversa",
+      meta: agInfo.id === "athena" ? "Athena" : agInfo.nome,
+      run: () => abrirConversa(c.id),
+    });
+  }
+
+  return itens;
+}
+
+function renderPaletaComandos(filtroRaw = "") {
+  const listEl = document.getElementById("cmd-palette-list");
+  if (!listEl) return;
+  const q = String(filtroRaw || "").trim().toLowerCase();
+  const todos = _montarItensPaletaComandos();
+  _cmdItensAtuais = q
+    ? todos.filter(it =>
+        it.titulo.toLowerCase().includes(q) ||
+        it.grupo.toLowerCase().includes(q) ||
+        String(it.meta || "").toLowerCase().includes(q)
+      )
+    : todos;
+
+  if (!_cmdItensAtuais.length) {
+    listEl.innerHTML = '<div class="empty-note" style="padding:18px;text-align:center;">Nenhum resultado encontrado.</div>';
+    _cmdIndiceAtivo = 0;
+    return;
+  }
+
+  if (_cmdIndiceAtivo >= _cmdItensAtuais.length) _cmdIndiceAtivo = 0;
+
+  let html = "";
+  let grupoAnt = "";
+  _cmdItensAtuais.forEach((it, idx) => {
+    if (it.grupo !== grupoAnt) {
+      grupoAnt = it.grupo;
+      html += `<div class="cmd-group-lbl">${escHtml(grupoAnt)}</div>`;
+    }
+    html += `
+      <button type="button" class="cmd-item${idx === _cmdIndiceAtivo ? " selected" : ""}" data-cmd-idx="${idx}" onclick="executarItemPaleta(${idx})" role="option" aria-selected="${idx === _cmdIndiceAtivo ? "true" : "false"}">
+        <span class="cmd-item-left"><span class="cmd-item-title">${escHtml(it.titulo)}</span></span>
+        <span class="cmd-item-meta">${escHtml(it.meta || "")}</span>
+      </button>
+    `;
+  });
+  listEl.innerHTML = html;
+}
+
+function abrirPaletaComandos() {
+  fecharPopoverModelo();
+  fecharPopoverMais();
+  fecharMenuPaineis();
+  const overlay = document.getElementById("modal-cmd-palette");
+  const inp = document.getElementById("cmd-palette-input");
+  if (!overlay) return;
+  overlay.classList.remove("hidden");
+  _cmdIndiceAtivo = 0;
+  if (inp) {
+    inp.value = "";
+    renderPaletaComandos("");
+    setTimeout(() => inp.focus(), 20);
+  }
+}
+
+function fecharPaletaComandos() {
+  const overlay = document.getElementById("modal-cmd-palette");
+  if (overlay) overlay.classList.add("hidden");
+}
+
+function executarItemPaleta(idx) {
+  const it = _cmdItensAtuais[idx];
+  fecharPaletaComandos();
+  if (it && typeof it.run === "function") it.run();
 }
 
 async function selecionarModelo(modelo) {
@@ -4122,11 +5115,57 @@ document.addEventListener("click", (ev) => {
   if (pop && pop.classList.contains("open") && !pop.contains(ev.target) && (!btn || !btn.contains(ev.target))) {
     fecharPopoverModelo();
   }
+  const popMais = document.getElementById("composer-plus-popover");
+  const btnMais = document.getElementById("btn-composer-mais");
+  if (popMais && popMais.classList.contains("open") && !popMais.contains(ev.target) && (!btnMais || !btnMais.contains(ev.target))) {
+    fecharPopoverMais();
+  }
+  const popPaineis = document.getElementById("paineis-popover");
+  const btnPaineis = document.getElementById("btn-paineis-menu");
+  if (popPaineis && popPaineis.classList.contains("open") && !popPaineis.contains(ev.target) && (!btnPaineis || !btnPaineis.contains(ev.target))) {
+    fecharMenuPaineis();
+  }
 });
 
 document.addEventListener("keydown", (ev) => {
+  if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === "k") {
+    ev.preventDefault();
+    const pal = document.getElementById("modal-cmd-palette");
+    if (pal && !pal.classList.contains("hidden")) fecharPaletaComandos();
+    else abrirPaletaComandos();
+    return;
+  }
+
+  const pal = document.getElementById("modal-cmd-palette");
+  if (pal && !pal.classList.contains("hidden")) {
+    if (ev.key === "ArrowDown") {
+      ev.preventDefault();
+      if (_cmdItensAtuais.length) {
+        _cmdIndiceAtivo = (_cmdIndiceAtivo + 1) % _cmdItensAtuais.length;
+        renderPaletaComandos(document.getElementById("cmd-palette-input")?.value || "");
+      }
+      return;
+    }
+    if (ev.key === "ArrowUp") {
+      ev.preventDefault();
+      if (_cmdItensAtuais.length) {
+        _cmdIndiceAtivo = (_cmdIndiceAtivo - 1 + _cmdItensAtuais.length) % _cmdItensAtuais.length;
+        renderPaletaComandos(document.getElementById("cmd-palette-input")?.value || "");
+      }
+      return;
+    }
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      executarItemPaleta(_cmdIndiceAtivo);
+      return;
+    }
+  }
+
   if (ev.key === "Escape") {
+    fecharPaletaComandos();
     fecharPopoverModelo();
+    fecharPopoverMais();
+    fecharMenuPaineis();
     fecharModalMemorias();
     fecharDrawersMobile();
   }
@@ -4137,9 +5176,11 @@ function atualizarLabelPasta(caminho) {
   _pastaRaizAtual = caminho || "";
   const btn = document.getElementById("btn-escolher-pasta");
   const lbl = document.getElementById("pasta-label");
+  const elCam = document.getElementById("config-pasta-caminho");
   const partes = _pastaRaizAtual.replace(/[\\/]+$/, "").split(/[\\/]/);
-  const nomeBase = partes[partes.length - 1] || "Pasta ativa";
+  const nomeBase = partes[partes.length - 1] || "Alterar pasta";
   if (lbl) lbl.textContent = nomeBase;
+  if (elCam) elCam.textContent = _pastaRaizAtual || "Nenhuma pasta selecionada";
   if (btn) btn.title = _pastaRaizAtual ? `Pasta ativa: ${_pastaRaizAtual} (clique para alterar)` : "Escolher pasta autorizada";
 }
 
@@ -6739,7 +7780,10 @@ async function carregarFaxina() {
   try {
     const r = await fetch("/api/painel/faxina").then(x => x.json());
     const res = r.resumo || {};
-    document.getElementById("kpi-fax-pend").textContent = res.pendentes ?? (r.pendentes || []).length;
+    const qtdPendFax = Number(res.pendentes ?? (r.pendentes || []).length);
+    _pendenciasFaxina = Math.max(0, qtdPendFax);
+    atualizarIndicadorPaineis();
+    document.getElementById("kpi-fax-pend").textContent = qtdPendFax;
     document.getElementById("kpi-fax-exec").textContent = res.executadas ?? 0;
     document.getElementById("kpi-fax-rec").textContent = res.recusadas ?? 0;
 
@@ -7345,11 +8389,25 @@ function atualizarBotoesAuthUI() {
   const btnLock = document.getElementById("btn-bloquear");
   const btnAtivarBio = document.getElementById("btn-ativar-biometria");
   const btnBioLogin = document.getElementById("btn-desbloquear-bio");
+  const pinStatus = document.getElementById("config-pin-status");
+  const bioStatus = document.getElementById("config-bio-status");
   const suportaWebAuthn = !!window.PublicKeyCredential;
 
-  if (btnLock) btnLock.style.display = _authProtegido ? "flex" : "none";
-  if (btnAtivarBio) btnAtivarBio.style.display = suportaWebAuthn ? "flex" : "none";
+  if (btnLock) btnLock.style.display = _authProtegido ? "inline-flex" : "none";
+  if (btnAtivarBio) btnAtivarBio.style.display = suportaWebAuthn ? "inline-flex" : "none";
   if (btnBioLogin) btnBioLogin.style.display = (_biometriaDisponivel && suportaWebAuthn) ? "inline-flex" : "none";
+  if (pinStatus) {
+    pinStatus.textContent = _authProtegido
+      ? "Ativo (ATHENA_PIN configurado no .env)"
+      : "Desativado localmente (defina ATHENA_PIN no .env para exigir bloqueio)";
+  }
+  if (bioStatus) {
+    bioStatus.textContent = !suportaWebAuthn
+      ? "WebAuthn / Passkeys indisponível neste navegador."
+      : (_biometriaDisponivel
+        ? "Biometria ativa neste dispositivo (Passkey registrada)."
+        : "Cadastre a digital ou Windows Hello para desbloquear em 1 toque.");
+  }
 }
 
 function mostrarTelaBloqueio(mostrar, msgErro = "") {
@@ -7567,18 +8625,21 @@ async function bloquearPainel() {
 }
 
 function renderSkills(skills) {
-  const box = document.getElementById("skills-lista");
-  const badge = document.getElementById("skills-count");
-  if (!box) return;
   const lista = Array.isArray(skills) ? skills : [];
-  if (badge) badge.textContent = String(lista.length);
-  if (!lista.length) {
-    box.innerHTML = '<span class="empty-note" style="font-size:11px;">Nenhuma skill ativa.</span>';
-    return;
+  const htmlPills = lista.length
+    ? lista.map(s => `<span class="skill-pill" title="${escHtml(s.description || s.name || "")}">${escHtml(s.name || "")}</span>`).join("")
+    : '<span class="empty-note" style="font-size:11px;">Nenhuma skill ativa.</span>';
+
+  const pares = [
+    ["skills-lista", "skills-count"],
+    ["skills-lista-rotinas", "skills-count-rotinas"],
+  ];
+  for (const [idBox, idBadge] of pares) {
+    const box = document.getElementById(idBox);
+    const badge = document.getElementById(idBadge);
+    if (badge) badge.textContent = String(lista.length);
+    if (box) box.innerHTML = htmlPills;
   }
-  box.innerHTML = lista
-    .map(s => `<span class="skill-pill" title="${escHtml(s.description || s.name || "")}">${escHtml(s.name || "")}</span>`)
-    .join("");
 }
 
 async function carregarSkills() {
@@ -7650,7 +8711,8 @@ async function iniciarTeachBotUI() {
   if (!url || !url.trim() || url.trim() === "https://") return;
   const descricao = window.prompt("Descrição curta da tarefa (opcional):", "") || "";
 
-  if (typeof mostrarView === "function") mostrarView("rotinas");
+  abrirAba("rotinas");
+  selecionarSubAba("rotinas", "rotinas-skills");
   mostrarToast("Iniciando gravação do Teach a Bot...");
   try {
     const resp = await fetch("/api/skills/gravar/iniciar", {
@@ -7708,21 +8770,36 @@ let _labBriefingsPorId = {};
 
 function atualizarBadgeNavLab(qtdPendentes) {
   const el = document.getElementById("nav-badge-lab");
-  if (!el) return;
   const n = Math.max(0, Number(qtdPendentes || 0));
-  el.textContent = n > 99 ? "99+" : String(n);
-  el.classList.toggle("hidden", n <= 0);
+  _pendenciasLab = n;
+  if (el) {
+    el.textContent = n > 99 ? "99+" : String(n);
+    el.classList.toggle("hidden", n <= 0);
+  }
+  atualizarIndicadorPaineis();
 }
 
 function atualizarBadgeCliLab(infoCli) {
   const el = document.getElementById("lab-cli-badge");
-  if (!el) return;
+  const cfgSub = document.getElementById("config-cli-status");
+  const cfgBadge = document.getElementById("config-cli-badge");
   const cliAtivo = Boolean(infoCli && infoCli.disponivel && infoCli.habilitado);
-  el.className = "lab-badge " + (cliAtivo ? "ok" : "accent");
-  el.textContent = cliAtivo ? "CLI Ativo" : "Modo Briefing VS Code";
-  el.title = cliAtivo
-    ? `Google Antigravity CLI detectado (${infoCli.caminho || "PATH"})`
-    : "Antigravity CLI não detectado localmente — propostas são salvas com briefing cirúrgico para o VS Code";
+  if (el) {
+    el.className = "lab-badge " + (cliAtivo ? "ok" : "accent");
+    el.textContent = cliAtivo ? "CLI Ativo" : "Modo Briefing VS Code";
+    el.title = cliAtivo
+      ? `Google Antigravity CLI detectado (${infoCli.caminho || "PATH"})`
+      : "Antigravity CLI não detectado localmente — propostas são salvas com briefing cirúrgico para o VS Code";
+  }
+  if (cfgSub) {
+    cfgSub.textContent = cliAtivo
+      ? `Detectado em ${infoCli.caminho || "PATH"} (execução headless ativa)`
+      : "Não detectado localmente — operando em Modo Briefing VS Code";
+  }
+  if (cfgBadge) {
+    cfgBadge.className = "lab-badge " + (cliAtivo ? "ok" : "accent");
+    cfgBadge.textContent = cliAtivo ? "CLI Ativo" : "Briefing VS Code";
+  }
 }
 
 async function copiarPromptAntigravity(propostaId, btn) {
@@ -8005,6 +9082,7 @@ async function carregarDadosIniciaisApp() {
     carregarMemoriasModal(),
     carregarSkills(),
     atualizarBadgeAthenaLab(),
+    atualizarBadgeFaxina(),
   ]);
 
   const existeSalva = _conversasLista.some(c => c.id === _conversaId);
