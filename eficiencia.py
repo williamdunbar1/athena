@@ -36,6 +36,7 @@ DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
             "carregar_skill",
             "consultar_resumo_ulife_direto",
             "delegar_para_estudos",
+            "escrever_nota_vault",
             "search_tools",
         }
     ),
@@ -57,6 +58,7 @@ DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
         {
             "delegar_para_investimentos",
             "carregar_skill",
+            "escrever_nota_vault",
         }
     ),
     "google": frozenset(
@@ -184,7 +186,7 @@ _PADROES_DOMINIO: dict[str, tuple[re.Pattern[str], ...]] = {
     ),
     "memoria": (
         re.compile(r"\b(?:memorizar|memorize|memoriza)\b"),
-        re.compile(r"\b(?:guardar?|salvar?|anotar?)\s+na\s+memoria\b"),
+        re.compile(r"\b(?:guard(?:a|ar|e)|salv(?:a|ar|e)|anot(?:a|ar|e))\s+na\s+memoria\b"),
     ),
     "imagem": (
         re.compile(

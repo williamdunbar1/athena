@@ -9,16 +9,10 @@
   "theme_color": "#111214",
   "icons": [
     {
-      "src": "/athena-icon",
-      "sizes": "192x192",
+      "src": "/athena-icon?v=2",
+      "sizes": "1024x1024",
       "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/athena-icon",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }

@@ -27,10 +27,13 @@ from zoneinfo import ZoneInfo
 
 import ferramentas_windows as fw
 from eficiencia import compactar_saida_tool, normalizar_texto_eficiencia
-from ferramentas_estudos import listar_provas
-from grafo_obsidian import estatisticas_grafo
 from skills_manager import listar_skills
-from ulife_v2 import obter_dados_ulife_estruturados
+
+
+def obter_dados_ulife_estruturados(secao: str = "tudo") -> dict[str, Any]:
+    from ulife_v2 import obter_dados_ulife_estruturados as _ulife_dados
+
+    return _ulife_dados(secao)
 
 MODELO_FAST_PATH = "Fast-Path (Local)"
 MAX_CHARS_FAST_PATH = 100
@@ -161,7 +164,7 @@ def _limpar_artigos_alvo(alvo_norm: str) -> str:
     return txt
 
 
-def _coletar_uso_ram_mb() -> tuple[float | None, float | None, float | None]:
+def _coletar_uso_ram_gb() -> tuple[float | None, float | None, float | None]:
     """Retorna `(usada_gb, total_gb, pct)` usando API nativa do SO (zero dependencias externas)."""
     gb = 1024.0 ** 3
     if sys.platform == "win32":
@@ -254,7 +257,7 @@ def _rota_status_pc() -> dict[str, Any]:
 
     cpus = os.cpu_count() or "?"
     cpu_pct = _coletar_uso_cpu_pct()
-    ram_usada, ram_total, ram_pct = _coletar_uso_ram_mb()
+    ram_usada, ram_total, ram_pct = _coletar_uso_ram_gb()
     ram_txt = (
         f"**{ram_usada:.1f} GB / {ram_total:.1f} GB** ({ram_pct:.0f}%)"
         if ram_usada is not None and ram_total is not None and ram_pct is not None
@@ -287,7 +290,7 @@ def _rota_status_pc() -> dict[str, Any]:
     }
 
 
-def _rota_abrir_windows(msg_bruta: str, msg_norm: str) -> dict[str, Any] | None:
+def _rota_abrir_windows(msg_bruta: str) -> dict[str, Any] | None:
     m_raw = _RE_ABRIR_RAW.match(msg_bruta.strip())
     if not m_raw:
         return None
@@ -380,6 +383,8 @@ def _rota_ulife_cache(quer_provas: bool) -> dict[str, Any] | None:
 
     atualizado_em = str(dados.get("atualizado_em") or "-")
     if quer_provas:
+        from ferramentas_estudos import listar_provas
+
         atividades = dados.get("atividades") or []
         provas_locais = listar_provas()
         linhas = [f"### Próximas Provas e Prazos (cache Ulife · {atualizado_em})"]
@@ -455,6 +460,8 @@ def _rota_skills() -> dict[str, Any]:
 
 
 def _rota_obsidian_grafo() -> dict[str, Any]:
+    from grafo_obsidian import estatisticas_grafo
+
     st = estatisticas_grafo()
     linhas = [
         "### Estatísticas do Obsidian Vault (GraphRAG)",
@@ -506,7 +513,7 @@ def tentar_fast_path(mensagem: str) -> dict[str, Any] | None:
 
     # 1 & 2) Abrir URL / site ou aplicativo no Windows
     if _RE_ABRIR_RAW.match(bruta):
-        return _rota_abrir_windows(bruta, norm_sem_pont)
+        return _rota_abrir_windows(bruta)
 
     # 3) Notas e proximas provas direto do cache local do Ulife
     if _RE_NOTAS_ULIFE.match(norm_sem_pont):

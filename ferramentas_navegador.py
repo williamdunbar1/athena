@@ -4,9 +4,6 @@ import re
 from pathlib import Path
 from urllib.parse import urlparse
 
-from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from playwright.sync_api import sync_playwright
-
 from eficiencia import compactar_saida_tool
 from guardrails import sanitizar_conteudo_externo
 
@@ -64,6 +61,8 @@ def _limpar_texto(texto: str, limite: int = LIMITE_TEXTO) -> str:
 
 
 def _carregar_pagina(page, url: str) -> None:
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+
     page.goto(url, wait_until="domcontentloaded", timeout=TIMEOUT_NAVEGACAO_MS)
     with contextlib.suppress(PlaywrightTimeoutError):
         page.wait_for_load_state("networkidle", timeout=TIMEOUT_NETWORKIDLE_MS)
@@ -76,6 +75,8 @@ def _abrir_e_ler_pagina_sync(url: str) -> str:
         return f"Erro ao validar URL: {e}"
 
     try:
+        from playwright.sync_api import sync_playwright
+
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             try:
@@ -144,6 +145,8 @@ def _tirar_screenshot_sync(url: str, nome_arquivo: str) -> str:
         return f"Erro nos parametros do screenshot: {e}"
 
     try:
+        from playwright.sync_api import sync_playwright
+
         PASTA_PRINTS.mkdir(parents=True, exist_ok=True)
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
@@ -182,6 +185,8 @@ def _buscar_no_site_sync(url: str, texto_busca: str) -> str:
         return "Erro: informe um texto_busca nao vazio."
 
     try:
+        from playwright.sync_api import sync_playwright
+
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             try:

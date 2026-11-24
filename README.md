@@ -153,7 +153,7 @@ uv run pytest -v
 ### Evals Agênticos (`pydantic-evals`)
 Para rodar avaliações ponta a ponta contra a API real do Gemini (com registro automático no Logfire):
 ```bash
-uv run --env-file .env python evals/athena_evals.py
+uv run --env-file .env python -m evals.athena_evals
 ```
 
 ---

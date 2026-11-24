@@ -1,6 +1,8 @@
 import json
 import os
+import re
 import sqlite3
+import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -11,6 +13,8 @@ BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "memoria.db"
 ALEMBIC_INI_PATH = BASE_DIR / "alembic.ini"
 ALEMBIC_DIR_PATH = BASE_DIR / "alembic"
+CONVERSA_PADRAO_ID = "principal"
+TITULO_CONVERSA_PADRAO = "Nova conversa"
 
 _log = obter_logger("memoria")
 
@@ -44,8 +48,42 @@ def _conn(db_path: str | Path | None = None):
 
 def _garantir_coluna_meta_mensagens(c: sqlite3.Connection) -> None:
     cols = {r[1] for r in c.execute("PRAGMA table_info(mensagens)").fetchall()}
+    if not cols:
+        return
     if "meta_json" not in cols:
         c.execute("ALTER TABLE mensagens ADD COLUMN meta_json TEXT DEFAULT '{}'")
+    if "conversa_id" not in cols:
+        c.execute("ALTER TABLE mensagens ADD COLUMN conversa_id TEXT NOT NULL DEFAULT 'principal'")
+
+
+def _garantir_tabela_conversas(c: sqlite3.Connection) -> None:
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS conversas (
+            id TEXT PRIMARY KEY,
+            titulo TEXT NOT NULL,
+            agente_alvo TEXT NOT NULL DEFAULT 'athena',
+            criado_em TEXT NOT NULL,
+            atualizado_em TEXT NOT NULL
+        )
+        """
+    )
+
+
+def gerar_titulo_conversa(mensagem: str, max_chars: int = 45) -> str:
+    """Gera um titulo curto e limpo a partir da primeira mensagem do usuario."""
+    txt = str(mensagem or "").strip()
+    txt = re.sub(r"^\[Anexos?(?:\s*\(\d+\))?:[^\]]*\]\s*", "", txt, flags=re.IGNORECASE)
+    txt = re.sub(r"[#*`_>\[\]]+", " ", txt)
+    txt = re.sub(r"\s+", " ", txt).strip(" .,:;-!?")
+    if not txt:
+        return TITULO_CONVERSA_PADRAO
+    if len(txt) <= max_chars:
+        return txt
+    cortado = txt[: max(10, max_chars - 1)].rstrip()
+    if " " in cortado and len(cortado) > 16:
+        cortado = cortado.rsplit(" ", 1)[0].rstrip(" .,:;-")
+    return f"{cortado}…"
 
 
 def executar_migrations(db_path: str | Path | None = None) -> str:
@@ -129,24 +167,66 @@ def salvar_mensagem(
     conteudo: str,
     trilha: list[dict] | None = None,
     meta: dict | None = None,
+    *,
+    conversa_id: str = CONVERSA_PADRAO_ID,
+    agente_alvo: str = "athena",
+    db_path: str | Path | None = None,
 ):
     agora = datetime.now().isoformat(timespec="seconds")
+    cid = (conversa_id or CONVERSA_PADRAO_ID).strip() or CONVERSA_PADRAO_ID
+    agente = (agente_alvo or "athena").strip().lower() or "athena"
     meta_str = json.dumps(meta or {}, ensure_ascii=False)
-    with _conn() as c:
-        _garantir_coluna_meta_mensagens(c)
-        c.execute(
-            "INSERT INTO mensagens (role, conteudo, trilha_json, criado_em, meta_json) VALUES (?, ?, ?, ?, ?)",
-            (role, conteudo, json.dumps(trilha or [], ensure_ascii=False), agora, meta_str),
-        )
-
-
-def listar_mensagens(limite: int = 30, *, db_path: str | Path | None = None) -> list[dict]:
     with _conn(db_path) as c:
         _garantir_coluna_meta_mensagens(c)
-        rows = c.execute(
-            "SELECT id, role, conteudo, trilha_json, criado_em, COALESCE(meta_json, '{}') FROM mensagens ORDER BY id DESC LIMIT ?",
-            (limite,),
-        ).fetchall()
+        _garantir_tabela_conversas(c)
+        c.execute(
+            "INSERT INTO mensagens (role, conteudo, trilha_json, criado_em, meta_json, conversa_id) VALUES (?, ?, ?, ?, ?, ?)",
+            (role, conteudo, json.dumps(trilha or [], ensure_ascii=False), agora, meta_str, cid),
+        )
+        row_conv = c.execute("SELECT titulo FROM conversas WHERE id = ?", (cid,)).fetchone()
+        if row_conv is None:
+            titulo_init = gerar_titulo_conversa(conteudo) if role == "user" else TITULO_CONVERSA_PADRAO
+            c.execute(
+                "INSERT INTO conversas (id, titulo, agente_alvo, criado_em, atualizado_em) VALUES (?, ?, ?, ?, ?)",
+                (cid, titulo_init, agente, agora, agora),
+            )
+        else:
+            titulo_atual = str(row_conv[0] or "").strip()
+            if role == "user" and (not titulo_atual or titulo_atual.lower() == TITULO_CONVERSA_PADRAO.lower()):
+                novo_titulo = gerar_titulo_conversa(conteudo)
+                c.execute(
+                    "UPDATE conversas SET titulo = ?, atualizado_em = ? WHERE id = ?",
+                    (novo_titulo, agora, cid),
+                )
+            else:
+                c.execute(
+                    "UPDATE conversas SET atualizado_em = ? WHERE id = ?",
+                    (agora, cid),
+                )
+
+
+def listar_mensagens(
+    limite: int = 30,
+    *,
+    conversa_id: str | None = None,
+    db_path: str | Path | None = None,
+) -> list[dict]:
+    with _conn(db_path) as c:
+        _garantir_coluna_meta_mensagens(c)
+        if conversa_id:
+            rows = c.execute(
+                "SELECT id, role, conteudo, trilha_json, criado_em, COALESCE(meta_json, '{}'), "
+                "COALESCE(conversa_id, 'principal') "
+                "FROM mensagens WHERE COALESCE(conversa_id, 'principal') = ? ORDER BY id DESC LIMIT ?",
+                (conversa_id.strip(), limite),
+            ).fetchall()
+        else:
+            rows = c.execute(
+                "SELECT id, role, conteudo, trilha_json, criado_em, COALESCE(meta_json, '{}'), "
+                "COALESCE(conversa_id, 'principal') "
+                "FROM mensagens ORDER BY id DESC LIMIT ?",
+                (limite,),
+            ).fetchall()
     rows.reverse()
     out: list[dict] = []
     for r in rows:
@@ -163,27 +243,223 @@ def listar_mensagens(limite: int = 30, *, db_path: str | Path | None = None) -> 
             "trilha": json.loads(r[3] or "[]"),
             "criado_em": r[4],
             "meta": meta_obj,
+            "conversa_id": r[6] or CONVERSA_PADRAO_ID,
         })
     return out
 
 
-def limpar_mensagens(*, db_path: str | Path | None = None):
+def limpar_mensagens(*, conversa_id: str | None = None, db_path: str | Path | None = None):
     with _conn(db_path) as c:
-        c.execute("DELETE FROM mensagens")
+        _garantir_coluna_meta_mensagens(c)
+        existe_res = c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='resumos_conversa'"
+        ).fetchone()
+        if conversa_id:
+            cid = conversa_id.strip()
+            c.execute("DELETE FROM mensagens WHERE COALESCE(conversa_id, 'principal') = ?", (cid,))
+            if existe_res:
+                c.execute("DELETE FROM resumos_conversa WHERE conversa_id = ?", (cid,))
+        else:
+            c.execute("DELETE FROM mensagens")
+            if existe_res:
+                c.execute("DELETE FROM resumos_conversa")
+
+
+def garantir_conversas_legadas(*, db_path: str | Path | None = None) -> int:
+    """Auto-registra na tabela `conversas` qualquer conversa antiga que ja exista em `mensagens`."""
+    inseridas = 0
+    with _conn(db_path) as c:
+        _garantir_coluna_meta_mensagens(c)
+        _garantir_tabela_conversas(c)
+        tem_msg = c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='mensagens'"
+        ).fetchone()
+        if not tem_msg:
+            return 0
+        grupos = c.execute(
+            """
+            SELECT COALESCE(m.conversa_id, 'principal') AS cid,
+                   MIN(m.criado_em) AS prim,
+                   MAX(m.criado_em) AS ult
+            FROM mensagens m
+            LEFT JOIN conversas cv ON cv.id = COALESCE(m.conversa_id, 'principal')
+            WHERE cv.id IS NULL
+            GROUP BY COALESCE(m.conversa_id, 'principal')
+            """
+        ).fetchall()
+        for cid, criado_em, atualizado_em in grupos:
+            primeira_user = c.execute(
+                """
+                SELECT conteudo FROM mensagens
+                WHERE COALESCE(conversa_id, 'principal') = ? AND role = 'user'
+                ORDER BY id ASC LIMIT 1
+                """,
+                (cid,),
+            ).fetchone()
+            titulo = (
+                gerar_titulo_conversa(str(primeira_user[0]))
+                if primeira_user and str(primeira_user[0] or "").strip()
+                else ("Conversa principal" if cid == CONVERSA_PADRAO_ID else TITULO_CONVERSA_PADRAO)
+            )
+            agora = datetime.now().isoformat(timespec="seconds")
+            c.execute(
+                """
+                INSERT OR IGNORE INTO conversas (id, titulo, agente_alvo, criado_em, atualizado_em)
+                VALUES (?, ?, 'athena', ?, ?)
+                """,
+                (cid, titulo, criado_em or agora, atualizado_em or criado_em or agora),
+            )
+            inseridas += 1
+    return inseridas
+
+
+def criar_conversa(
+    conversa_id: str | None = None,
+    titulo: str = TITULO_CONVERSA_PADRAO,
+    agente_alvo: str = "athena",
+    *,
+    db_path: str | Path | None = None,
+) -> dict:
+    """Cria (ou retorna existente) uma conversa na tabela `conversas`."""
+    cid = (conversa_id or "").strip() or f"conv_{uuid.uuid4().hex[:12]}"
+    tit = (titulo or "").strip()[:120] or TITULO_CONVERSA_PADRAO
+    agente = (agente_alvo or "athena").strip().lower() or "athena"
+    agora = datetime.now().isoformat(timespec="seconds")
+    with _conn(db_path) as c:
+        _garantir_tabela_conversas(c)
+        c.execute(
+            """
+            INSERT OR IGNORE INTO conversas (id, titulo, agente_alvo, criado_em, atualizado_em)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (cid, tit, agente, agora, agora),
+        )
+        row = c.execute(
+            "SELECT id, titulo, agente_alvo, criado_em, atualizado_em FROM conversas WHERE id = ?",
+            (cid,),
+        ).fetchone()
+    assert row is not None
+    return {
+        "id": row[0],
+        "titulo": row[1],
+        "agente_alvo": row[2],
+        "criado_em": row[3],
+        "atualizado_em": row[4],
+        "total_mensagens": 0,
+    }
+
+
+def obter_conversa(conversa_id: str, *, db_path: str | Path | None = None) -> dict | None:
+    """Retorna os metadados de uma conversa (auto-registrando legadas se necessario)."""
+    cid = (conversa_id or "").strip()
+    if not cid:
+        return None
+    garantir_conversas_legadas(db_path=db_path)
+    with _conn(db_path) as c:
+        _garantir_tabela_conversas(c)
+        _garantir_coluna_meta_mensagens(c)
+        row = c.execute(
+            """
+            SELECT cv.id, cv.titulo, cv.agente_alvo, cv.criado_em, cv.atualizado_em,
+                   (SELECT COUNT(*) FROM mensagens m WHERE COALESCE(m.conversa_id, 'principal') = cv.id)
+            FROM conversas cv
+            WHERE cv.id = ?
+            """,
+            (cid,),
+        ).fetchone()
+    if row is None:
+        return None
+    return {
+        "id": row[0],
+        "titulo": row[1],
+        "agente_alvo": row[2],
+        "criado_em": row[3],
+        "atualizado_em": row[4],
+        "total_mensagens": int(row[5] or 0),
+    }
+
+
+def listar_conversas(limite: int = 50, *, db_path: str | Path | None = None) -> list[dict]:
+    """Lista conversas recentes ordenadas por `atualizado_em DESC`, incluindo conversas legadas."""
+    garantir_conversas_legadas(db_path=db_path)
+    lim = max(1, min(int(limite or 50), 200))
+    with _conn(db_path) as c:
+        _garantir_tabela_conversas(c)
+        _garantir_coluna_meta_mensagens(c)
+        rows = c.execute(
+            """
+            SELECT cv.id, cv.titulo, cv.agente_alvo, cv.criado_em, cv.atualizado_em,
+                   (SELECT COUNT(*) FROM mensagens m WHERE COALESCE(m.conversa_id, 'principal') = cv.id)
+            FROM conversas cv
+            ORDER BY cv.atualizado_em DESC, cv.rowid DESC
+            LIMIT ?
+            """,
+            (lim,),
+        ).fetchall()
+    return [
+        {
+            "id": r[0],
+            "titulo": r[1],
+            "agente_alvo": r[2],
+            "criado_em": r[3],
+            "atualizado_em": r[4],
+            "total_mensagens": int(r[5] or 0),
+        }
+        for r in rows
+    ]
+
+
+def atualizar_titulo_conversa(
+    conversa_id: str,
+    titulo: str,
+    *,
+    db_path: str | Path | None = None,
+) -> dict | None:
+    """Atualiza o titulo de uma conversa existente."""
+    cid = (conversa_id or "").strip()
+    tit = re.sub(r"\s+", " ", (titulo or "").strip())[:120]
+    if not cid or not tit:
+        return None
+    agora = datetime.now().isoformat(timespec="seconds")
+    with _conn(db_path) as c:
+        _garantir_tabela_conversas(c)
+        cur = c.execute(
+            "UPDATE conversas SET titulo = ?, atualizado_em = ? WHERE id = ?",
+            (tit, agora, cid),
+        )
+        if cur.rowcount == 0:
+            return None
+    return obter_conversa(cid, db_path=db_path)
+
+
+def deletar_conversa(conversa_id: str, *, db_path: str | Path | None = None) -> bool:
+    """Apaga a conversa, suas mensagens e eventual resumo compactado em `resumos_conversa`."""
+    cid = (conversa_id or "").strip()
+    if not cid:
+        return False
+    with _conn(db_path) as c:
+        _garantir_tabela_conversas(c)
+        _garantir_coluna_meta_mensagens(c)
+        cur_m = c.execute("DELETE FROM mensagens WHERE COALESCE(conversa_id, 'principal') = ?", (cid,))
         existe_res = c.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='resumos_conversa'"
         ).fetchone()
         if existe_res:
-            c.execute("DELETE FROM resumos_conversa")
+            c.execute("DELETE FROM resumos_conversa WHERE conversa_id = ?", (cid,))
+        cur_c = c.execute("DELETE FROM conversas WHERE id = ?", (cid,))
+        return (cur_c.rowcount > 0) or (cur_m.rowcount > 0)
 
 
 def guardar_fato(chave: str, valor: str, *, db_path: str | Path | None = None):
+    from guardrails import mascarar_segredos_e_pii
+
+    valor_seguro, _ = mascarar_segredos_e_pii(valor.strip())
     agora = datetime.now().isoformat(timespec="seconds")
     with _conn(db_path) as c:
         c.execute(
             "INSERT INTO fatos (chave, valor, atualizado_em) VALUES (?, ?, ?) "
             "ON CONFLICT(chave) DO UPDATE SET valor=excluded.valor, atualizado_em=excluded.atualizado_em",
-            (chave.strip().lower(), valor.strip(), agora),
+            (chave.strip().lower(), valor_seguro, agora),
         )
 
 

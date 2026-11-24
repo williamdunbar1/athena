@@ -128,8 +128,8 @@ def _resposta_eh_valida_para_cache(resposta: str) -> bool:
     limpa = (resposta or "").strip()
     if len(limpa) < 8:
         return False
-    low = limpa.lower()
-    return not any(low.startswith(pref) for pref in _PREFIXOS_RESPOSTA_ERRO)
+    norm = normalizar_texto_eficiencia(limpa)
+    return not any(norm.startswith(pref) for pref in _PREFIXOS_RESPOSTA_ERRO)
 
 
 class SemanticCache:

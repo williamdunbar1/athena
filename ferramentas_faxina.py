@@ -122,9 +122,6 @@ def obter_pasta_desktop() -> Path:
     return (HOME / "Desktop").resolve()
 
 
-resolver_desktop_real = obter_pasta_desktop
-
-
 PASTAS_PERMITIDAS: dict[str, Path] = {
     "downloads": (HOME / "Downloads").resolve(),
     "desktop": obter_pasta_desktop(),
@@ -882,6 +879,7 @@ def planejar_organizacao_pasta(
             if not m.endswith((".lnk", ".url")):
                 manter_set.add(f"{m}.lnk")
                 manter_set.add(f"{m}.url")
+    manter_stems = {_norm_nome_simples(Path(x).stem) for x in manter_set}
 
     with _conn() as c:
         pendentes_existentes = {
@@ -939,9 +937,7 @@ def planejar_organizacao_pasta(
             continue
 
         # 2) Atalhos protegidos na raiz (ex.: Ecossistema Agentes.lnk ou pedidos pelo usuario)
-        if nome_low in manter_set or _norm_nome_simples(item.stem) in {
-            _norm_nome_simples(Path(x).stem) for x in manter_set
-        }:
+        if nome_low in manter_set or _norm_nome_simples(item.stem) in manter_stems:
             atalhos_mantidos.append(item.name)
             continue
 

@@ -39,7 +39,7 @@
     --ease: cubic-bezier(0.2, 0, 0, 1);
     --dur-fast: 180ms;
     --dur-med: 220ms;
-    --sidebar-w: 240px;
+    --sidebar-w: 268px;
     --sidebar-collapsed-w: 68px;
     --topbar-h: 56px;
     --radius-sm: 8px;
@@ -84,6 +84,7 @@
     stroke-linejoin: round;
   }
   .ico-sm { width: 16px; height: 16px; }
+  .ico-lg { width: 24px; height: 24px; }
   .ico-accent { color: var(--accent); }
 
   @keyframes spin {
@@ -134,6 +135,11 @@
     border-color: rgba(234, 179, 8, 0.5);
     color: var(--accent-hover);
   }
+  button.ghost.danger:hover {
+    background: rgba(220, 38, 38, 0.16);
+    border-color: rgba(248, 113, 113, 0.45);
+    color: #fca5a5;
+  }
 
   button.mini {
     height: 32px;
@@ -179,12 +185,44 @@
   }
 
   .sidebar-top {
-    height: 38px;
     display: flex;
     align-items: center;
-    justify-content: flex-start;
-    padding: 0 4px;
+    gap: 8px;
+    padding: 0 2px;
     flex-shrink: 0;
+  }
+
+  .btn-novo-chat {
+    flex: 1;
+    min-width: 0;
+    height: 38px;
+    padding: 0 13px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    border: 1px solid rgba(234, 179, 8, 0.42);
+    color: var(--accent-hover);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 700;
+    justify-content: flex-start;
+    gap: 9px;
+  }
+  .btn-novo-chat:hover {
+    background: rgba(234, 179, 8, 0.22);
+    border-color: var(--accent);
+    color: #fef08a;
+  }
+  .sidebar.collapsed .sidebar-top {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .sidebar.collapsed .btn-novo-chat {
+    width: 42px;
+    height: 38px;
+    flex: none;
+    padding: 0;
+    justify-content: center;
+    border-radius: 10px;
   }
 
   .menu-btn {
@@ -206,26 +244,83 @@
   .sidebar-nav {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    margin-top: 6px;
+    gap: 10px;
+    margin-top: 4px;
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
+    padding-right: 2px;
+  }
+
+  .sb-section {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .sb-section-head {
+    width: 100%;
+    height: 26px;
+    padding: 0 8px;
+    border-radius: 7px;
+    background: transparent;
+    border: 0;
+    color: var(--muted-2);
+    font-family: var(--font-ui);
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .sb-section-head:hover {
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted);
+  }
+  .sb-section-head .sb-chev {
+    width: 13px;
+    height: 13px;
+    transition: transform var(--dur-fast) var(--ease);
+    opacity: 0.75;
+  }
+  .sb-section.sec-collapsed .sb-section-head .sb-chev {
+    transform: rotate(-90deg);
+  }
+  .sb-section.sec-collapsed .sb-section-body {
+    display: none;
+  }
+
+  .sb-section-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .conv-list {
+    max-height: 240px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
   }
 
   .nav-item {
+    position: relative;
     width: 100%;
-    height: 42px;
-    padding: 0 13px;
-    border-radius: 10px;
+    height: 36px;
+    padding: 0 11px;
+    border-radius: 9px;
     background: transparent;
     border: 1px solid transparent;
     color: var(--muted);
     font-family: var(--font-ui);
-    font-size: 13.5px;
+    font-size: 13px;
     font-weight: 600;
     justify-content: flex-start;
-    gap: 12px;
+    gap: 10px;
     overflow: hidden;
     transition: background var(--dur-fast) var(--ease),
                 color var(--dur-fast) var(--ease),
@@ -248,6 +343,110 @@
     color: var(--accent-hover);
   }
 
+  .nav-item .ico {
+    width: 16px;
+    height: 16px;
+  }
+
+  .conv-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    min-height: 36px;
+    padding: 5px 8px 5px 10px;
+    border-radius: 9px;
+    border: 1px solid transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+  }
+  .conv-item:hover {
+    background: var(--surface);
+    color: var(--text-strong);
+  }
+  .conv-item.active {
+    background: var(--accent-soft);
+    border-color: rgba(234, 179, 8, 0.32);
+    color: var(--text-strong);
+  }
+  .conv-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+  .conv-title {
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: inherit;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .conv-sub {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    color: var(--muted-2);
+  }
+  .conv-agent-tag {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+  .conv-item.active .conv-agent-tag {
+    color: var(--accent-hover);
+    border-color: rgba(234, 179, 8, 0.35);
+    background: rgba(234, 179, 8, 0.12);
+  }
+  .conv-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    flex-shrink: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+  }
+  .conv-item:hover .conv-actions,
+  .conv-item.active .conv-actions,
+  .conv-item:focus-within .conv-actions {
+    opacity: 1;
+  }
+  .conv-act-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 6px;
+    background: transparent;
+    border: 0;
+    color: var(--muted);
+  }
+  .conv-act-btn:hover {
+    background: var(--surface-2);
+    color: var(--text-strong);
+  }
+  .conv-act-btn.del:hover {
+    background: rgba(220, 38, 38, 0.18);
+    color: #fca5a5;
+  }
+  .conv-empty {
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--muted-2);
+  }
+
   .nav-label {
     overflow: hidden;
     text-overflow: ellipsis;
@@ -261,10 +460,24 @@
     justify-content: center;
   }
 
-  .sidebar.collapsed .nav-label {
+  .sidebar.collapsed .nav-label,
+  .sidebar.collapsed .sb-section-head,
+  .sidebar.collapsed #sec-conversas {
     opacity: 0;
     width: 0;
     display: none;
+  }
+
+  .sidebar.collapsed .nav-badge {
+    position: absolute;
+    top: 4px;
+    right: 6px;
+    margin-left: 0;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 9.5px;
+    line-height: 16px;
   }
 
   .sidebar-footer {
@@ -358,17 +571,67 @@
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
   }
 
-  .topbar-right .chat-only.hidden {
+  .chat-only.hidden {
     display: none;
   }
 
-  .btn-agentes {
+  .chat-agent-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 11px;
+    border-radius: 999px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-strong);
+    max-width: min(360px, 52vw);
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .chat-agent-pill.is-direto {
+    background: var(--accent-soft);
+    border-color: rgba(234, 179, 8, 0.42);
+    color: var(--accent-hover);
+  }
+  .chat-agent-pill .agent-pill-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-agent-pill .agent-pill-tag {
+    font-size: 10.5px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    opacity: 0.85;
+    flex-shrink: 0;
+  }
+
+  .btn-memorias {
     height: 36px;
     padding: 0 12px;
     border-radius: 10px;
     font-size: 12.5px;
+  }
+  .mem-count-badge {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--accent-hover);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
   }
 
   /* Container das Views */
@@ -480,7 +743,7 @@
   }
 
   .chat-column {
-    max-width: 800px;
+    max-width: 840px;
     width: 100%;
     margin: 0 auto;
     display: flex;
@@ -947,7 +1210,7 @@
   }
 
   .composer {
-    max-width: 800px;
+    max-width: 840px;
     width: 100%;
     margin: 0 auto;
     background: var(--bg-elev);
@@ -1251,85 +1514,97 @@
     white-space: nowrap;
   }
 
-  /* Painel lateral direito recolhivel (Agentes & Memoria) */
-  .side-panel {
-    width: 320px;
-    flex-shrink: 0;
+  /* Modal discreto de Memorias & Skills (substitui a antiga barra lateral direita) */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 8000;
+    background: rgba(0, 0, 0, 0.68);
+    backdrop-filter: blur(3px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+  }
+  .modal-overlay.hidden { display: none; }
+
+  .modal-card {
+    width: 100%;
+    max-width: 560px;
+    max-height: min(82dvh, 660px);
     background: var(--bg-elev);
-    border-left: 1px solid var(--border);
+    border: 1px solid var(--border);
+    border-radius: 16px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
-    transition: width var(--dur-med) var(--ease), opacity var(--dur-fast) var(--ease), transform var(--dur-med) var(--ease);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65);
   }
-  .side-panel.collapsed {
-    width: 0;
-    opacity: 0;
-    border-left-color: transparent;
-    pointer-events: none;
-  }
-
-  .side-inner {
-    width: 320px;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-
-  .side-section-title {
-    margin: 0;
-    padding: 12px 14px;
-    font-family: var(--font-ui);
-    font-size: 11.5px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--muted);
+  .modal-head {
+    padding: 14px 18px;
     background: var(--surface);
     border-bottom: 1px solid var(--border);
     display: flex;
     align-items: center;
-    gap: 8px;
-    flex-shrink: 0;
+    justify-content: space-between;
+    gap: 10px;
   }
-
-  .side-close-mobile {
-    display: none;
-    margin-left: auto;
-    width: 28px;
-    height: 28px;
+  .modal-head h3 {
+    margin: 0;
+    font-family: var(--font-ui);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-strong);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .modal-close-btn {
+    width: 30px;
+    height: 30px;
     padding: 0;
+    border-radius: 8px;
+  }
+  .modal-body {
+    padding: 16px 18px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .modal-sub-title {
+    margin: 0 0 8px;
+    font-family: var(--font-ui);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
 
   .mem-bar {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    align-items: flex-start;
+    min-height: 36px;
+  }
+
+  .skills-bar {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
     align-items: flex-start;
-    max-height: 155px;
-    overflow-y: auto;
-    min-height: 48px;
-  }
-
-  .skills-bar {
-    padding: 8px 12px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    flex-wrap: wrap;
-    gap: 5px;
-    align-items: flex-start;
-    max-height: 92px;
-    overflow-y: auto;
   }
   .skill-pill {
     background: var(--bg);
     border: 1px solid var(--border);
     border-radius: 999px;
-    padding: 3px 9px;
-    font-size: 11px;
+    padding: 4px 10px;
+    font-size: 11.5px;
     color: var(--muted);
     display: inline-flex;
     align-items: center;
@@ -1357,11 +1632,11 @@
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 999px;
-    padding: 4px 10px;
-    font-size: 11.5px;
+    padding: 5px 11px;
+    font-size: 12px;
     color: var(--text);
     display: inline-flex;
-    gap: 6px;
+    gap: 7px;
     align-items: center;
     max-width: 100%;
   }
@@ -1377,51 +1652,6 @@
     line-height: 1;
   }
   .pill span.x:hover { color: var(--neg); }
-
-  .trilha-lista {
-    flex: 1;
-    overflow-y: auto;
-    padding: 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-  }
-
-  .card {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-left: 3px solid var(--accent);
-    padding: 10px 12px;
-    border-radius: 9px;
-    font-size: 12.5px;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    word-break: break-word;
-    color: var(--text);
-  }
-  .card.ferramenta { border-left-color: #f59e0b; }
-  .card.resposta { border-left-color: #34d399; }
-
-  .card .rota {
-    font-family: var(--font-ui);
-    font-weight: 700;
-    color: var(--accent-hover);
-    margin-bottom: 4px;
-    font-size: 11.5px;
-  }
-  .card.ferramenta .rota { color: #fbbf24; }
-  .card.resposta .rota { color: #6ee7b7; }
-
-  .card .corpo-toggle {
-    margin-top: 6px;
-    height: auto;
-    background: transparent;
-    border: 0;
-    padding: 0;
-    color: var(--accent-hover);
-    font-size: 11.5px;
-    font-weight: 600;
-  }
 
   /* ===== PAGINAS DAS ABAS (Carteira, Estudos, Faxina, Rotinas) ===== */
   .page-scroll {
@@ -1891,7 +2121,7 @@
   }
   .tele-kpis {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
     margin-bottom: 14px;
   }
@@ -2049,29 +2279,16 @@
   }
 
   /* ===== RESPONSIVIDADE (Tablet & Celular / Tailscale) ===== */
+  @media (max-width: 1240px) {
+    .form-inline-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
   @media (max-width: 1024px) {
     .form-inline-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-    .side-panel {
-      position: fixed;
-      top: 0;
-      right: 0;
-      bottom: 0;
-      width: min(340px, 90vw);
-      z-index: 50;
-      box-shadow: -14px 0 38px rgba(0, 0, 0, 0.65);
-      transform: translateX(0);
-      opacity: 1;
-    }
-    .side-panel.collapsed {
-      width: min(340px, 90vw);
-      transform: translateX(100%);
-      opacity: 0;
-      pointer-events: none;
-    }
-    .side-inner { width: 100%; }
-    .side-close-mobile { display: inline-flex; }
   }
 
   @media (max-width: 768px) {
@@ -2090,7 +2307,7 @@
       top: 0;
       left: 0;
       bottom: 0;
-      width: min(272px, 84vw);
+      width: min(286px, 86vw);
       z-index: 50;
       transform: translateX(-100%);
       box-shadow: 14px 0 38px rgba(0, 0, 0, 0.65);
@@ -2099,16 +2316,46 @@
       transform: translateX(0);
     }
     .sidebar.collapsed {
-      width: min(272px, 84vw);
+      width: min(286px, 86vw);
+    }
+    .sidebar.collapsed .sidebar-top {
+      flex-direction: row;
+      gap: 8px;
+    }
+    .sidebar.collapsed .btn-novo-chat {
+      flex: 1;
+      width: auto;
+      padding: 0 13px;
+      justify-content: flex-start;
+      border-radius: 999px;
     }
     .sidebar.collapsed .nav-item {
-      padding: 0 13px;
+      padding: 0 11px;
       justify-content: flex-start;
     }
     .sidebar.collapsed .nav-label {
       opacity: 1;
       width: auto;
       display: inline;
+    }
+    .sidebar.collapsed .sb-section-head {
+      opacity: 1;
+      width: 100%;
+      display: inline-flex;
+    }
+    .sidebar.collapsed #sec-conversas {
+      opacity: 1;
+      width: auto;
+      display: flex;
+    }
+    .conv-actions {
+      opacity: 0.85;
+    }
+    .brand span {
+      display: none;
+    }
+    .btn-memorias .btn-label {
+      display: none;
     }
 
     .topbar {
@@ -2139,6 +2386,10 @@
     .composer {
       border-radius: 20px;
       padding: 10px 12px 10px 14px;
+    }
+    .model-popover {
+      min-width: 0;
+      width: min(320px, calc(100vw - 36px));
     }
     .composer textarea,
     .field-dark,
@@ -2189,16 +2440,6 @@
   }
   .lab-toolbar input {
     flex: 1 1 260px;
-    background: var(--bg-panel-2, #181a1f);
-    border: 1px solid var(--border);
-    color: var(--text);
-    border-radius: 10px;
-    padding: 10px 13px;
-    font-size: 13px;
-    outline: none;
-  }
-  .lab-toolbar input:focus {
-    border-color: var(--accent);
   }
   .lab-status-banner {
     display: flex;
@@ -2214,7 +2455,7 @@
   }
   .lab-status-banner.hidden { display: none; }
   .lab-card {
-    background: var(--bg-panel-2, #181a1f);
+    background: var(--bg-elev);
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 14px 16px;
@@ -2342,7 +2583,7 @@
 </head>
 <body>
   <div class="app-shell">
-    <!-- Backdrop mobile compartilhado para Sidebar e Gaveta de Agentes -->
+    <!-- Backdrop mobile para Sidebar -->
     <div id="drawer-backdrop" class="drawer-backdrop" onclick="fecharDrawersMobile()"></div>
 
     <!-- BARRA LATERAL ESQUERDA RECOLHIVEL (ESTILO GEMINI) -->
@@ -2351,34 +2592,63 @@
         <button type="button" class="menu-btn" id="btn-sidebar-toggle" onclick="alternarSidebar()" title="Expandir ou recolher menu" aria-label="Alternar menu lateral">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
         </button>
+        <button type="button" class="btn-novo-chat" id="btn-novo-chat" onclick="iniciarNovoChat('athena')" title="Iniciar uma nova conversa com a Athena">
+          <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span class="nav-label">Novo chat</span>
+        </button>
       </div>
 
       <nav class="sidebar-nav" aria-label="Seções da Athena">
-        <button type="button" class="nav-item active" data-aba="chat" onclick="abrirAba('chat', this)" title="Chat">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span class="nav-label">Chat</span>
-        </button>
-        <button type="button" class="nav-item" data-aba="carteira" onclick="abrirAba('carteira', this)" title="Carteira">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-          <span class="nav-label">Carteira</span>
-        </button>
-        <button type="button" class="nav-item" data-aba="estudos" onclick="abrirAba('estudos', this)" title="Estudos">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-          <span class="nav-label">Estudos</span>
-        </button>
-        <button type="button" class="nav-item" data-aba="faxina" onclick="abrirAba('faxina', this)" title="Faxina">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.8L20 10.7l-5.1 3.7 1.9 5.8L12 16.5l-4.8 3.7 1.9-5.8L4 10.7l6.1-1.9z"/></svg>
-          <span class="nav-label">Faxina</span>
-        </button>
-        <button type="button" class="nav-item" data-aba="rotinas" onclick="abrirAba('rotinas', this)" title="Rotinas">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span class="nav-label">Rotinas</span>
-        </button>
-        <button type="button" class="nav-item" data-aba="lab" onclick="abrirAba('lab', this)" title="Athena Lab (R&D)">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9.5V3"/><path d="M8.5 14h7"/></svg>
-          <span class="nav-label">Athena Lab</span>
-          <span id="nav-badge-lab" class="nav-badge hidden" title="Propostas pendentes no Athena Lab">0</span>
-        </button>
+        <!-- BLOCO 1: AGENTES (CHAT DIRETO) -->
+        <div class="sb-section" id="sec-agentes">
+          <button type="button" class="sb-section-head" onclick="alternarSecaoSidebar('sec-agentes')" aria-expanded="true">
+            <span>Agentes (Chat Direto)</span>
+            <svg class="ico sb-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div id="lista-agentes" class="sb-section-body"></div>
+        </div>
+
+        <!-- BLOCO 2: CONVERSAS RECENTES -->
+        <div class="sb-section" id="sec-conversas">
+          <button type="button" class="sb-section-head" onclick="alternarSecaoSidebar('sec-conversas')" aria-expanded="true">
+            <span>Conversas Recentes</span>
+            <svg class="ico sb-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div id="lista-conversas" class="sb-section-body conv-list">
+            <div class="conv-empty">Carregando conversas...</div>
+          </div>
+        </div>
+
+        <!-- BLOCO 3: PAINEIS -->
+        <div class="sb-section" id="sec-paineis">
+          <button type="button" class="sb-section-head" onclick="alternarSecaoSidebar('sec-paineis')" aria-expanded="true">
+            <span>Painéis</span>
+            <svg class="ico sb-chev" viewBox="0 0 24 24" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          <div class="sb-section-body">
+            <button type="button" class="nav-item" data-aba="carteira" onclick="abrirAba('carteira', this)" title="Carteira">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+              <span class="nav-label">Carteira</span>
+            </button>
+            <button type="button" class="nav-item" data-aba="estudos" onclick="abrirAba('estudos', this)" title="Estudos">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+              <span class="nav-label">Estudos</span>
+            </button>
+            <button type="button" class="nav-item" data-aba="faxina" onclick="abrirAba('faxina', this)" title="Faxina">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.8L20 10.7l-5.1 3.7 1.9 5.8L12 16.5l-4.8 3.7 1.9-5.8L4 10.7l6.1-1.9z"/></svg>
+              <span class="nav-label">Faxina</span>
+            </button>
+            <button type="button" class="nav-item" data-aba="rotinas" onclick="abrirAba('rotinas', this)" title="Rotinas">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              <span class="nav-label">Rotinas</span>
+            </button>
+            <button type="button" class="nav-item" data-aba="lab" onclick="abrirAba('lab', this)" title="Athena Lab (R&D)">
+              <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9.5V3"/><path d="M8.5 14h7"/></svg>
+              <span class="nav-label">Athena Lab</span>
+              <span id="nav-badge-lab" class="nav-badge hidden" title="Propostas pendentes no Athena Lab">0</span>
+            </button>
+          </div>
+        </div>
       </nav>
 
       <div class="sidebar-footer">
@@ -2396,11 +2666,6 @@
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           <span class="nav-label">Bloquear</span>
         </button>
-
-        <button type="button" class="nav-item nav-util danger" onclick="limparChat()" title="Limpar conversa atual">
-          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-          <span class="nav-label">Limpar chat</span>
-        </button>
       </div>
     </aside>
 
@@ -2415,12 +2680,16 @@
             <img class="brand-icon" src="/athena-icon?v=2" alt="Athena" />
             <span>Athena</span>
           </div>
+          <div id="chat-agent-header" class="chat-agent-pill chat-only" title="Agente ativo nesta conversa">
+            <span class="agent-pill-text">Athena</span>
+          </div>
         </div>
 
         <div class="topbar-right">
-          <button type="button" class="ghost btn-agentes chat-only" id="btn-toggle-agentes" onclick="alternarPainelAgentes()" title="Abrir ou esconder trilha de agentes e memória">
-            <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
-            <span class="btn-label">Agentes</span>
+          <button type="button" class="ghost btn-memorias" id="btn-abrir-memorias" onclick="abrirModalMemorias()" title="Ver e gerenciar memórias de longo prazo e skills">
+            <svg class="ico ico-sm ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 2.5 1.3 4.7 3.3 6 .5.3.7.9.7 1.5V18a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-1.5c0-.6.2-1.2.7-1.5 2-1.3 3.3-3.5 3.3-6a7 7 0 0 0-7-7z"/><line x1="9" y1="22" x2="15" y2="22"/></svg>
+            <span class="btn-label">Memórias</span>
+            <span id="mem-count-badge" class="mem-count-badge">0</span>
           </button>
         </div>
       </header>
@@ -2541,30 +2810,6 @@
               </div>
             </div>
           </section>
-
-          <aside id="painel-agentes" class="side-panel" aria-label="Conversa entre Agentes e Memória">
-            <div class="side-inner">
-              <h2 class="side-section-title">
-                <svg class="ico ico-sm ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 2.5 1.3 4.7 3.3 6 .5.3.7.9.7 1.5V18a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-1.5c0-.6.2-1.2.7-1.5 2-1.3 3.3-3.5 3.3-6a7 7 0 0 0-7-7z"/><line x1="9" y1="22" x2="15" y2="22"/></svg>
-                <span>Memória de Longo Prazo</span>
-                <button type="button" class="ghost mini side-close-mobile" onclick="aplicarEstadoPainelAgentes(false)" title="Fechar painel" aria-label="Fechar painel de agentes">
-                  <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-              </h2>
-              <div id="fatos" class="mem-bar"></div>
-              <h2 class="side-section-title">
-                <svg class="ico ico-sm ico-accent" viewBox="0 0 24 24" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                <span>Agent Skills</span>
-                <span id="skills-count" class="skill-count">0</span>
-              </h2>
-              <div id="skills-lista" class="skills-bar"></div>
-              <h2 class="side-section-title">
-                <svg class="ico ico-sm ico-accent" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                <span>Conversa entre Agentes</span>
-              </h2>
-              <div id="trilha" class="trilha-lista"></div>
-            </div>
-          </aside>
         </main>
 
         <!-- ABA 2: CARTEIRA (REAL MERCADO PAGO + SIMULADOR) -->
@@ -2832,10 +3077,12 @@
               </div>
             </div>
           </div>
+        </main>
 
-          <!-- ABA ATHENA LAB (R&D) -->
-          <div id="view-lab" class="view">
-            <div class="view-scroll">
+        <!-- ABA 6: ATHENA LAB (R&D — AUTO-EVOLUCAO CONTROLADA) -->
+        <main id="view-lab" class="view">
+          <div class="page-scroll">
+            <div class="page">
               <div class="panel">
                 <h3>
                   <span style="display:inline-flex;align-items:center;gap:8px;">
@@ -2852,8 +3099,8 @@
                   <code>git worktree</code> (<code>ruff</code> + <code>pyright</code> + <code>pytest</code>). Nenhuma alteração toca sua branch principal sem aprovação explícita.
                 </p>
                 <div class="lab-toolbar">
-                  <input id="lab-foco-input" type="text" placeholder="Foco opcional (ex.: reduzir tokens, melhorar RAG, segurança)..." />
-                  <button type="button" id="btn-lab-executar" class="btn-primary" onclick="dispararCicloLab()">
+                  <input id="lab-foco-input" class="field-dark" type="text" placeholder="Foco opcional (ex.: reduzir tokens, melhorar RAG, segurança)..." />
+                  <button type="button" id="btn-lab-executar" onclick="dispararCicloLab()">
                     <span>Rodar Ciclo R&amp;D</span>
                   </button>
                   <button type="button" id="btn-lab-sentinel" class="ghost" onclick="checarLogfireSentinelAgora(this)" title="Consultar erros recentes no Logfire (0 tokens) e gerar Auto-Fix se houver bug novo">
@@ -2871,7 +3118,7 @@
                   <span>Propostas Validadas Aguardando Aprovação</span>
                   <span id="lab-pendentes-count" class="lab-badge accent">0 pendente(s)</span>
                 </h3>
-                <div id="box-lab-pendentes" class="empty-note">Nenhuma proposta pendente ainda.</div>
+                <div id="box-lab-pendentes" class="empty-note">Nenhuma proposta no momento. Clique em "Rodar Ciclo R&amp;D" ou "Checar Logfire agora".</div>
               </div>
 
               <div class="panel">
@@ -2881,6 +3128,36 @@
             </div>
           </div>
         </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL DE MEMORIAS & SKILLS -->
+  <div id="modal-memorias" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="modal-memorias-title" onclick="if(event.target===this) fecharModalMemorias()">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="modal-memorias-title">
+          <svg class="ico ico-sm ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 2.5 1.3 4.7 3.3 6 .5.3.7.9.7 1.5V18a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-1.5c0-.6.2-1.2.7-1.5 2-1.3 3.3-3.5 3.3-6a7 7 0 0 0-7-7z"/><line x1="9" y1="22" x2="15" y2="22"/></svg>
+          <span>Memórias de Longo Prazo &amp; Skills</span>
+        </h3>
+        <button type="button" class="ghost modal-close-btn" onclick="fecharModalMemorias()" aria-label="Fechar modal de memórias">
+          <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div>
+          <div class="modal-sub-title">
+            <span>Memórias Salvas</span>
+          </div>
+          <div id="fatos" class="mem-bar"></div>
+        </div>
+        <div>
+          <div class="modal-sub-title">
+            <span>Agent Skills Ativas</span>
+            <span id="skills-count" class="skill-count">0</span>
+          </div>
+          <div id="skills-lista" class="skills-bar"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -2915,25 +3192,90 @@
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
 <script>
-const STORAGE_KEY_PAINEL = "athena_painel_agentes_aberto";
 const STORAGE_KEY_SIDEBAR = "athena_sidebar_recolhida";
 const STORAGE_KEY_CONVERSA = "athena_conversa_id";
+const STORAGE_KEY_AGENTE = "athena_agente_alvo";
 const MAX_UPLOAD_ARQUIVOS = 6;
 const MAX_UPLOAD_SOMA_BYTES = 18 * 1024 * 1024;
 const TIPOS_UPLOAD_PERMITIDOS = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
 const MODELO_ROTULOS = {
   "auto": "Auto · Inteligente",
   "gemini-3.5-flash-lite": "Flash-Lite",
-  "gemini-flash-lite-latest": "Flash-Lite",
   "gemini-3.8-flash": "Flash 3.8",
   "gemini-4-hydrogen": "Hydrogen",
   "gemini-4-neon": "Neon",
   "ollama-local": "Ollama (Local)",
 };
+const AGENTES_PADRAO = [
+  { id: "athena", nome: "Athena", descricao: "Orquestradora geral com roteamento inteligente e todos os especialistas" },
+  { id: "estudos", nome: "Estudos", descricao: "PDFs da faculdade, Ulife, provas, simulados e plano de estudos" },
+  { id: "investimentos", nome: "Investimentos", descricao: "Carteira Real Mercado Pago, Selic/CDI, cotações e simulador" },
+  { id: "faxineiro", nome: "Faxineiro", descricao: "Organização segura de pastas, duplicados e Lixeira com aprovação" },
+  { id: "pesquisador", nome: "Pesquisador", descricao: "Busca web, leitura de sites dinâmicos e capturas de tela" },
+  { id: "google", nome: "Google", descricao: "Gmail, Google Agenda, Drive, Docs, Sheets, Slides e Tasks" },
+  { id: "sistema", nome: "Sistema", descricao: "Sandbox Linux Podman, scripts, arquivos e servidores MCP" },
+  { id: "analista", nome: "Analista", descricao: "Relatórios, sínteses executivas, Obsidian e análise crítica" },
+];
+const AGENTE_ICONES_SVG = {
+  athena: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>',
+  estudos: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
+  investimentos: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>',
+  faxineiro: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.8L20 10.7l-5.1 3.7 1.9 5.8L12 16.5l-4.8 3.7 1.9-5.8L4 10.7l6.1-1.9z"/></svg>',
+  pesquisador: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+  google: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><polyline points="3 7 12 13 21 7"/></svg>',
+  sistema: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
+  analista: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>',
+};
+const SUGESTOES_POR_AGENTE = {
+  athena: [
+    ["Carteira Real vs CDI", "Analise minha carteira real do Mercado Pago comparando com a Selic/CDI atual"],
+    ["Notas e prazos Ulife", "Quais são minhas notas, provas e avisos recentes no Ulife?"],
+    ["Faxina em Downloads", "Escaneie minha pasta Downloads procurando arquivos grandes ou duplicados"],
+  ],
+  estudos: [
+    ["Notas e provas Ulife", "Quais são minhas notas, faltas e próximas provas no Ulife?"],
+    ["Buscar nos PDFs", "Busque nos meus PDFs da faculdade o resumo da última aula"],
+    ["Plano de estudo", "Monte um plano de estudo objetivo para minha próxima prova"],
+  ],
+  investimentos: [
+    ["Carteira Real vs CDI", "Analise minha carteira real do Mercado Pago comparando com a Selic/CDI atual"],
+    ["Selic e CDI hoje", "Qual a taxa Selic e CDI atual segundo o Banco Central?"],
+    ["Notícias de mercado", "Quais as principais notícias do mercado financeiro hoje?"],
+  ],
+  faxineiro: [
+    ["Escanear Downloads", "Escaneie minha pasta Downloads procurando arquivos grandes ou duplicados"],
+    ["Organizar Desktop", "Planeje a organização da minha Área de Trabalho mantendo os atalhos"],
+    ["Listar duplicados", "Procure arquivos duplicados na minha pasta Downloads"],
+  ],
+  pesquisador: [
+    ["Pesquisar na web", "Pesquise as novidades mais recentes sobre Pydantic AI"],
+    ["Resumir página", "Leia e resuma a documentação oficial do FastAPI"],
+    ["Comparar ferramentas", "Compare Qdrant local vs SQLite-vec para RAG pessoal"],
+  ],
+  google: [
+    ["Próximos eventos", "Quais são meus compromissos no Google Agenda nos próximos 7 dias?"],
+    ["E-mails recentes", "Liste os 5 últimos e-mails da minha caixa de entrada no Gmail"],
+    ["Minhas tarefas", "Liste minhas tarefas pendentes no Google Tasks"],
+  ],
+  sistema: [
+    ["Status do PC", "Verifique o status atual de CPU, RAM e disco do PC"],
+    ["Listar workspace", "Liste os arquivos disponíveis em /workspace no sandbox"],
+    ["Rodar cálculo", "Use o MCP para calcular (14.25 - 0.10) / 12"],
+  ],
+  analista: [
+    ["Explorar Obsidian", "Mostre um resumo estruturado das notas recentes do meu Obsidian Vault"],
+    ["Notas órfãs", "Quais notas órfãs existem no meu grafo do Obsidian?"],
+    ["Síntese executiva", "Ajude-me a estruturar um plano semanal de prioridades no Obsidian"],
+  ],
+};
 
 let _toastTimer = null;
 let _enviando = false;
 let _conversaId = "";
+let _agenteAlvo = "athena";
+let _agentesLista = AGENTES_PADRAO.slice();
+let _conversasLista = [];
+let _abaAtiva = "chat";
 let _modeloAtual = "auto";
 let _pastaRaizAtual = "";
 let _arquivosSelecionados = [];
@@ -3027,27 +3369,21 @@ function ehMobile() {
 
 function atualizarBackdrop() {
   const sb = document.getElementById("sidebar");
-  const ag = document.getElementById("painel-agentes");
   const bd = document.getElementById("drawer-backdrop");
   if (!bd) return;
   const sbAberto = sb && sb.classList.contains("mobile-open");
-  const agAberto = window.innerWidth <= 1024 && ag && !ag.classList.contains("collapsed");
-  bd.classList.toggle("visible", !!(sbAberto || agAberto));
+  bd.classList.toggle("visible", !!sbAberto);
 }
 
 function fecharDrawersMobile() {
   const sb = document.getElementById("sidebar");
   if (sb) sb.classList.remove("mobile-open");
-  if (window.innerWidth <= 1024) {
-    aplicarEstadoPainelAgentes(false);
-  }
   atualizarBackdrop();
 }
 
 function abrirSidebarMobile() {
   const sb = document.getElementById("sidebar");
   if (!sb) return;
-  if (window.innerWidth <= 1024) aplicarEstadoPainelAgentes(false);
   sb.classList.toggle("mobile-open");
   atualizarBackdrop();
 }
@@ -3074,64 +3410,48 @@ function initSidebar() {
   } catch (_) {}
 }
 
-function aplicarEstadoPainelAgentes(aberto) {
-  const painel = document.getElementById("painel-agentes");
-  const btn = document.getElementById("btn-toggle-agentes");
-  if (!painel || !btn) return;
-  if (aberto && ehMobile()) {
-    const sb = document.getElementById("sidebar");
-    if (sb) sb.classList.remove("mobile-open");
-  }
-  painel.classList.toggle("collapsed", !aberto);
-  btn.classList.toggle("active-toggle", aberto);
-  const lbl = btn.querySelector(".btn-label");
-  if (lbl) lbl.textContent = aberto ? "Agentes" : "Agentes";
-  if (window.innerWidth > 1024) {
-    try { localStorage.setItem(STORAGE_KEY_PAINEL, aberto ? "1" : "0"); } catch (_) {}
-  }
-  atualizarBackdrop();
+function alternarSecaoSidebar(secId) {
+  const sec = document.getElementById(secId);
+  if (!sec) return;
+  const fechada = sec.classList.toggle("sec-collapsed");
+  const btn = sec.querySelector(".sb-section-head");
+  if (btn) btn.setAttribute("aria-expanded", fechada ? "false" : "true");
 }
 
-function initPainelAgentes() {
-  if (window.innerWidth <= 1024) {
-    aplicarEstadoPainelAgentes(false);
-    return;
-  }
-  let aberto = true;
-  try {
-    const salvo = localStorage.getItem(STORAGE_KEY_PAINEL);
-    if (salvo === "0") aberto = false;
-    else if (salvo === "1") aberto = true;
-  } catch (_) {}
-  aplicarEstadoPainelAgentes(aberto);
+function abrirModalMemorias() {
+  const modal = document.getElementById("modal-memorias");
+  if (modal) modal.classList.remove("hidden");
 }
 
-function alternarPainelAgentes() {
-  const painel = document.getElementById("painel-agentes");
-  if (!painel) return;
-  aplicarEstadoPainelAgentes(painel.classList.contains("collapsed"));
+function fecharModalMemorias() {
+  const modal = document.getElementById("modal-memorias");
+  if (modal) modal.classList.add("hidden");
 }
 
 function abrirAba(nome, btn) {
+  _abaAtiva = nome || "chat";
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-  document.querySelectorAll(".sidebar-nav .nav-item").forEach(t => t.classList.remove("active"));
-  const alvo = document.getElementById("view-" + nome);
+  document.querySelectorAll("#sec-paineis .nav-item").forEach(t => t.classList.remove("active"));
+  const alvo = document.getElementById("view-" + _abaAtiva);
   if (alvo) alvo.classList.add("active");
   if (btn) btn.classList.add("active");
 
-  document.querySelectorAll(".topbar-right .chat-only").forEach(el => {
-    el.classList.toggle("hidden", nome !== "chat");
+  document.querySelectorAll(".chat-only").forEach(el => {
+    el.classList.toggle("hidden", _abaAtiva !== "chat");
   });
+
+  renderAgentesSidebar();
+  renderConversasSidebar();
 
   if (ehMobile()) {
     fecharDrawersMobile();
   }
 
-  if (nome === "carteira") carregarCarteira();
-  if (nome === "estudos") carregarEstudos();
-  if (nome === "faxina") carregarFaxina();
-  if (nome === "rotinas") carregarRotinas();
-  if (nome === "lab") carregarAthenaLab();
+  if (_abaAtiva === "carteira") carregarCarteira();
+  if (_abaAtiva === "estudos") carregarEstudos();
+  if (_abaAtiva === "faxina") carregarFaxina();
+  if (_abaAtiva === "rotinas") carregarRotinas();
+  if (_abaAtiva === "lab") carregarAthenaLab();
 }
 
 /* ===== MODELO CHIP POPOVER ===== */
@@ -3223,6 +3543,7 @@ document.addEventListener("click", (ev) => {
 document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") {
     fecharPopoverModelo();
+    fecharModalMemorias();
     fecharDrawersMobile();
   }
 });
@@ -3907,19 +4228,263 @@ async function alternarMicrofone() {
   }
 }
 
-/* ===== CHAT ===== */
+/* ===== AGENTES DIRETOS, CONVERSAS & CHAT ===== */
+function obterInfoAgente(agenteId) {
+  const idNorm = String(agenteId || "athena").trim().toLowerCase() || "athena";
+  return _agentesLista.find(a => a.id === idNorm) || AGENTES_PADRAO[0];
+}
+
+function salvarPreferenciaAgente(agenteId) {
+  const info = obterInfoAgente(agenteId);
+  _agenteAlvo = info.id;
+  try { localStorage.setItem(STORAGE_KEY_AGENTE, _agenteAlvo); } catch (_) {}
+  atualizarCabecalhoAgente();
+  renderAgentesSidebar();
+}
+
+function atualizarCabecalhoAgente() {
+  const info = obterInfoAgente(_agenteAlvo);
+  const pill = document.getElementById("chat-agent-header");
+  const ehDireto = info.id !== "athena";
+  if (pill) {
+    pill.classList.toggle("is-direto", ehDireto);
+    pill.title = info.descricao || info.nome;
+    pill.innerHTML = ehDireto
+      ? `<span class="agent-pill-text">Agente ${escHtml(info.nome)}</span><span class="agent-pill-tag">· Chat Direto</span>`
+      : `<span class="agent-pill-text">Athena</span><span class="agent-pill-tag">· Geral</span>`;
+  }
+  const inp = document.getElementById("entrada");
+  if (inp) {
+    inp.placeholder = ehDireto
+      ? `Converse diretamente com o Agente ${info.nome}, cole prints (Ctrl+V) ou anexe PDFs...`
+      : "Pergunte para a Athena, cole prints (Ctrl+V), arraste fotos/PDFs ou fale no microfone...";
+  }
+}
+
+function renderAgentesSidebar() {
+  const box = document.getElementById("lista-agentes");
+  if (!box) return;
+  box.innerHTML = _agentesLista.map(ag => {
+    const ativo = _abaAtiva === "chat" && _agenteAlvo === ag.id;
+    const ico = AGENTE_ICONES_SVG[ag.id] || AGENTE_ICONES_SVG.athena;
+    const rotulo = ag.id === "athena" ? "Athena" : ag.nome;
+    return `
+      <button
+        type="button"
+        class="nav-item${ativo ? " active" : ""}"
+        data-agente-id="${escHtml(ag.id)}"
+        onclick="iniciarNovoChat('${escHtml(ag.id)}')"
+        title="${escHtml(rotulo)} — ${escHtml(ag.descricao || "")}"
+      >
+        ${ico}
+        <span class="nav-label">${escHtml(rotulo)}</span>
+      </button>
+    `;
+  }).join("");
+}
+
+function renderConversasSidebar() {
+  const box = document.getElementById("lista-conversas");
+  if (!box) return;
+  if (!_conversasLista.length) {
+    box.innerHTML = '<div class="conv-empty">Nenhuma conversa salva ainda.</div>';
+    return;
+  }
+  box.innerHTML = _conversasLista.map(c => {
+    const ativa = _abaAtiva === "chat" && c.id === _conversaId;
+    const agInfo = obterInfoAgente(c.agente_alvo);
+    const agNome = agInfo.id === "athena" ? "Athena" : agInfo.nome;
+    const cidEsc = escHtml(c.id);
+    const titEsc = escHtml(c.titulo || "Nova conversa");
+    return `
+      <div
+        class="conv-item${ativa ? " active" : ""}"
+        data-conv-id="${cidEsc}"
+        onclick="abrirConversa('${cidEsc}')"
+        title="${titEsc} (${escHtml(agNome)})"
+      >
+        <div class="conv-main">
+          <div class="conv-title">${titEsc}</div>
+          <div class="conv-sub">
+            <span class="conv-agent-tag">${escHtml(agNome)}</span>
+          </div>
+        </div>
+        <div class="conv-actions">
+          <button
+            type="button"
+            class="conv-act-btn"
+            onclick="renomearConversaUI('${cidEsc}', event)"
+            title="Renomear conversa"
+            aria-label="Renomear conversa"
+          >
+            <svg class="ico" style="width:13px;height:13px;" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+          </button>
+          <button
+            type="button"
+            class="conv-act-btn del"
+            onclick="apagarConversaUI('${cidEsc}', event)"
+            title="Apagar conversa"
+            aria-label="Apagar conversa"
+          >
+            <svg class="ico" style="width:13px;height:13px;" viewBox="0 0 24 24" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+          </button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function carregarAgentes() {
+  try {
+    const r = await fetch("/api/agentes").then(x => x.json());
+    if (r && r.ok && Array.isArray(r.agentes) && r.agentes.length) {
+      _agentesLista = r.agentes;
+    }
+  } catch (_) {}
+  atualizarCabecalhoAgente();
+  renderAgentesSidebar();
+}
+
+async function carregarConversas() {
+  try {
+    const r = await fetch("/api/conversas").then(x => x.json());
+    if (r && r.ok && Array.isArray(r.conversas)) {
+      _conversasLista = r.conversas;
+    }
+  } catch (_) {}
+  renderConversasSidebar();
+}
+
+async function iniciarNovoChat(agenteId = null) {
+  pararLeituraVoz();
+  if (_enviando) {
+    try { await fetch(`/api/chat-cancelar/${encodeURIComponent(obterOuCriarConversaId())}`, { method: "POST" }); } catch (_) {}
+    definirEstadoExecutando(false);
+  }
+  const alvo = obterInfoAgente(agenteId || _agenteAlvo || "athena").id;
+  salvarPreferenciaAgente(alvo);
+  const novoId = "conv_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
+  _conversaId = novoId;
+  try { localStorage.setItem(STORAGE_KEY_CONVERSA, novoId); } catch (_) {}
+
+  try {
+    await fetch("/api/conversas", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: novoId, titulo: "Nova conversa", agente_alvo: alvo }),
+    });
+  } catch (_) {}
+
+  abrirAba("chat", null);
+  renderEstadoVazioChat();
+  await carregarConversas();
+  const inp = document.getElementById("entrada");
+  if (inp) inp.focus();
+}
+
+async function abrirConversa(conversaId, { silencioso = false } = {}) {
+  const cid = String(conversaId || "").trim();
+  if (!cid) return;
+  pararLeituraVoz();
+  try {
+    const resp = await fetch(`/api/conversas/${encodeURIComponent(cid)}`);
+    if (!resp.ok) {
+      if (!silencioso) mostrarToast("Conversa não encontrada.", true);
+      return false;
+    }
+    const r = await resp.json();
+    const conv = r.conversa || { id: cid, agente_alvo: "athena" };
+    _conversaId = conv.id || cid;
+    try { localStorage.setItem(STORAGE_KEY_CONVERSA, _conversaId); } catch (_) {}
+    salvarPreferenciaAgente(conv.agente_alvo || "athena");
+
+    abrirAba("chat", null);
+    const chat = document.getElementById("chat");
+    chat.innerHTML = "";
+    const msgs = r.mensagens || [];
+    if (!msgs.length) {
+      renderEstadoVazioChat();
+    } else {
+      for (const m of msgs) {
+        addMsg(m.role, m.conteudo, false, m.role === "bot" ? (m.meta || null) : null, false);
+      }
+    }
+    if (Array.isArray(r.fatos)) renderFatos(r.fatos);
+    renderConversasSidebar();
+    reconectarConversaAtiva();
+    return true;
+  } catch (_) {
+    if (!silencioso) mostrarToast("Erro ao carregar a conversa.", true);
+    return false;
+  }
+}
+
+async function renomearConversaUI(conversaId, ev) {
+  if (ev) ev.stopPropagation();
+  const atual = _conversasLista.find(c => c.id === conversaId);
+  const sugerido = atual ? atual.titulo : "Nova conversa";
+  const novo = window.prompt("Novo título da conversa:", sugerido);
+  if (novo === null) return;
+  const limpo = novo.trim();
+  if (!limpo) return;
+  try {
+    const resp = await fetch(`/api/conversas/${encodeURIComponent(conversaId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ titulo: limpo }),
+    });
+    if (!resp.ok) throw new Error("Falha ao renomear");
+    await carregarConversas();
+    mostrarToast("Conversa renomeada.");
+  } catch (_) {
+    mostrarToast("Não foi possível renomear a conversa.", true);
+  }
+}
+
+async function apagarConversaUI(conversaId, ev) {
+  if (ev) ev.stopPropagation();
+  const atual = _conversasLista.find(c => c.id === conversaId);
+  const nome = atual ? atual.titulo : "esta conversa";
+  if (!window.confirm(`Apagar "${nome}"? As mensagens dessa conversa serão removidas.`)) return;
+  try {
+    const resp = await fetch(`/api/conversas/${encodeURIComponent(conversaId)}`, { method: "DELETE" });
+    if (!resp.ok) throw new Error("Falha ao apagar");
+    const eraAtual = conversaId === _conversaId;
+    await carregarConversas();
+    mostrarToast("Conversa apagada.");
+    if (eraAtual) {
+      if (_conversasLista.length) {
+        await abrirConversa(_conversasLista[0].id, { silencioso: true });
+      } else {
+        await iniciarNovoChat(_agenteAlvo || "athena");
+      }
+    }
+  } catch (_) {
+    mostrarToast("Erro ao apagar a conversa.", true);
+  }
+}
+
 function renderEstadoVazioChat() {
   const chat = document.getElementById("chat");
+  if (!chat) return;
+  const info = obterInfoAgente(_agenteAlvo);
+  const ehDireto = info.id !== "athena";
+  const sugs = SUGESTOES_POR_AGENTE[info.id] || SUGESTOES_POR_AGENTE.athena;
+  const tituloHtml = ehDireto
+    ? `Chat Direto · <span>Agente ${escHtml(info.nome)}</span>`
+    : `Olá, eu sou a <span>Athena</span>`;
+  const descTxt = ehDireto
+    ? `${info.descricao}. Suas mensagens vão diretamente para este especialista, sem passar pela Orquestradora.`
+    : "Sua assistente central com 7 especialistas integrados. Escolha um especialista na barra lateral para chat direto ou pergunte livremente aqui.";
+  const chipsHtml = sugs.map(([rotulo, prompt]) =>
+    `<button type="button" class="sug-chip" onclick="usarSugestao('${escHtml(prompt).replace(/'/g, "&#39;")}')">${escHtml(rotulo)}</button>`
+  ).join("");
   chat.innerHTML = `
     <div class="chat-empty">
       <img class="chat-empty-avatar" src="/athena-icon?v=2" alt="Athena" />
-      <h2>Olá, eu sou a <span>Athena</span></h2>
-      <p>Sua assistente central com 7 especialistas integrados: Estudos &amp; Ulife, Carteira Real &amp; Mercado, Sistema, Pesquisador, Analista, Faxineiro e Google.</p>
-      <div class="suggestions">
-        <button type="button" class="sug-chip" onclick="usarSugestao('Analise minha carteira real do Mercado Pago comparando com a Selic/CDI atual')">Carteira Real vs CDI</button>
-        <button type="button" class="sug-chip" onclick="usarSugestao('Quais são minhas notas, provas e avisos recentes no Ulife?')">Notas e prazos Ulife</button>
-        <button type="button" class="sug-chip" onclick="usarSugestao('Escaneie minha pasta Downloads procurando arquivos grandes ou duplicados')">Faxina em Downloads</button>
-      </div>
+      <h2>${tituloHtml}</h2>
+      <p>${escHtml(descTxt)}</p>
+      <div class="suggestions">${chipsHtml}</div>
     </div>
   `;
 }
@@ -3997,51 +4562,18 @@ function addMsg(cls, txt, isHtml = false, extraOpts = null, animar = true) {
   return bubble;
 }
 
-function renderTrilha(trilha) {
-  const box = document.getElementById("trilha");
-  box.innerHTML = "";
-  if (!trilha || !trilha.length) {
-    box.innerHTML = '<span class="empty-note">As delegações e ações dos agentes aparecerão aqui.</span>';
-    return;
-  }
-  const LIMITE_RESUMO = 260;
-  for (const item of trilha) {
-    const c = document.createElement("div");
-    c.className = "card " + (item.tipo || "");
-    const rota = document.createElement("div");
-    rota.className = "rota";
-    rota.textContent = `${item.de} -> ${item.para} (${item.tipo})`;
-    const corpo = document.createElement("div");
-    const completo = String(item.conteudo || "");
-    const longo = completo.length > LIMITE_RESUMO;
-    corpo.textContent = longo ? completo.slice(0, LIMITE_RESUMO) + "..." : completo;
-    c.appendChild(rota);
-    c.appendChild(corpo);
-    if (longo) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "corpo-toggle";
-      btn.textContent = "Ver completo";
-      let aberto = false;
-      btn.onclick = () => {
-        aberto = !aberto;
-        corpo.textContent = aberto ? completo : completo.slice(0, LIMITE_RESUMO) + "...";
-        btn.textContent = aberto ? "Recolher" : "Ver completo";
-      };
-      c.appendChild(btn);
-    }
-    box.appendChild(c);
-  }
-}
-
 function renderFatos(fatos) {
   const bar = document.getElementById("fatos");
+  const badge = document.getElementById("mem-count-badge");
+  const lista = Array.isArray(fatos) ? fatos : [];
+  if (badge) badge.textContent = String(lista.length);
+  if (!bar) return;
   bar.innerHTML = "";
-  if (!fatos || !fatos.length) {
-    bar.innerHTML = '<span class="empty-note" style="font-size:12px;">Nenhuma memória salva ainda. Diga "Lembra que..." no chat.</span>';
+  if (!lista.length) {
+    bar.innerHTML = '<span class="empty-note" style="font-size:12.5px;">Nenhuma memória salva ainda. Diga "Lembra que..." no chat.</span>';
     return;
   }
-  for (const f of fatos) {
+  for (const f of lista) {
     const p = document.createElement("span");
     p.className = "pill";
     p.title = `${f.chave}: ${f.valor}`;
@@ -4054,7 +4586,7 @@ function renderFatos(fatos) {
     x.title = "Remover memória";
     x.onclick = async () => {
       await fetch("/api/memorias/" + encodeURIComponent(f.chave), { method: "DELETE" });
-      carregarHistorico();
+      await carregarMemoriasModal();
       mostrarToast("Memória removida: " + f.chave);
     };
     p.appendChild(t);
@@ -4063,22 +4595,30 @@ function renderFatos(fatos) {
   }
 }
 
+async function carregarMemoriasModal() {
+  try {
+    const r = await fetch("/api/historico").then(x => x.json());
+    renderFatos(r.fatos || []);
+  } catch (_) {}
+}
+
 async function carregarHistorico() {
+  if (_conversaId) {
+    const ok = await abrirConversa(_conversaId, { silencioso: true });
+    if (ok) return;
+  }
   try {
     const r = await fetch("/api/historico").then(x => x.json());
     const chat = document.getElementById("chat");
     chat.innerHTML = "";
-    let ultimaTrilha = [];
     const msgs = r.mensagens || [];
     if (!msgs.length) {
       renderEstadoVazioChat();
     } else {
       for (const m of msgs) {
         addMsg(m.role, m.conteudo, false, m.role === "bot" ? (m.meta || null) : null, false);
-        if (m.trilha && m.trilha.length) ultimaTrilha = m.trilha;
       }
     }
-    renderTrilha(ultimaTrilha);
     renderFatos(r.fatos);
   } catch (e) {
     mostrarToast("Erro ao carregar histórico.", true);
@@ -4088,6 +4628,7 @@ async function carregarHistorico() {
 function obterOuCriarConversaId(forcarNova = false) {
   let cid = "";
   if (!forcarNova) {
+    if (_conversaId && /^[A-Za-z0-9_-]{3,64}$/.test(_conversaId)) return _conversaId;
     try { cid = (localStorage.getItem(STORAGE_KEY_CONVERSA) || "").trim(); } catch (_) {}
   }
   if (!cid || !/^[A-Za-z0-9_-]{3,64}$/.test(cid)) {
@@ -4119,31 +4660,13 @@ async function cancelarGeracaoAtual() {
   try {
     const r = await fetch(`/api/chat-cancelar/${encodeURIComponent(cid)}`, { method: "POST" }).then(x => x.json());
     if (r && r.cancelada) {
-      mostrarToast("Interrompendo resposta da Athena...");
+      mostrarToast("Interrompendo resposta...");
     } else {
       definirEstadoExecutando(false);
     }
   } catch (e) {
     mostrarToast("Não foi possível cancelar a tarefa.", true);
     if (btnParar) btnParar.disabled = false;
-  }
-}
-
-async function limparChat() {
-  pararLeituraVoz();
-  if (_enviando) {
-    try { await fetch(`/api/chat-cancelar/${encodeURIComponent(obterOuCriarConversaId())}`, { method: "POST" }); } catch (_) {}
-    definirEstadoExecutando(false);
-  }
-  try {
-    await fetch("/api/historico", { method: "DELETE" });
-    obterOuCriarConversaId(true);
-    renderEstadoVazioChat();
-    renderTrilha([]);
-    mostrarToast("Conversa limpa.");
-    if (ehMobile()) fecharDrawersMobile();
-  } catch (e) {
-    mostrarToast("Erro ao limpar o chat.", true);
   }
 }
 
@@ -4367,11 +4890,6 @@ async function consumirFluxoSSEChat(resp, { bubbleInicial = null, modeloInicial 
         const txtEl = alvo.querySelector(".thinking-text");
         if (txtEl) txtEl.textContent = passoTxt;
       }
-      if (Array.isArray(payload.trilha)) {
-        renderTrilha(payload.trilha);
-        const boxTrilha = document.getElementById("trilha");
-        if (boxTrilha) boxTrilha.scrollTop = boxTrilha.scrollHeight;
-      }
     } else if (evTipo === "snapshot" || payload.tipo === "snapshot") {
       const snapTxt = String(payload.texto || "");
       garantirBolhaBot();
@@ -4434,10 +4952,7 @@ async function consumirFluxoSSEChat(resp, { bubbleInicial = null, modeloInicial 
   }
 
   fluxoEncerrado = true;
-  if (ehIdle && !temp) {
-    return { idle: true };
-  }
-  if (ehIdle && temp) {
+  if (ehIdle) {
     return { idle: true };
   }
 
@@ -4447,7 +4962,6 @@ async function consumirFluxoSSEChat(resp, { bubbleInicial = null, modeloInicial 
       ? "*Geração interrompida pelo usuário.*"
       : "**Erro:** " + (erroStream.erro || "Falha ao responder.");
     alvoFinal.innerHTML = renderMD(msgErro);
-    if (erroStream.trilha) renderTrilha(erroStream.trilha);
     if (erroStream.fatos) renderFatos(erroStream.fatos);
   } else {
     const textoFinal = (finalPayload && finalPayload.resposta) ? finalPayload.resposta : textoAcumulado;
@@ -4463,13 +4977,15 @@ async function consumirFluxoSSEChat(resp, { bubbleInicial = null, modeloInicial 
         modeloUsado: modeloUsadoLive || (finalPayload && finalPayload.modelo_usado) || modeloInicial,
         modoAuto: modoAutoLive,
         motivo: motivoAutoLive,
+        fast_path: Boolean(finalPayload?.fast_path),
+        semantic_cache: Boolean(finalPayload?.semantic_cache),
         duracao_ms: finalPayload?.duracao_ms ?? tele.duracao_ms ?? 0,
         tokens_in: finalPayload?.tokens_in ?? tele.tokens_in ?? 0,
         tokens_out: finalPayload?.tokens_out ?? tele.tokens_out ?? 0,
       });
     }
-    if (finalPayload && finalPayload.trilha) renderTrilha(finalPayload.trilha);
     if (finalPayload && finalPayload.fatos) renderFatos(finalPayload.fatos);
+    carregarConversas();
   }
 
   if (sc) sc.scrollTop = sc.scrollHeight;
@@ -4547,12 +5063,14 @@ async function enviar() {
   }
 
   addMsg("user", textoExibicao, false, imgsValidas.length ? { imgs: imgsValidas } : null, true);
+  const infoAg = obterInfoAgente(_agenteAlvo);
+  const nomeAgPensando = infoAg.id === "athena" ? "Athena" : `Agente ${infoAg.nome}`;
   const labelPensando = anexos.length > 1
     ? `analisando os ${anexos.length} arquivos anexados...`
-    : (anexos.length === 1 ? "analisando o arquivo anexado..." : "acionando os agentes...");
+    : (anexos.length === 1 ? "analisando o arquivo anexado..." : (infoAg.id === "athena" ? "acionando os agentes..." : "processando diretamente..."));
   const temp = addMsg(
     "bot",
-    `<span class="thinking"><span class="thinking-dot"></span><span class="thinking-text">Athena (${escHtml(rotuloMod)}) ${labelPensando}</span></span>`,
+    `<span class="thinking"><span class="thinking-dot"></span><span class="thinking-text">${escHtml(nomeAgPensando)} (${escHtml(rotuloMod)}) ${labelPensando}</span></span>`,
     true,
     null,
     true
@@ -4565,6 +5083,7 @@ async function enviar() {
       form.append("mensagem", msg);
       form.append("modelo", modelo);
       form.append("conversa_id", cid);
+      form.append("agente_alvo", _agenteAlvo);
       for (const item of anexos) {
         form.append("arquivos", item.file, item.nome);
       }
@@ -4580,7 +5099,7 @@ async function enviar() {
           "Content-Type": "application/json",
           "Accept": "text/event-stream",
         },
-        body: JSON.stringify({ mensagem: msg, modelo, conversa_id: cid }),
+        body: JSON.stringify({ mensagem: msg, modelo, conversa_id: cid, agente_alvo: _agenteAlvo }),
       });
     }
 
@@ -5256,13 +5775,18 @@ function renderRotinas(lista) {
   box.innerHTML = lista.map((r, idx) => {
     const rid = escHtml(r.id);
     const ehUlife = r.id === "sincronizar_ulife";
+    const ehLab = r.id === "athena_lab_semanal";
     const subtitulo = ehUlife
       ? "Cookies diretos (httpx) · Renovação silenciosa · PDFs novos -> Obsidian <code>01-Faculdade/Painel-Ulife.md</code>"
-      : "Agenda (3 dias) · Gmail (não lidos) · Ulife · Carteira -> Obsidian <code>04-Diario/</code>";
-    const tituloResultado = ehUlife ? "Última Sincronização" : "Último Briefing Gerado";
+      : (ehLab
+        ? "Scout → Arquiteto → Crítico em <code>git worktree</code> isolado · Aprovação humana na aba <strong>Athena Lab</strong>"
+        : "Agenda (3 dias) · Gmail (não lidos) · Ulife · Carteira -> Obsidian <code>04-Diario/</code>");
+    const tituloResultado = ehUlife ? "Última Sincronização" : (ehLab ? "Último Ciclo R&D" : "Último Briefing Gerado");
     const vazioResultado = ehUlife
       ? '<div class="empty-note">Ainda não executada pelo agendador. Clique em <strong>Rodar agora</strong> para testar a sincronização silenciosa.</div>'
-      : '<div class="empty-note">Nenhum briefing gerado ainda. Clique em <strong>Rodar agora</strong> para gerar o primeiro briefing e salvá-lo em <code>04-Diario/YYYY-MM-DD.md</code>.</div>';
+      : (ehLab
+        ? '<div class="empty-note">Nenhum ciclo R&amp;D agendado executado ainda. Use <strong>Rodar agora</strong> ou a aba <strong>Athena Lab</strong>.</div>'
+        : '<div class="empty-note">Nenhum briefing gerado ainda. Clique em <strong>Rodar agora</strong> para gerar o primeiro briefing e salvá-lo em <code>04-Diario/YYYY-MM-DD.md</code>.</div>');
     const badgeStatus = r.ativa
       ? '<span class="badge-exec">Ativa</span>'
       : '<span class="badge-rec">Pausada</span>';
@@ -5355,7 +5879,7 @@ async function carregarTelemetria() {
     const elHoje = document.getElementById("kpi-tele-hoje");
     const elOk = document.getElementById("kpi-tele-ok");
 
-    if (elMs) elMs.textContent = t.total_execucoes ? `${t.tempo_medio_ms} ms` : "--";
+    if (elMs) elMs.textContent = t.total_execucoes ? fmtDuracaoMs(t.tempo_medio_ms) : "--";
     const tokHoje = t.tokens_hoje ?? t.tokens_hoje_total ?? 0;
     if (elTok) elTok.textContent = fmtTokens(tokHoje);
     if (elTokSub) elTokSub.textContent = `${fmtTokens(t.tokens_hoje_in || 0)} in · ${fmtTokens(t.tokens_hoje_out || 0)} out`;
@@ -5720,6 +6244,7 @@ async function desbloquearComPin(ev) {
 
 async function bloquearPainel() {
   pararLeituraVoz();
+  fecharModalMemorias();
   fecharDrawersMobile();
   try {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -5727,7 +6252,6 @@ async function bloquearPainel() {
   _appInicializada = false;
   const chat = document.getElementById("chat");
   if (chat) chat.innerHTML = "";
-  renderTrilha([]);
   renderFatos([]);
   mostrarTelaBloqueio(true);
 }
@@ -5828,8 +6352,8 @@ function _renderCardPropostaLab(p, ehPendente) {
 
   const botoes = ehPendente
     ? `<div class="lab-actions">
-        <button type="button" class="btn-primary mini" onclick="aprovarPropostaLab('${escHtml(p.id)}', this)">Aprovar e Aplicar</button>
-        <button type="button" class="ghost mini danger" onclick="rejeitarPropostaLab('${escHtml(p.id)}', this)">Rejeitar</button>
+        <button type="button" class="mini" onclick="aprovarPropostaLab('${escHtml(p.id)}', this)">Aprovar e Aplicar</button>
+        <button type="button" class="btn-recusar mini" onclick="rejeitarPropostaLab('${escHtml(p.id)}', this)">Rejeitar</button>
       </div>`
     : "";
 
@@ -5879,9 +6403,16 @@ async function carregarAthenaLab() {
   const btnRun = document.getElementById("btn-lab-executar");
 
   try {
-    const r = await fetch("/api/lab/propostas").then(x => x.json());
-    const st = r.status || {};
-    const lista = Array.isArray(r.propostas) ? r.propostas : [];
+    const resp = await fetch("/api/lab/propostas");
+    if (!resp.ok) {
+      throw new Error(`HTTP ${resp.status} ao consultar /api/lab/propostas`);
+    }
+    const r = await resp.json();
+    if (r && r.ok === false) {
+      throw new Error(r.erro || "Erro retornado pelo Athena Lab.");
+    }
+    const st = (r && r.status) || {};
+    const lista = Array.isArray(r && r.propostas) ? r.propostas : [];
 
     if (banner && bannerTxt) {
       if (st.ativo) {
@@ -5902,13 +6433,13 @@ async function carregarAthenaLab() {
 
     const pendentes = lista.filter(p => p.status === "pendente");
     const historico = lista.filter(p => p.status !== "pendente");
-    atualizarBadgeNavLab(Number(r.pendentes ?? pendentes.length));
+    atualizarBadgeNavLab(Number((r && r.pendentes) ?? pendentes.length));
     if (badgeCount) badgeCount.textContent = `${pendentes.length} pendente(s)`;
 
     if (boxPend) {
       boxPend.innerHTML = pendentes.length
         ? pendentes.map(p => _renderCardPropostaLab(p, true)).join("")
-        : '<div class="empty-note">Nenhuma proposta aguardando aprovação. Clique em "Rodar Ciclo R&amp;D" para pesquisar e validar uma melhoria.</div>';
+        : '<div class="empty-note">Nenhuma proposta no momento. Clique em "Rodar Ciclo R&amp;D" ou "Checar Logfire agora".</div>';
     }
     if (boxHist) {
       boxHist.innerHTML = historico.length
@@ -5916,7 +6447,13 @@ async function carregarAthenaLab() {
         : '<div class="empty-note">Nenhuma proposta no histórico ainda.</div>';
     }
   } catch (e) {
-    if (boxPend) boxPend.innerHTML = '<div class="empty-note">Falha ao carregar propostas do Athena Lab.</div>';
+    const msgErro = (e && e.message) ? e.message : "Falha ao carregar propostas do Athena Lab.";
+    if (boxPend) {
+      boxPend.innerHTML = `<div class="empty-note">Não foi possível carregar propostas: ${escHtml(msgErro)}</div>`;
+    }
+    if (boxHist) {
+      boxHist.innerHTML = '<div class="empty-note">Histórico indisponível no momento.</div>';
+    }
   }
 }
 
@@ -5979,20 +6516,41 @@ async function rejeitarPropostaLab(propostaId, btn) {
 async function carregarDadosIniciaisApp() {
   if (_appInicializada) return;
   _appInicializada = true;
+  let agenteSalvo = "athena";
+  try { agenteSalvo = (localStorage.getItem(STORAGE_KEY_AGENTE) || "athena").trim().toLowerCase() || "athena"; } catch (_) {}
+  salvarPreferenciaAgente(agenteSalvo);
   obterOuCriarConversaId();
   atualizarBotoesAuthUI();
-  await Promise.all([carregarConfig(), carregarHistorico(), carregarSkills(), atualizarBadgeAthenaLab()]);
+  await Promise.all([
+    carregarConfig(),
+    carregarAgentes(),
+    carregarConversas(),
+    carregarMemoriasModal(),
+    carregarSkills(),
+    atualizarBadgeAthenaLab(),
+  ]);
+
+  const existeSalva = _conversasLista.some(c => c.id === _conversaId);
+  if (existeSalva) {
+    await abrirConversa(_conversaId, { silencioso: true });
+  } else if (_conversasLista.length) {
+    await abrirConversa(_conversasLista[0].id, { silencioso: true });
+  } else {
+    renderEstadoVazioChat();
+    reconectarConversaAtiva();
+  }
+
   if (!_labBadgeInterval) {
     _labBadgeInterval = setInterval(() => {
       if (_appInicializada) atualizarBadgeAthenaLab();
     }, 60000);
   }
-  reconectarConversaAtiva();
 }
 
 async function iniciarAplicacao() {
   initSidebar();
-  initPainelAgentes();
+  renderAgentesSidebar();
+  atualizarCabecalhoAgente();
   initDragAndDropChat();
   try {
     const st = await fetch("/api/auth/status").then(x => x.json());

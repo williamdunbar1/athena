@@ -15,11 +15,11 @@ import json
 import os
 import re
 import time
-import unicodedata
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from eficiencia import normalizar_texto_eficiencia
 from guardrails import mascarar_segredos_e_pii
 from logging_config import obter_logger
 from memoria import _conn as _conn_memoria
@@ -79,12 +79,7 @@ _PADROES_SEGREDO: tuple[re.Pattern[str], ...] = (
 
 
 def _normalizar_texto(texto: str) -> str:
-    sem_acento = (
-        unicodedata.normalize("NFKD", (texto or "").strip())
-        .encode("ascii", "ignore")
-        .decode("ascii")
-        .lower()
-    )
+    sem_acento = normalizar_texto_eficiencia(texto)
     return re.sub(r"\s+", " ", re.sub(r"[^\w\s-]", " ", sem_acento)).strip()
 
 
@@ -438,8 +433,10 @@ async def extrair_memorias_em_background(
         if _contem_segredo_sensivel(chave_limpa) or _contem_segredo_sensivel(valor_limpo):
             continue
         valor_seguro, tipos_mascarados = mascarar_segredos_e_pii(valor_limpo)
-        if tipos_mascarados and "[MASCARADO:" in valor_seguro and len(valor_seguro.replace("[MASCARADO:cpf]", "").strip()) < 8:
-            continue
+        if tipos_mascarados and "[MASCARADO:" in valor_seguro:
+            restante = re.sub(r"\[MASCARADO:[a-z_]+\]", "", valor_seguro).strip()
+            if len(restante) < 8:
+                continue
         if _ja_existe_fato_semelhante(chave_limpa, valor_seguro, existentes):
             continue
 

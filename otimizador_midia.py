@@ -14,12 +14,15 @@ from __future__ import annotations
 import io
 import re
 from pathlib import Path
-from typing import Any
-
-from PIL import Image, ImageOps
-from pypdf import PdfReader
+from typing import TYPE_CHECKING, Any
 
 from eficiencia import compactar_saida_tool
+
+if TYPE_CHECKING:
+    from PIL import Image as PILImage
+
+# Carregados de forma lazy (e facilmente monkeypatchaveis em testes)
+PdfReader: Any = None
 
 MAX_LADO_IMAGEM_PADRAO = 1280
 QUALIDADE_JPEG_PADRAO = 82
@@ -55,7 +58,9 @@ def _inferir_mime_original(nome_arquivo: str, formato_pil: str | None = None) ->
     return "image/png"
 
 
-def _converter_para_rgb(img: Image.Image) -> Image.Image:
+def _converter_para_rgb(img: PILImage.Image) -> PILImage.Image:
+    from PIL import Image
+
     tem_alfa = img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info)
     if tem_alfa:
         rgba = img.convert("RGBA")
@@ -90,6 +95,8 @@ def otimizar_imagem_para_llm(
     qual = max(30, min(int(qualidade), 95))
 
     try:
+        from PIL import Image, ImageOps
+
         with Image.open(io.BytesIO(dados)) as img_raw:
             mime_orig = _inferir_mime_original(nome_arquivo, img_raw.format)
             img = ImageOps.exif_transpose(img_raw)
@@ -160,7 +167,12 @@ def processar_pdf_para_llm(
     """
     teto = max(500, int(max_chars))
     try:
-        reader = PdfReader(io.BytesIO(dados))
+        reader_cls = PdfReader
+        if reader_cls is None:
+            from pypdf import PdfReader as _PdfReader
+
+            reader_cls = _PdfReader
+        reader = reader_cls(io.BytesIO(dados))
         paginas = list(reader.pages or [])
         total_paginas = len(paginas)
         blocos: list[str] = []

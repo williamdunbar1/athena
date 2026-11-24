@@ -28,12 +28,9 @@ from pydantic_evals.evaluators import (
 )
 
 from agentes import (
-    DELAY_RETRY_503_SEGUNDOS,
     MODEL_COOLDOWN,
     MODEL_COOLDOWN_MOTIVO,
-    MODELOS_DIRETOS,
     ContextoMissao,
-    eh_erro_503,
     obter_fila_modelos_auto,
     obter_modelo,
     orquestrador,
@@ -316,6 +313,7 @@ async def executar_tarefa_athena(
             pasta_raiz=PASTA_PADRAO_EVAL,
             modelo=modelo_id,
             usar_fallback=False,
+            mensagem_atual=prompt,
         )
         res = await orquestrador.run(
             prompt,
@@ -329,6 +327,7 @@ async def executar_tarefa_athena(
             pasta_raiz=PASTA_PADRAO_EVAL,
             modelo=fila_modelos[0],
             usar_fallback=True,
+            mensagem_atual=prompt,
         )
         res = None
         modelo_usado = fila_modelos[0]
@@ -337,31 +336,25 @@ async def executar_tarefa_athena(
 
         for idx, mid in enumerate(fila_modelos):
             ctx.modelo = mid
-            modelo_direto = MODELOS_DIRETOS[mid]
-            for tentativa in range(2):
-                try:
-                    async with asyncio.timeout(TIMEOUT_TENTATIVA_EVAL_SEGUNDOS):
-                        res = await orquestrador.run(
-                            prompt,
-                            deps=ctx,
-                            model=modelo_direto,
-                            retries=0,
-                        )
-                    modelo_usado = mid
-                    break
-                except Exception as exc:
-                    if tentativa == 0 and eh_erro_503(exc):
-                        await asyncio.sleep(DELAY_RETRY_503_SEGUNDOS)
-                        continue
-                    ultimo_erro = exc
-                    elegivel, _cd, motivo_err = registrar_cooldown_modelo(mid, exc)
-                    erros_tentativas.append(f"{mid}: {motivo_err or exc}")
-                    if elegivel and idx + 1 < len(fila_modelos):
-                        break
-                    if not elegivel:
-                        raise
-                    break
-            if res is not None:
+            modelo_direto = obter_modelo(mid, usar_fallback=False)
+            try:
+                async with asyncio.timeout(TIMEOUT_TENTATIVA_EVAL_SEGUNDOS):
+                    res = await orquestrador.run(
+                        prompt,
+                        deps=ctx,
+                        model=modelo_direto,
+                        retries=0,
+                    )
+                modelo_usado = mid
+                break
+            except Exception as exc:
+                ultimo_erro = exc
+                elegivel, _cd, motivo_err = registrar_cooldown_modelo(mid, exc)
+                erros_tentativas.append(f"{mid}: {motivo_err or exc}")
+                if elegivel and idx + 1 < len(fila_modelos):
+                    continue
+                if not elegivel:
+                    raise
                 break
 
         if res is None:

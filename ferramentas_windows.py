@@ -135,7 +135,7 @@ CATALOGO_APPS: dict[str, dict] = {
     "vscode": {
         "nome": "Visual Studio Code",
         "aliases": ("vscode", "vs code", "visual studio code", "code"),
-        "exes": ("Code.exe", "code.exe", "code.cmd"),
+        "exes": ("Code.exe", "code.exe"),
         "atalhos": ("visual studio code.lnk", "vscode.lnk", "vs code.lnk"),
         "caminhos": (
             LOCAL_APPDATA / "Programs" / "Microsoft VS Code" / "Code.exe",
@@ -447,10 +447,10 @@ def _resolver_aplicativo(nome_app: str) -> tuple[str, str, str, list[str]]:
             except OSError:
                 continue
 
-        # 2) PATH
+        # 2) PATH (aceita apenas .exe ou .lnk, evitando .cmd/.bat)
         for exe in info.get("exes", ()):
             achado = shutil.which(exe)
-            if achado:
+            if achado and Path(achado).suffix.lower() in (".exe", ".lnk"):
                 return chave, exib, str(Path(achado).resolve()), []
 
         # 3) Atalhos no Desktop\Atalhos, Desktop e Menu Iniciar
@@ -562,12 +562,15 @@ def _row_para_dict(row) -> dict:
 
 
 def esta_na_whitelist(item: str) -> bool:
-    chave = _normalizar_ascii(item)
-    chave_slug = re.sub(r"[^a-z0-9_-]+", "_", chave).strip("_")
-    if not chave_slug:
+    chave_canonica, _ = _normalizar_chave_app(item)
+    if not chave_canonica:
         return False
+    chave_raw = re.sub(r"[^a-z0-9_-]+", "_", _normalizar_ascii(item)).strip("_")
     with _conn() as c:
-        row = c.execute("SELECT 1 FROM windows_whitelist WHERE item = ?", (chave_slug,)).fetchone()
+        row = c.execute(
+            "SELECT 1 FROM windows_whitelist WHERE item = ? OR item = ? LIMIT 1",
+            (chave_canonica, chave_raw),
+        ).fetchone()
     return row is not None
 
 
@@ -658,9 +661,7 @@ def _executar_acao_no_windows(tipo: str, alvo: str, argumentos: str = "") -> Non
             raise FileNotFoundError(f"Executavel ou atalho nao encontrado: {alvo}")
         ext = p_alvo.suffix.lower()
         args_lista = shlex.split(argumentos, posix=False) if (argumentos or "").strip() else []
-        if ext == ".lnk" and not args_lista:
-            _abrir_com_startfile(str(p_alvo))
-        elif ext == ".exe":
+        if ext == ".exe":
             subprocess.Popen([str(p_alvo), *args_lista], shell=False, close_fds=True)
         elif ext == ".lnk":
             # Atalho .lnk sempre via os.startfile (sem shell)

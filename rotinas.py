@@ -11,7 +11,7 @@ import asyncio
 import os
 import sqlite3
 import time
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -466,12 +466,16 @@ async def executar_rotina_agora(
 
 
 async def _disparar_rotina_agendada(rotina_id: str) -> None:
-    with suppress(Exception):
+    try:
         await executar_rotina_agora(rotina_id)
+    except Exception as exc:
+        _log.warning("rotina_agendada_falhou", rotina_id=rotina_id, erro=str(exc))
 
 
 async def _disparar_logfire_sentinel() -> None:
-    with suppress(Exception):
+    try:
         from athena_lab import verificar_erros_logfire_sentinel
 
         await verificar_erros_logfire_sentinel()
+    except Exception as exc:
+        _log.warning("sentinel_agendado_falhou", erro=str(exc))

@@ -6,8 +6,6 @@ from contextlib import contextmanager
 from datetime import date, datetime
 from pathlib import Path
 
-from pypdf import PdfReader
-
 from eficiencia import compactar_saida_tool
 
 PASTA_FACULDADE = Path(
@@ -121,7 +119,10 @@ def sincronizar_indice_pdfs() -> int:
                 continue
             c.execute("DELETE FROM pdf_paginas WHERE materia=? AND arquivo=?", (materia, pdf.name))
             try:
+                from pypdf import PdfReader
+
                 reader = PdfReader(str(pdf))
+                inseridas = 0
                 for idx, pag in enumerate(reader.pages, start=1):
                     txt = (pag.extract_text() or "").strip()
                     if txt:
@@ -129,9 +130,19 @@ def sincronizar_indice_pdfs() -> int:
                             "INSERT INTO pdf_paginas (materia, arquivo, pagina, texto, mtime) VALUES (?, ?, ?, ?, ?)",
                             (materia, pdf.name, idx, txt, mtime),
                         )
+                        inseridas += 1
+                if inseridas == 0:
+                    # Registra sentinela pagina=0 para nao re-parsear PDFs escaneados sem texto em toda chamada
+                    c.execute(
+                        "INSERT INTO pdf_paginas (materia, arquivo, pagina, texto, mtime) VALUES (?, ?, 0, '', ?)",
+                        (materia, pdf.name, mtime),
+                    )
                 novos += 1
             except Exception:
-                pass
+                c.execute(
+                    "INSERT INTO pdf_paginas (materia, arquivo, pagina, texto, mtime) VALUES (?, ?, 0, '', ?)",
+                    (materia, pdf.name, mtime),
+                )
 
         # Remove do indice SQLite arquivos/pastas que nao existem mais em pdfs_faculdade
         existentes_db = c.execute("SELECT DISTINCT materia, arquivo FROM pdf_paginas").fetchall()
@@ -169,19 +180,22 @@ def listar_materias_e_aulas() -> str:
 
 
 def pesquisar_pdfs(consulta: str, materia: str = "", limite: int = 8) -> str:
+    consulta_limpa = (consulta or "").strip()
+    if not consulta_limpa:
+        return "Informe um termo para pesquisar nos PDFs da faculdade."
     sincronizar_indice_pdfs()
-    termos = [t.strip().lower() for t in consulta.split() if len(t.strip()) >= 3]
+    termos = [t.strip().lower() for t in consulta_limpa.split() if len(t.strip()) >= 3]
     if not termos:
-        termos = [consulta.strip().lower()]
+        termos = [consulta_limpa.lower()]
 
     with _conn() as c:
         if materia:
             rows = c.execute(
-                "SELECT materia, arquivo, pagina, texto FROM pdf_paginas WHERE LOWER(materia) LIKE ?",
+                "SELECT materia, arquivo, pagina, texto FROM pdf_paginas WHERE pagina > 0 AND LOWER(materia) LIKE ?",
                 (f"%{materia.lower()}%",),
             ).fetchall()
         else:
-            rows = c.execute("SELECT materia, arquivo, pagina, texto FROM pdf_paginas").fetchall()
+            rows = c.execute("SELECT materia, arquivo, pagina, texto FROM pdf_paginas WHERE pagina > 0").fetchall()
 
     ranqueados = []
     for mat, arq, pag, txt in rows:

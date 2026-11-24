@@ -75,7 +75,6 @@ extend-immutable-calls = ["fastapi.Body", "fastapi.Depends", "fastapi.File", "fa
 [tool.ruff.lint.per-file-ignores]
 "evals/athena_evals.py" = ["E402"]
 "tests/conftest.py" = ["E402"]
-"tests/test_core.py" = ["E402"]
 
 [tool.pyright]
 typeCheckingMode = "basic"

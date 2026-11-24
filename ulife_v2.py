@@ -27,10 +27,10 @@ from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlencode, urlparse
 
 import httpx
-from playwright.sync_api import sync_playwright
 
 from ferramentas_estudos import PASTA_FACULDADE, PASTA_PDFS, sincronizar_indice_pdfs
 from ferramentas_obsidian import escrever_nota_vault
+from guardrails import sanitizar_conteudo_externo
 
 DB_PATH = Path(__file__).resolve().parent / "memoria.db"
 ARQUIVO_COOKIES = Path(__file__).resolve().parent / "ulife_cookies.json"
@@ -1884,6 +1884,8 @@ def _sincronizar_ulife_sync() -> dict:
             except Exception:
                 pass
 
+        from playwright.sync_api import sync_playwright
+
         with sync_playwright() as p:
             context = p.chromium.launch_persistent_context(
                 user_data_dir=str(PASTA_PERFIL),
@@ -2174,7 +2176,8 @@ def consultar_dados_ulife(secao: str = "tudo") -> str:
             if len(materiais) > 40:
                 linhas.append(f"... e mais {len(materiais) - 40} material(is).")
 
-    return "\n".join(linhas)
+    sanitizado, _susp, _pads = sanitizar_conteudo_externo("\n".join(linhas), origem="ulife")
+    return sanitizado
 
 
 async def sincronizar_ulife_agora() -> str:

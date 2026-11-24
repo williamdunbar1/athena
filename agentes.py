@@ -6,7 +6,6 @@ import os
 import re
 import threading
 import time
-import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import date, datetime
@@ -46,6 +45,7 @@ from eficiencia import (
     compactar_saida_tool,
     extrair_mensagem_atual_prompt,
     filtrar_tool_definitions,
+    normalizar_texto_eficiencia,
 )
 from ferramentas_estudos import (
     ler_pdf_paginas,
@@ -582,7 +582,6 @@ MODEL_COOLDOWN_MOTIVO: dict[str, str] = {}
 _COOLDOWN_LOCK = threading.RLock()
 COOLDOWN_COTA_SEGUNDOS = 60 * 60       # 60 min para 429 (cota diaria) / 400 / 403 (plano pago)
 COOLDOWN_503_SEGUNDOS = 30             # 30 s para 503 (sobrecarga temporaria)
-COOLDOWN_INSTAVEL_SEGUNDOS = 2 * 60    # 2 min para timeout / outros erros 5xx
 DELAY_RETRY_503_SEGUNDOS = 2.0         # Espera inicial de retry em 503
 TIMEOUT_TENTATIVA_AUTO_SEGUNDOS = 45.0
 
@@ -832,11 +831,7 @@ def registrar_cooldown_modelo(model_id: str, exc: BaseException) -> tuple[bool, 
     """Registra o modelo no `MODEL_COOLDOWN` se o erro for elegivel para Circuit Breaker no modo Auto."""
     elegivel, cooldown_seg, motivo = classificar_erro_modelo(exc)
     if elegivel and model_id:
-        tipo_cd = (
-            "503"
-            if eh_erro_503(exc)
-            else ("timeout" if "timeout" in motivo or "instavel" in motivo else "cota")
-        )
+        tipo_cd = "503" if eh_erro_503(exc) else "cota"
         with _COOLDOWN_LOCK:
             MODEL_COOLDOWN[model_id] = time.time() + cooldown_seg
             MODEL_COOLDOWN_MOTIVO[model_id] = tipo_cd
@@ -883,16 +878,6 @@ _PALAVRAS_HYDROGEN: tuple[str, ...] = (
 )
 
 
-def _normalizar_para_roteamento(texto: str) -> str:
-    sem_acento = (
-        unicodedata.normalize("NFKD", (texto or "").strip())
-        .encode("ascii", "ignore")
-        .decode("ascii")
-        .lower()
-    )
-    return " ".join(sem_acento.split())
-
-
 def obter_fila_modelos_auto(mensagem: str, qtd_anexos: int = 0) -> tuple[list[str], str]:
     """Retorna a fila ordenada de modelos disponiveis (filtrando os em cooldown) e o motivo curto.
 
@@ -901,7 +886,7 @@ def obter_fila_modelos_auto(mensagem: str, qtd_anexos: int = 0) -> tuple[list[st
     - Tarefas rapidas/simples: gemini-3.5-flash-lite -> gemini-3.8-flash -> hydrogen
     """
     texto_bruto = (mensagem or "").strip()
-    texto_norm = _normalizar_para_roteamento(texto_bruto)
+    texto_norm = normalizar_texto_eficiencia(texto_bruto)
     anexos = max(0, int(qtd_anexos or 0))
 
     if (
@@ -2247,7 +2232,7 @@ _MAPA_ESPECIALISTAS_PARALELO: dict[str, tuple[str, str, Agent[ContextoMissao, st
 def _resolver_especialista_paralelo(
     nome_agente: str,
 ) -> tuple[str, str, Agent[ContextoMissao, str]] | None:
-    chave = _normalizar_para_roteamento(nome_agente).replace(" ", "_")
+    chave = normalizar_texto_eficiencia(nome_agente).replace(" ", "_")
     return _MAPA_ESPECIALISTAS_PARALELO.get(chave)
 
 
@@ -2479,3 +2464,84 @@ async def consultar_especialistas_em_paralelo(
         ctx.deps,
         usage=ctx.usage,
     )
+
+
+# ==============================================================================
+# MAPA PUBLICO DE AGENTES PARA CHAT DIRETO (SEM ORQUESTRADORA QUANDO SELECIONADO)
+# ==============================================================================
+
+AGENTES_DIRETOS: dict[str, dict[str, Any]] = {
+    "athena": {
+        "id": "athena",
+        "nome": "Athena",
+        "descricao": "Orquestradora geral com roteamento inteligente e todos os especialistas",
+        "agente": orquestrador,
+    },
+    "estudos": {
+        "id": "estudos",
+        "nome": "Estudos",
+        "descricao": "PDFs da faculdade, Ulife, provas, simulados e plano de estudos",
+        "agente": agente_estudos,
+    },
+    "investimentos": {
+        "id": "investimentos",
+        "nome": "Investimentos",
+        "descricao": "Carteira Real Mercado Pago, Selic/CDI, cotações e simulador",
+        "agente": agente_investimentos,
+    },
+    "faxineiro": {
+        "id": "faxineiro",
+        "nome": "Faxineiro",
+        "descricao": "Organização segura de pastas, duplicados e Lixeira com aprovação",
+        "agente": agente_faxineiro,
+    },
+    "pesquisador": {
+        "id": "pesquisador",
+        "nome": "Pesquisador",
+        "descricao": "Busca web, leitura de sites dinâmicos e capturas de tela",
+        "agente": agente_pesquisador,
+    },
+    "google": {
+        "id": "google",
+        "nome": "Google",
+        "descricao": "Gmail, Google Agenda, Drive, Docs, Sheets, Slides e Tasks",
+        "agente": agente_google,
+    },
+    "sistema": {
+        "id": "sistema",
+        "nome": "Sistema",
+        "descricao": "Sandbox Linux Podman, scripts, arquivos e servidores MCP",
+        "agente": agente_sistema,
+    },
+    "analista": {
+        "id": "analista",
+        "nome": "Analista",
+        "descricao": "Relatórios, sínteses executivas, Obsidian e análise crítica",
+        "agente": agente_analista,
+    },
+}
+
+
+def normalizar_agente_alvo(agente_alvo: str | None) -> str:
+    """Normaliza `agente_alvo` para uma chave valida de `AGENTES_DIRETOS` (padrao: `'athena'`)."""
+    chave = (agente_alvo or "athena").strip().lower()
+    if chave in AGENTES_DIRETOS:
+        return chave
+    return "athena"
+
+
+def obter_agente_direto(agente_alvo: str | None) -> dict[str, Any]:
+    """Retorna o descritor completo (`id`, `nome`, `descricao`, `agente`) de `AGENTES_DIRETOS`."""
+    return AGENTES_DIRETOS[normalizar_agente_alvo(agente_alvo)]
+
+
+def listar_agentes_diretos_publico() -> list[dict[str, str]]:
+    """Lista serializavel (sem objeto Agent) de todos os agentes disponiveis para chat direto."""
+    return [
+        {
+            "id": str(info["id"]),
+            "nome": str(info["nome"]),
+            "descricao": str(info["descricao"]),
+        }
+        for info in AGENTES_DIRETOS.values()
+    ]

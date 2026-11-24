@@ -8,12 +8,15 @@ Configuracao segura e resiliente:
 
 from __future__ import annotations
 
-import logging
 import os
 import warnings
 
-_LOG = logging.getLogger("athena.observabilidade")
+from logging_config import obter_logger
+
+_LOG = obter_logger("observabilidade")
 _OBSERVABILIDADE_CONFIGURADA = False
+_INSTRUMENTACOES_GLOBAIS_ATIVAS = False
+_APPS_INSTRUMENTADOS: set[int] = set()
 
 PADROES_SENSIVEIS_EXTRA: tuple[str, ...] = (
     "athena_pin",
@@ -32,7 +35,7 @@ def configurar_observabilidade(app=None) -> dict:
     Deve ser chamada logo apos `app = FastAPI(...)` em `servidor.py`.
     Nunca levanta excecao fatal caso o Logfire nao esteja configurado ou esteja offline.
     """
-    global _OBSERVABILIDADE_CONFIGURADA
+    global _OBSERVABILIDADE_CONFIGURADA, _INSTRUMENTACOES_GLOBAIS_ATIVAS
     resultado: dict = {
         "ok": False,
         "ja_configurada": _OBSERVABILIDADE_CONFIGURADA,
@@ -57,45 +60,49 @@ def configurar_observabilidade(app=None) -> dict:
             )
             _OBSERVABILIDADE_CONFIGURADA = True
         except Exception as exc:
-            _LOG.warning("Falha ao configurar Logfire (seguindo sem telemetria remota): %s", exc)
+            _LOG.warning("logfire_configure_falhou", erro=str(exc))
             resultado["avisos"].append(f"configure: {exc}")
             return resultado
 
-    # 1) Pydantic AI (orquestrador, subagentes, tools, retries, tokens e custo)
-    try:
-        logfire.instrument_pydantic_ai(include_binary_content=False)
-        resultado["instrumentacoes"].append("pydantic_ai")
-    except Exception as exc:
-        resultado["avisos"].append(f"pydantic_ai: {exc}")
+    if not _INSTRUMENTACOES_GLOBAIS_ATIVAS:
+        # 1) Pydantic AI (orquestrador, subagentes, tools, retries, tokens e custo)
+        try:
+            logfire.instrument_pydantic_ai(include_binary_content=False)
+            resultado["instrumentacoes"].append("pydantic_ai")
+        except Exception as exc:
+            resultado["avisos"].append(f"pydantic_ai: {exc}")
 
-    # 2) FastAPI (endpoints HTTP e streaming SSE, sem capturar headers de autenticacao)
-    if app is not None:
+        # 2) FastMCP / MCP (envolto em try/except; suprime aviso no MCP 2/FastMCP 4 onde OTel ja e nativo)
+        try:
+            if hasattr(logfire, "instrument_mcp"):
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", UserWarning)
+                    logfire.instrument_mcp()
+                resultado["instrumentacoes"].append("mcp")
+        except Exception as exc:
+            resultado["avisos"].append(f"mcp: {exc}")
+
+        # 3) HTTPX (chamadas externas sem capturar headers de autenticacao)
+        try:
+            logfire.instrument_httpx(capture_headers=False)
+            resultado["instrumentacoes"].append("httpx")
+        except Exception as exc:
+            resultado["avisos"].append(f"httpx: {exc}")
+
+        _INSTRUMENTACOES_GLOBAIS_ATIVAS = True
+
+    # 4) FastAPI (endpoints HTTP e streaming SSE, sem capturar headers de autenticacao)
+    if app is not None and id(app) not in _APPS_INSTRUMENTADOS:
         try:
             logfire.instrument_fastapi(
                 app,
                 capture_headers=False,
                 excluded_urls=["/api/status-atual"],
             )
+            _APPS_INSTRUMENTADOS.add(id(app))
             resultado["instrumentacoes"].append("fastapi")
         except Exception as exc:
             resultado["avisos"].append(f"fastapi: {exc}")
-
-    # 3) FastMCP / MCP (envolto em try/except; suprime aviso no MCP 2/FastMCP 4 onde OTel ja e nativo)
-    try:
-        if hasattr(logfire, "instrument_mcp"):
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", UserWarning)
-                logfire.instrument_mcp()
-            resultado["instrumentacoes"].append("mcp")
-    except Exception as exc:
-        resultado["avisos"].append(f"mcp: {exc}")
-
-    # 4) HTTPX (chamadas externas sem capturar headers de autenticacao)
-    try:
-        logfire.instrument_httpx(capture_headers=False)
-        resultado["instrumentacoes"].append("httpx")
-    except Exception as exc:
-        resultado["avisos"].append(f"httpx: {exc}")
 
     resultado["ok"] = True
     return resultado

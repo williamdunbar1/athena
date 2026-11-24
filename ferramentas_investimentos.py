@@ -11,11 +11,10 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 import httpx
-import yfinance as yf
-from pypdf import PdfReader
 
 from cache_ttl import cache_ttl
 from ferramentas_obsidian import escrever_nota_vault
+from guardrails import sanitizar_conteudo_externo
 
 DB_PATH = Path(__file__).resolve().parent / "memoria.db"
 SALDO_PADRAO = 10000.0
@@ -138,6 +137,8 @@ def _conn():
     armazenar_se=lambda res: res is not None and res[1] is not None and not res[1].empty,
 )
 def _normalizar_e_buscar_historico(ticker: str, forcar: bool = False):
+    import yfinance as yf
+
     simbolo = ticker.strip().upper()
     tentativas = [simbolo]
     if "." not in simbolo and "-" not in simbolo and len(simbolo) in (5, 6) and simbolo[-1].isdigit():
@@ -152,6 +153,7 @@ def _normalizar_e_buscar_historico(ticker: str, forcar: bool = False):
 @cache_ttl(
     TTL_CACHE_MERCADO_SEGUNDOS,
     chave_fn=lambda ticker: (ticker or "").strip().upper(),
+    armazenar_se=lambda txt: isinstance(txt, str) and not txt.startswith("Nao encontrei"),
 )
 def consultar_ativo(ticker: str, forcar: bool = False) -> str:
     sym, hist = _normalizar_e_buscar_historico(ticker, forcar=forcar)
@@ -357,7 +359,11 @@ def _categorizar_movimento(descricao: str, valor: float) -> str:
     return "outros"
 
 
-@cache_ttl(TTL_CACHE_MERCADO_SEGUNDOS, chave_fn=lambda: "selic_cdi_bcb")
+@cache_ttl(
+    TTL_CACHE_MERCADO_SEGUNDOS,
+    chave_fn=lambda: "selic_cdi_bcb",
+    armazenar_se=lambda d: isinstance(d, dict) and "fallback" not in str(d.get("fonte", "")).lower(),
+)
 def obter_dados_selic_cdi_bcb(forcar: bool = False) -> dict:
     """Consulta a taxa Selic Meta no Banco Central (SGS 432) com cache em RAM de 5 min e fallback seguro."""
     selic = _SELIC_FALLBACK_ANUAL
@@ -463,7 +469,8 @@ def buscar_noticias_mercado(tema: str = "mercado financeiro brasil", limite: int
     for n in noticias:
         dt = f" | {n['data']}" if n["data"] else ""
         linhas.append(f"- {n['titulo']} ({n['fonte']}{dt})")
-    return "\n".join(linhas)
+    sanitizado, _susp, _pads = sanitizar_conteudo_externo("\n".join(linhas), origem="rss:mercado")
+    return sanitizado
 
 
 def _extrair_movimentos_csv(dados_bytes: bytes) -> list[tuple[str, str, float]]:
@@ -528,6 +535,8 @@ def _extrair_movimentos_csv(dados_bytes: bytes) -> list[tuple[str, str, float]]:
 
 
 def _extrair_movimentos_pdf(dados_bytes: bytes) -> list[tuple[str, str, float]]:
+    from pypdf import PdfReader
+
     reader = PdfReader(io.BytesIO(dados_bytes))
     movs: list[tuple[str, str, float]] = []
     padrao_linha = re.compile(

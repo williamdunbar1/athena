@@ -15,12 +15,13 @@ import re
 import unicodedata
 from collections import deque
 from pathlib import Path
-from typing import Any
-
-import networkx as nx
+from typing import TYPE_CHECKING, Any
 
 from eficiencia import compactar_saida_tool
 from ferramentas_obsidian import PASTAS_OCULTAS_IGNORAR, obter_pasta_vault
+
+if TYPE_CHECKING:
+    import networkx as nx
 
 _RE_BLOCO_CODIGO = re.compile(r"```[\s\S]*?```")
 _RE_WIKILINK = re.compile(r"(?<!!)\[\[([^\[\]]+)\]\]")
@@ -182,6 +183,8 @@ def _resolver_pasta_vault(vault_dir: Path | None = None) -> Path:
 
 def construir_grafo_vault(vault_dir: Path | None = None) -> nx.DiGraph:
     """Escaneia arquivos `.md` do Obsidian Vault e retorna um `nx.DiGraph` conectado por `[[wikilinks]]`."""
+    import networkx as nx
+
     grafo: nx.DiGraph = nx.DiGraph()
     base = _resolver_pasta_vault(vault_dir)
     if not base.is_dir():
@@ -247,9 +250,7 @@ def construir_grafo_vault(vault_dir: Path | None = None) -> nx.DiGraph:
     return grafo
 
 
-def estatisticas_grafo(vault_dir: Path | None = None) -> dict[str, Any]:
-    """Retorna metricas do grafo do Vault: total de notas, conexoes, top 5 hubs e notas orfas."""
-    grafo = construir_grafo_vault(vault_dir)
+def _calcular_estatisticas_de_grafo(grafo: nx.DiGraph) -> dict[str, Any]:
     total_notas = grafo.number_of_nodes()
     total_conexoes = grafo.number_of_edges()
 
@@ -290,6 +291,11 @@ def estatisticas_grafo(vault_dir: Path | None = None) -> dict[str, Any]:
         "notas_orfas": orfas,
         "total_orfas": len(orfas),
     }
+
+
+def estatisticas_grafo(vault_dir: Path | None = None) -> dict[str, Any]:
+    """Retorna metricas do grafo do Vault: total de notas, conexoes, top 5 hubs e notas orfas."""
+    return _calcular_estatisticas_de_grafo(construir_grafo_vault(vault_dir))
 
 
 def _pontuar_semente(no_id: str, attrs: dict[str, Any], consulta_norm: str, tokens: list[str]) -> float:
@@ -342,7 +348,7 @@ def buscar_contexto_grafo(
         for kw in ("orfa", "orfas", "desconectad", "hub", "hubs", "estatistica", "visao geral do grafo")
     )
     if pede_estrutura:
-        st = estatisticas_grafo(vault_dir)
+        st = _calcular_estatisticas_de_grafo(grafo)
         linhas_st = [
             f"=== GRAFO DO OBSIDIAN ({st['total_notas']} nota(s) | {st['total_conexoes']} conexao(oes) | {st['total_orfas']} orfa(s)) ===",
         ]

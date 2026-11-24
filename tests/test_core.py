@@ -1,18 +1,14 @@
 """Testes deterministicos offline da Athena (zero chamadas a API do Gemini, zero navegador).
 
-Cobre:
-1. Roteador Auto, Circuit Breaker (`MODEL_COOLDOWN`) e selecao manual forcada em `agentes.py`.
-2. Organizacao, propostas em lote e seguranca em `ferramentas_faxina.py` usando `tmp_path`.
-3. Solicitacoes pendentes, whitelist ("Sempre permitir") e bloqueio destrutivo em `ferramentas_windows.py`.
+Cobre roteamento Auto/Ollama, Circuit Breaker, Fast-Path Zero-LLM, Cache Semantico,
+Flat Tool Architecture, PrepareTools, Prompt Cache, streaming SSE/reattach, otimizacao de midia,
+compactacao/auto-memory, Guardrails, Faxineiro, Windows Nativo, RAG Hibrido, GraphRAG Obsidian,
+Alembic, MCP, Logfire, Skills, Voz Neural e Athena Lab + Sentinel.
 """
 
 from __future__ import annotations
 
-import os
 import sqlite3
-
-os.environ.setdefault("GOOGLE_API_KEY", "test-dummy-key")
-os.environ.setdefault("GEMINI_API_KEY", "test-dummy-key")
 
 import pytest
 
@@ -497,6 +493,9 @@ def test_mcp_logfire_removido_e_sem_vazar_token(monkeypatch, tmp_path):
     import json
 
     import mcp_manager as mm
+
+    monkeypatch.setattr(mm, "_TOOLSETS_CACHE", mm._TOOLSETS_CACHE)
+    monkeypatch.setattr(mm, "_STATUS_CACHE", list(mm._STATUS_CACHE))
 
     # O servidor MCP remoto do Logfire foi removido de mcp_servers.json (mesmo com LOGFIRE_READ_TOKEN definido)
     monkeypatch.setenv("LOGFIRE_READ_TOKEN", "dummy-logfire-token")
@@ -1085,9 +1084,9 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
 
     db_teste = tmp_path / "memoria_teste.db"
 
-    # 1) Primeira execucao em banco novo: cria schema completo (ate a migration 003) e registra revisao
+    # 1) Primeira execucao em banco novo: cria schema completo (ate a migration 004) e registra revisao
     revisao_1 = memoria.executar_migrations(db_teste)
-    assert revisao_1 == "003_lab_propostas"
+    assert revisao_1 == "004_conversas_metadados"
     assert db_teste.is_file()
 
     with sqlite3.connect(db_teste) as c:
@@ -1103,6 +1102,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
             "webauthn_credenciais",
             "resumos_conversa",
             "lab_propostas",
+            "conversas",
         }.issubset(tabelas)
         # Insere dados para comprovar que rodar novamente nao apaga nem recria nada
         c.execute(
@@ -1117,7 +1117,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
 
     # 2) Segunda execucao (idempotencia): mantem revisao e 100% dos dados intactos
     revisao_2 = memoria.executar_migrations(db_teste)
-    assert revisao_2 == "003_lab_propostas"
+    assert revisao_2 == "004_conversas_metadados"
 
     with sqlite3.connect(db_teste) as c:
         fato = c.execute("SELECT valor FROM fatos WHERE chave = 'curso'").fetchone()
@@ -1125,7 +1125,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
         ver = c.execute("SELECT version_num FROM alembic_version").fetchone()
     assert fato == ("Engenharia",)
     assert msg == ("mensagem preservada",)
-    assert ver == ("003_lab_propostas",)
+    assert ver == ("004_conversas_metadados",)
 
 
 # ==============================================================================
@@ -1278,7 +1278,7 @@ def test_compactador_mantem_recentes_e_usa_fallback_deterministico(monkeypatch, 
     import memoria
 
     db_teste = tmp_path / "compactacao_teste.db"
-    assert memoria.executar_migrations(db_teste) == "003_lab_propostas"
+    assert bool(memoria.executar_migrations(db_teste))
 
     # 1) Conversa curta (<= 16 msgs): retorna sem compactar
     msgs_curtas = [{"role": "user" if i % 2 == 0 else "bot", "conteudo": f"Msg curta {i}"} for i in range(10)]
@@ -2473,7 +2473,7 @@ def test_athena_lab_migration_003_e_bloqueio_arquivos_sensiveis(tmp_path):
 
     # 1) Migration 003_lab_propostas cria tabela `lab_propostas` com todas as colunas esperadas
     db_teste = tmp_path / "lab_migration.db"
-    assert memoria.executar_migrations(db_teste) == "003_lab_propostas"
+    assert memoria.executar_migrations(db_teste) == "004_conversas_metadados"
     with sqlite3.connect(db_teste) as c:
         cols = {r[1] for r in c.execute("PRAGMA table_info(lab_propostas)").fetchall()}
     assert {
@@ -2743,3 +2743,202 @@ def test_sentinel_deduplicacao_limite_hora_e_sem_token(monkeypatch, tmp_path):
     assert res_dup.get("duplicados_ignorados") == 1
     assert len(chamadas_lab) == 1
     lab.limpar_estado_sentinel()
+
+
+def test_athena_lab_ui_container_irmao_e_endpoint_vazio(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    import memoria
+    import servidor
+
+    # 1) HTML: <main id="view-lab" class="view"> deve ser irmao de view-rotinas (nao aninhado dentro dele)
+    html = (Path(__file__).resolve().parent.parent / "index.html").read_text(encoding="utf-8")
+    idx_rot = html.index('<main id="view-rotinas" class="view">')
+    idx_rot_fim = html.index("</main>", idx_rot)
+    idx_lab = html.index('<main id="view-lab" class="view">')
+    assert idx_lab > idx_rot_fim, "view-lab nao pode ficar aninhado dentro de view-rotinas"
+    assert 'id="lab-foco-input"' in html
+    assert 'id="btn-lab-executar"' in html
+    assert 'id="btn-lab-sentinel"' in html
+    assert 'id="box-lab-pendentes"' in html
+
+    # 2) Endpoint GET /api/lab/propostas responde OK mesmo com tabela vazia
+    db_vazio = tmp_path / "lab_vazio.db"
+    memoria.executar_migrations(db_vazio)
+    monkeypatch.setenv("ATHENA_DB_PATH", str(db_vazio))
+
+    res = servidor.api_lab_propostas()
+    assert res["ok"] is True
+    assert res["propostas"] == []
+    assert res["pendentes"] == 0
+    assert isinstance(res["sentinel_ativo"], bool)
+
+
+def test_auditoria_correcoes_criticas_lab_eficiencia_seguranca_e_alembic(monkeypatch, tmp_path):
+    from alembic import command
+    from alembic.config import Config
+
+    import athena_lab as lab
+    import eficiencia as ef
+    import ferramentas_estudos as fe
+    import memoria
+
+    # 1) _ler_trechos_arquivos_alvo preserva indentacao Python exata (nao usa compactar_saida_tool)
+    arq_py = tmp_path / "exemplo.py"
+    codigo = "def f():\n    if True:\n        return 42\n"
+    arq_py.write_text(codigo, encoding="utf-8")
+    lido = lab._ler_trechos_arquivos_alvo(tmp_path, ["exemplo.py"])
+    assert "        return 42" in lido
+
+    # 2) _resolver_worktree_dir nunca aponta para a pasta pai worktrees/ se o slug for vazio
+    assert lab._resolver_worktree_dir(tmp_path, "lab/___", gerar_fallback=False) is None
+
+    # 3) eficiencia: imperativos "salve/guarde/anote na memoria" e escrever_nota_vault em estudos/investimentos
+    dominios_mem = ef.selecionar_dominios_para_mensagem("salve na memoria que prefiro respostas curtas")
+    assert dominios_mem is not None and "memoria" in dominios_mem
+    assert "escrever_nota_vault" in ef.DOMINIO_PARA_TOOLS["estudos"]
+    assert "escrever_nota_vault" in ef.DOMINIO_PARA_TOOLS["investimentos"]
+
+    # 4) memoria.guardar_fato mascara segredos/CPF antes de persistir no SQLite
+    db_seg = tmp_path / "seg.db"
+    memoria.executar_migrations(db_seg)
+    memoria.guardar_fato("doc", "Meu CPF e 123.456.789-01", db_path=db_seg)
+    fatos = memoria.listar_fatos(db_path=db_seg)
+    assert fatos and "123.456.789-01" not in fatos[0]["valor"]
+    assert "[MASCARADO:cpf]" in fatos[0]["valor"]
+
+    # 5) ferramentas_windows.esta_na_whitelist normaliza aliases ("Google Chrome" -> "chrome")
+    monkeypatch.setattr(fw, "DB_PATH", tmp_path / "win_wl.db")
+    fw.adicionar_whitelist("chrome")
+    assert fw.esta_na_whitelist("Google Chrome") is True
+
+    # 6) ferramentas_estudos.pesquisar_pdfs("") rejeita consulta vazia
+    assert "Informe um termo" in fe.pesquisar_pdfs("   ")
+
+    # 7) Alembic offline mode (`--sql`) funciona sem crashar em PRAGMA
+    cfg = Config(str(memoria.ALEMBIC_INI_PATH))
+    cfg.set_main_option("script_location", str(memoria.ALEMBIC_DIR_PATH))
+    cfg.set_main_option("sqlalchemy.url", f"sqlite:///{(tmp_path / 'off.db').as_posix()}")
+    command.upgrade(cfg, "head", sql=True)
+
+
+# ==============================================================================
+# 23. CONVERSAS MULTIPLAS (MIGRATION 004, CRUD, AGENTES_DIRETOS E UI GEMINI)
+# ==============================================================================
+
+
+def test_migration_004_e_crud_conversas_com_auto_titulo_e_legadas(tmp_path):
+    import memoria
+
+    db_teste = tmp_path / "conversas_004.db"
+    assert memoria.executar_migrations(db_teste) == "004_conversas_metadados"
+
+    with sqlite3.connect(db_teste) as c:
+        cols_conv = {r[1] for r in c.execute("PRAGMA table_info(conversas)").fetchall()}
+        cols_msg = {r[1] for r in c.execute("PRAGMA table_info(mensagens)").fetchall()}
+    assert {"id", "titulo", "agente_alvo", "criado_em", "atualizado_em"}.issubset(cols_conv)
+    assert "conversa_id" in cols_msg
+
+    # Auto-registro de conversa legada existente apenas em `mensagens`
+    with sqlite3.connect(db_teste) as c:
+        c.execute(
+            "INSERT INTO mensagens (role, conteudo, trilha_json, criado_em, meta_json, conversa_id) "
+            "VALUES ('user', 'Mensagem antiga sobre calculo', '[]', '2026-11-20T10:00:00', '{}', 'principal')"
+        )
+        c.commit()
+
+    # CRUD: criar, auto-titulo na 1a msg, listar, renomear, deletar (com mensagens e resumo)
+    conv_est = memoria.criar_conversa("conv_est_1", "Nova conversa", "estudos", db_path=db_teste)
+    assert conv_est["id"] == "conv_est_1"
+    assert conv_est["agente_alvo"] == "estudos"
+
+    memoria.salvar_mensagem(
+        "user",
+        "Monte um plano de estudos completo para prova A1 de Fisica",
+        conversa_id="conv_est_1",
+        agente_alvo="estudos",
+        db_path=db_teste,
+    )
+    memoria.salvar_mensagem(
+        "bot",
+        "Plano montado!",
+        conversa_id="conv_est_1",
+        agente_alvo="estudos",
+        db_path=db_teste,
+    )
+    with sqlite3.connect(db_teste) as c:
+        c.execute(
+            "INSERT INTO resumos_conversa (conversa_id, resumo, mensagens_compactadas, atualizado_em) "
+            "VALUES ('conv_est_1', 'resumo teste', 10, '2026-11-23T21:00:00')"
+        )
+        c.commit()
+
+    conv_atualizada = memoria.obter_conversa("conv_est_1", db_path=db_teste)
+    assert conv_atualizada is not None
+    assert conv_atualizada["titulo"] != "Nova conversa"
+    assert conv_atualizada["titulo"].startswith("Monte um plano de estudos")
+    assert conv_atualizada["total_mensagens"] == 2
+
+    lista = memoria.listar_conversas(limite=20, db_path=db_teste)
+    ids = [c["id"] for c in lista]
+    assert "conv_est_1" in ids
+    assert "principal" in ids  # conversa legada auto-registrada
+
+    renomeada = memoria.atualizar_titulo_conversa("conv_est_1", "Prova A1 de Fisica", db_path=db_teste)
+    assert renomeada is not None and renomeada["titulo"] == "Prova A1 de Fisica"
+
+    assert memoria.deletar_conversa("conv_est_1", db_path=db_teste) is True
+    assert memoria.obter_conversa("conv_est_1", db_path=db_teste) is None
+    assert memoria.listar_mensagens(conversa_id="conv_est_1", db_path=db_teste) == []
+    with sqlite3.connect(db_teste) as c:
+        res_row = c.execute("SELECT 1 FROM resumos_conversa WHERE conversa_id = 'conv_est_1'").fetchone()
+    assert res_row is None
+
+
+def test_agentes_diretos_mapa_endpoints_e_ui_gemini(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    import memoria
+    import servidor
+
+    esperados = {"athena", "estudos", "investimentos", "faxineiro", "pesquisador", "google", "sistema", "analista"}
+    assert set(agentes.AGENTES_DIRETOS.keys()) == esperados
+    for chave in esperados:
+        info = agentes.obter_agente_direto(chave)
+        assert info["id"] == chave
+        assert info["nome"]
+        assert info["descricao"]
+        assert hasattr(info["agente"], "run")
+        assert hasattr(info["agente"], "run_stream_events")
+    assert agentes.normalizar_agente_alvo("desconhecido") == "athena"
+
+    # Endpoints REST de agentes e conversas
+    res_ag = servidor.api_listar_agentes()
+    assert res_ag["ok"] is True
+    assert {a["id"] for a in res_ag["agentes"]} == esperados
+
+    db_ep = tmp_path / "conv_ep.db"
+    memoria.executar_migrations(db_ep)
+    monkeypatch.setenv("ATHENA_DB_PATH", str(db_ep))
+
+    criada = servidor.api_criar_conversa(servidor.CriarConversaPayload(titulo="Chat Fin", agente_alvo="investimentos"))
+    cid = criada["conversa"]["id"]
+    assert criada["conversa"]["agente_alvo"] == "investimentos"
+
+    ren = servidor.api_renomear_conversa(cid, servidor.RenomearConversaPayload(titulo="Carteira MP"))
+    assert ren["conversa"]["titulo"] == "Carteira MP"
+
+    det = servidor.api_obter_conversa(cid)
+    assert det["ok"] is True and det["conversa"]["titulo"] == "Carteira MP"
+
+    apag = servidor.api_deletar_conversa(cid)
+    assert apag["ok"] is True
+
+    # UI estilo Gemini: sem barra lateral direita de agentes, com modal de memorias e sidebar 3 blocos
+    html = (Path(__file__).resolve().parent.parent / "index.html").read_text(encoding="utf-8")
+    assert 'id="painel-agentes"' not in html
+    assert 'id="modal-memorias"' in html
+    assert 'id="btn-novo-chat"' in html
+    assert 'id="lista-agentes"' in html
+    assert 'id="lista-conversas"' in html
+    assert 'id="chat-agent-header"' in html

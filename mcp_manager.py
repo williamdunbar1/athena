@@ -18,6 +18,10 @@ from pathlib import Path
 from fastmcp.client.transports import SSETransport, StdioTransport, StreamableHttpTransport
 from pydantic_ai.mcp import MCPToolset
 
+from logging_config import obter_logger
+
+_log = obter_logger("mcp_manager")
+
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_PATH = BASE_DIR / "mcp_servers.json"
 _ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}")
@@ -128,16 +132,11 @@ def carregar_servidores_mcp(recarregar: bool = False) -> list[MCPToolset]:
         args_raw: list = args_val if isinstance(args_val, list) else []
         url_raw = str(srv.get("url") or "").strip()
 
-        url_exibicao = url_raw
-        if transporte != "stdio" and url_raw:
-            url_tmp, _miss_url = _expandir_env_texto(url_raw)
-            if url_tmp.startswith(("http://", "https://")):
-                url_exibicao = url_tmp
-
+        # Nunca expande ${ENV_VAR} na URL exibida em /api/mcp/servidores para evitar vazamento de segredos
         alvo_exibicao = (
             f"{comando_raw} {' '.join(str(a) for a in args_raw)}".strip()
             if transporte == "stdio"
-            else url_exibicao
+            else url_raw
         )
 
         registro_status = {
@@ -212,7 +211,7 @@ def carregar_servidores_mcp(recarregar: bool = False) -> list[MCPToolset]:
         except Exception as e:
             registro_status["status"] = "erro"
             registro_status["erro"] = str(e)
-            print(f"[MCP aviso] Servidor '{nome}' ignorado: {e}", file=sys.stderr)
+            _log.warning("mcp_servidor_ignorado", servidor=nome, erro=str(e))
 
         status_lista.append(registro_status)
 
@@ -243,7 +242,7 @@ async def iniciar_conexoes_mcp() -> list[dict]:
             try:
                 await stack.enter_async_context(ts)
             except Exception as e:
-                print(f"[MCP aviso] Falha ao pre-conectar '{nome_srv}': {e}", file=sys.stderr)
+                _log.warning("mcp_pre_conexao_falhou", servidor=nome_srv, erro=str(e))
                 for item in _STATUS_CACHE:
                     if item.get("nome") == nome_srv:
                         item["status"] = "erro"
@@ -265,7 +264,7 @@ async def encerrar_conexoes_mcp() -> None:
         try:
             await stack.aclose()
         except Exception as e:
-            print(f"[MCP aviso] Erro ao encerrar conexoes MCP: {e}", file=sys.stderr)
+            _log.warning("mcp_encerramento_falhou", erro=str(e))
 
 
 def listar_servidores_mcp() -> list[dict]:

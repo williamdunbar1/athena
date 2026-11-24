@@ -16,14 +16,20 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
+from typing import Any
 from zoneinfo import ZoneInfo
 
-from logfire.query_client import LogfireQueryClient
-
 from eficiencia import compactar_saida_tool
+from guardrails import mascarar_segredos_e_pii
 
-_FUSO_BRT = ZoneInfo("America/Sao_Paulo")
+try:
+    _FUSO_BRT: Any = ZoneInfo("America/Sao_Paulo")
+except Exception:
+    _FUSO_BRT = timezone(timedelta(hours=-3))
+
+# Carregado sob demanda para nao pesar no boot (e monkeypatchavel em testes)
+LogfireQueryClient: Any = None
 MAX_CARACTERES_RETORNO = 3000
 _CABECALHO_SEGURANCA = (
     "[DADOS DE DIAGNOSTICO LOGFIRE - SOMENTE LEITURA: "
@@ -38,11 +44,7 @@ def _escapar_sql_like(texto: str) -> str:
     return limpo
 
 
-def _escapar_sql_literal(texto: str) -> str:
-    return (texto or "").replace("\x00", "").strip()[:128].replace("'", "''")
-
-
-def _obter_cliente_logfire() -> LogfireQueryClient:
+def _obter_cliente_logfire():
     token = (os.getenv("LOGFIRE_READ_TOKEN") or "").strip()
     if not token:
         raise ValueError(
@@ -50,7 +52,12 @@ def _obter_cliente_logfire() -> LogfireQueryClient:
             "Crie um Read Token no Logfire e adicione LOGFIRE_READ_TOKEN=... no .env."
         )
     base_url = (os.getenv("LOGFIRE_QUERY_URL") or "").strip() or None
-    return LogfireQueryClient(read_token=token, base_url=base_url)
+    client_cls = LogfireQueryClient
+    if client_cls is None:
+        from logfire.query_client import LogfireQueryClient as _LogfireQueryClient
+
+        client_cls = _LogfireQueryClient
+    return client_cls(read_token=token, base_url=base_url)
 
 
 def _fmt_ts(val) -> str:
@@ -100,12 +107,13 @@ def _cortar(texto: str, limite: int = 240) -> str:
 
 
 def _limitar_saida(linhas: list[str], limite_chars: int = MAX_CARACTERES_RETORNO) -> str:
-    """Garante retorno enxuto (<= `limite_chars`) usando `compactar_saida_tool`."""
-    texto_limpo = compactar_saida_tool("\n".join(linhas), max_chars=max(limite_chars, 12000))
+    """Garante retorno enxuto (<= `limite_chars`) com mascaramento de segredos/PII via `guardrails`."""
+    bruto_seguro, _ = mascarar_segredos_e_pii("\n".join(linhas))
+    texto_limpo = compactar_saida_tool(bruto_seguro, max_chars=max(limite_chars, 12000))
     if len(texto_limpo) <= limite_chars:
         return texto_limpo
 
-    aviso = "\n... (saida resumida em 3000 caracteres; refine filtro/minutos para ver mais)"
+    aviso = f"\n... (saida resumida em {limite_chars} caracteres; refine filtro/minutos para ver mais)"
     teto = max(200, limite_chars - len(aviso))
     return compactar_saida_tool(texto_limpo, max_chars=teto) + aviso
 

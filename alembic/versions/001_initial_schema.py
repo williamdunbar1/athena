@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from alembic import op
+from alembic import context, op
 from sqlalchemy import text
 
 revision: str = "001_initial_schema"
@@ -33,10 +33,11 @@ def upgrade() -> None:
         """
     )
 
-    conn = op.get_bind()
-    cols_msg = {row[1] for row in conn.execute(text("PRAGMA table_info(mensagens)")).fetchall()}
-    if "meta_json" not in cols_msg:
-        op.execute("ALTER TABLE mensagens ADD COLUMN meta_json TEXT DEFAULT '{}'")
+    if not context.is_offline_mode():
+        conn = op.get_bind()
+        cols_msg = {row[1] for row in conn.execute(text("PRAGMA table_info(mensagens)")).fetchall()}
+        if "meta_json" not in cols_msg:
+            op.execute("ALTER TABLE mensagens ADD COLUMN meta_json TEXT DEFAULT '{}'")
 
     op.execute(
         """

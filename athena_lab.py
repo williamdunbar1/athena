@@ -356,7 +356,13 @@ def _atualizar_status_proposta(proposta_id: str, status: str, *, db_path: str | 
 # ==============================================================================
 
 
-def _rodar_cmd(cmd: list[str], *, cwd: Path, timeout: int = TIMEOUT_CHECK_SEGUNDOS) -> tuple[int, str]:
+def _rodar_cmd(
+    cmd: list[str],
+    *,
+    cwd: Path,
+    timeout: int = TIMEOUT_CHECK_SEGUNDOS,
+    compactar: bool = True,
+) -> tuple[int, str]:
     env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
     try:
         proc = subprocess.run(
@@ -369,12 +375,34 @@ def _rodar_cmd(cmd: list[str], *, cwd: Path, timeout: int = TIMEOUT_CHECK_SEGUND
             env=env,
             timeout=timeout,
         )
+        if not compactar:
+            saida_raw = "\n".join(p for p in (proc.stdout or "", proc.stderr or "") if p)
+            return int(proc.returncode), saida_raw[:50000]
         saida = "\n".join(p for p in ((proc.stdout or "").strip(), (proc.stderr or "").strip()) if p)
         return int(proc.returncode), compactar_saida_tool(saida, max_chars=2400)
     except subprocess.TimeoutExpired:
         return 124, f"Tempo limite excedido ({timeout}s) ao executar {' '.join(cmd)}"
     except Exception as exc:
         return 1, f"Erro ao executar {' '.join(cmd)}: {exc}"
+
+
+def _resolver_worktree_dir(
+    repo: Path,
+    branch: str,
+    *,
+    worktree_base: Path | None = None,
+    gerar_fallback: bool = False,
+) -> Path | None:
+    slug_wt = re.sub(r"[^a-zA-Z0-9_-]+", "_", branch.split("/", 1)[-1]).strip("_")
+    if not slug_wt:
+        if not gerar_fallback:
+            return None
+        slug_wt = uuid.uuid4().hex[:8]
+    base_wt = (worktree_base or (WORKTREES_DIR if repo == BASE_DIR.resolve() else repo / "sandbox_files" / "worktrees")).resolve()
+    wt_dir = (base_wt / slug_wt).resolve()
+    if wt_dir == base_wt or base_wt not in wt_dir.parents:
+        return None
+    return wt_dir
 
 
 def _resolver_ferramenta_venv(nome_bin: str, repo_dir: Path) -> list[str]:
@@ -453,10 +481,10 @@ def validar_em_worktree(
     branch = branch_nome.strip()
     if not branch.startswith("lab/"):
         branch = f"lab/{branch}"
-    slug_wt = re.sub(r"[^a-zA-Z0-9_-]+", "_", branch.split("/", 1)[-1]).strip("_") or uuid.uuid4().hex[:8]
-    base_wt = (worktree_base or (repo / "sandbox_files" / "worktrees")).resolve()
-    base_wt.mkdir(parents=True, exist_ok=True)
-    wt_dir = base_wt / slug_wt
+    wt_dir = _resolver_worktree_dir(repo, branch, worktree_base=worktree_base, gerar_fallback=True)
+    if wt_dir is None:
+        raise ValueError(f"Nao foi possivel resolver diretorio de worktree seguro para branch '{branch}'.")
+    wt_dir.parent.mkdir(parents=True, exist_ok=True)
 
     _limpar_worktree_e_branch(repo, wt_dir, branch, remover_branch=True)
 
@@ -476,9 +504,9 @@ def validar_em_worktree(
     try:
         _aplicar_alteracoes_em_diretorio(wt_dir, alteracoes)
 
-        # Captura diff completo (incluindo arquivos novos marcados com git add -N)
+        # Captura diff completo (incluindo arquivos novos marcados com git add -N) sem mangling de espacos
         _rodar_cmd(["git", "add", "-N", "."], cwd=wt_dir, timeout=30)
-        _rc_diff, diff_txt = _rodar_cmd(["git", "diff", "HEAD"], cwd=wt_dir, timeout=30)
+        _rc_diff, diff_txt = _rodar_cmd(["git", "diff", "HEAD"], cwd=wt_dir, timeout=30, compactar=False)
         if not diff_txt.strip():
             raise ValueError("As alteracoes nao produziram nenhuma mudanca real no git diff.")
 
@@ -514,7 +542,7 @@ def validar_em_worktree(
             }
 
         # Commit isolado na branch lab/<id> para permitir merge limpo na aprovacao humana
-        _rodar_cmd(["git", "add", "."], cwd=wt_dir, timeout=30)
+        _rodar_cmd(["git", "add", "--", ".", ":!.pytest_lab_tmp"], cwd=wt_dir, timeout=30)
         rc_cm, out_cm = _rodar_cmd(
             ["git", "commit", "-m", f"Athena Lab ({branch}): melhoria validada em CI local"],
             cwd=wt_dir,
@@ -584,8 +612,7 @@ def aprovar_proposta_lab(
         }
 
     # Remove o worktree temporario mantendo a branch para o merge
-    slug_wt = re.sub(r"[^a-zA-Z0-9_-]+", "_", branch.split("/", 1)[-1]).strip("_")
-    wt_dir = repo / "sandbox_files" / "worktrees" / slug_wt
+    wt_dir = _resolver_worktree_dir(repo, branch)
     _limpar_worktree_e_branch(repo, wt_dir, branch, remover_branch=False)
 
     rc_mg, out_mg = _rodar_cmd(
@@ -621,8 +648,7 @@ def rejeitar_proposta_lab(
     repo = (repo_dir or BASE_DIR).resolve()
     branch = str(prop.get("branch") or "").strip()
     if branch:
-        slug_wt = re.sub(r"[^a-zA-Z0-9_-]+", "_", branch.split("/", 1)[-1]).strip("_")
-        wt_dir = repo / "sandbox_files" / "worktrees" / slug_wt
+        wt_dir = _resolver_worktree_dir(repo, branch)
         _limpar_worktree_e_branch(repo, wt_dir, branch, remover_branch=True)
 
     _atualizar_status_proposta(proposta_id, "rejeitada", db_path=db_path)
@@ -657,6 +683,7 @@ def _coletar_contexto_arquitetura(repo_dir: Path) -> str:
 
 
 def _ler_trechos_arquivos_alvo(repo_dir: Path, arquivos_alvo: list[str]) -> str:
+    """Le trechos de codigo-fonte preservando indentacao exata para o Arquiteto gerar patches validos."""
     blocos: list[str] = []
     for cam in (arquivos_alvo or [])[:4]:
         if eh_arquivo_sensivel(cam):
@@ -665,7 +692,10 @@ def _ler_trechos_arquivos_alvo(repo_dir: Path, arquivos_alvo: list[str]) -> str:
         if repo_dir.resolve() in arq.parents and arq.is_file():
             conteudo = arq.read_text(encoding="utf-8", errors="ignore")[:5000]
             blocos.append(f"=== ARQUIVO: {cam} ===\n{conteudo}")
-    return compactar_saida_tool("\n\n".join(blocos), max_chars=9000)
+    combinado = "\n\n".join(blocos)
+    if len(combinado) > 9000:
+        return combinado[:9000] + "\n... [truncado em 9000 caracteres]"
+    return combinado
 
 
 def obter_status_lab() -> dict[str, Any]:
@@ -868,7 +898,7 @@ _RE_BUG_CODIGO_CORRIGIVEL = re.compile(
 )
 
 _SENTINEL_EXECUCOES_TS: list[float] = []
-_SENTINEL_VISTOS_RAM: set[str] = set()
+_SENTINEL_VISTOS_RAM: set[tuple[str, str]] = set()
 _SENTINEL_TASKS_BG: set[asyncio.Task[Any]] = set()
 
 
@@ -962,8 +992,14 @@ def _garantir_tabela_sentinel(c: sqlite3.Connection) -> None:
     )
 
 
+def _chave_ram_sentinel(fingerprint: str, db_path: str | Path | None = None) -> tuple[str, str]:
+    db_res = str(Path(db_path).resolve()) if db_path is not None else str(obter_db_path().resolve())
+    return (db_res, fingerprint)
+
+
 def _erro_sentinel_ja_visto(fingerprint: str, *, db_path: str | Path | None = None) -> bool:
-    if fingerprint in _SENTINEL_VISTOS_RAM:
+    chave_ram = _chave_ram_sentinel(fingerprint, db_path)
+    if chave_ram in _SENTINEL_VISTOS_RAM:
         return True
     with _conn_lab(db_path) as c:
         _garantir_tabela_sentinel(c)
@@ -972,7 +1008,7 @@ def _erro_sentinel_ja_visto(fingerprint: str, *, db_path: str | Path | None = No
             (fingerprint,),
         ).fetchone()
     if row is not None:
-        _SENTINEL_VISTOS_RAM.add(fingerprint)
+        _SENTINEL_VISTOS_RAM.add(chave_ram)
         return True
     return False
 
@@ -985,7 +1021,7 @@ def _registrar_erro_sentinel_visto(
     acionou_lab: bool = False,
     db_path: str | Path | None = None,
 ) -> None:
-    _SENTINEL_VISTOS_RAM.add(fingerprint)
+    _SENTINEL_VISTOS_RAM.add(_chave_ram_sentinel(fingerprint, db_path))
     agora = datetime.now().isoformat(timespec="seconds")
     with _conn_lab(db_path) as c:
         _garantir_tabela_sentinel(c)

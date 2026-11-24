@@ -22,14 +22,14 @@ import uuid
 from contextlib import contextmanager, suppress
 from datetime import datetime
 from pathlib import Path
-from typing import Any
-
-from pypdf import PdfReader
-from qdrant_client import QdrantClient, models
+from typing import TYPE_CHECKING, Any
 
 from eficiencia import compactar_saida_tool
 from ferramentas_estudos import PASTA_PDFS, formatar_nome_materia
 from ferramentas_obsidian import _iterar_notas_md, inicializar_vault
+
+if TYPE_CHECKING:
+    from qdrant_client import QdrantClient, models
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / "memoria.db"
@@ -156,6 +156,8 @@ def _colecao_tem_schema_hibrido(client: QdrantClient) -> bool:
 
 
 def _criar_colecao_hibrida(client: QdrantClient, dimensao: int | None = None) -> None:
+    from qdrant_client import models
+
     dim = int(dimensao) if dimensao else _dimensao_densa(client)
     client.create_collection(
         collection_name=COLECAO_ATHENA,
@@ -199,6 +201,8 @@ def _obter_cliente(*, forcar_migracao: bool = False) -> tuple[QdrantClient, bool
     global _CLIENT
     with _QDRANT_LOCK:
         if _CLIENT is None:
+            from qdrant_client import QdrantClient
+
             QDRANT_PATH.mkdir(parents=True, exist_ok=True)
             _CLIENT = QdrantClient(path=str(QDRANT_PATH))
         migrada = _garantir_colecao(_CLIENT, forcar_migracao=forcar_migracao)
@@ -206,6 +210,8 @@ def _obter_cliente(*, forcar_migracao: bool = False) -> tuple[QdrantClient, bool
 
 
 def _para_sparse_vector(emb) -> models.SparseVector:
+    from qdrant_client import models
+
     if isinstance(emb, models.SparseVector):
         return emb
     indices = emb.indices.tolist() if hasattr(emb.indices, "tolist") else list(emb.indices)
@@ -283,7 +289,6 @@ def _dividir_em_chunks(
     chunks: list[str] = []
     inicio = 0
     total = len(limpo)
-    passo_min = max(1, tamanho - sobreposicao)
 
     while inicio < total:
         fim = min(total, inicio + tamanho)
@@ -306,8 +311,6 @@ def _dividir_em_chunks(
         inicio = max(inicio + 1, fim - sobreposicao)
         if inicio >= total:
             break
-        if fim - inicio > tamanho:
-            inicio = fim - passo_min
 
     return chunks
 
@@ -317,6 +320,8 @@ def _ponto_id(chave_arquivo: str, idx: int) -> str:
 
 
 def _remover_pontos_arquivo(client: QdrantClient, chave_arquivo: str) -> None:
+    from qdrant_client import models
+
     client.delete(
         collection_name=COLECAO_ATHENA,
         points_selector=models.FilterSelector(
@@ -368,6 +373,8 @@ def obter_estatisticas_rag() -> dict:
 def _montar_pontos_hibridos(chave: str, metadados_chunks: list[dict]) -> list[models.PointStruct]:
     if not metadados_chunks:
         return []
+    from qdrant_client import models
+
     textos = [item["texto"] for item in metadados_chunks]
     densos, esparsos = _gerar_vetores_documentos(textos)
     pontos: list[models.PointStruct] = []
@@ -458,6 +465,8 @@ def sincronizar_indice_vetorial() -> dict:
             metadados_chunks: list[dict] = []
             try:
                 if fonte == "pdf":
+                    from pypdf import PdfReader
+
                     reader = PdfReader(str(caminho))
                     for num_pag, pag in enumerate(reader.pages, start=1):
                         txt = (pag.extract_text() or "").strip()
@@ -531,6 +540,8 @@ def _consultar_hibrido_no_cliente(
     limite_prefetch = max(int(candidatos_prefetch), top_k * 3)
 
     if _colecao_tem_schema_hibrido(client):
+        from qdrant_client import models
+
         vec_denso, vec_esparso = _gerar_vetores_consulta(consulta)
         resp = client.query_points(
             collection_name=COLECAO_ATHENA,
@@ -601,6 +612,8 @@ def buscar_semantico(
     top_k = max(1, min(int(limite), 15))
     filtro = None
     if fonte_norm in ("pdf", "obsidian"):
+        from qdrant_client import models
+
         filtro = models.Filter(
             must=[
                 models.FieldCondition(

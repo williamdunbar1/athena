@@ -50,6 +50,9 @@ from agentes import (
     TIMEOUT_TENTATIVA_AUTO_SEGUNDOS,
     ContextoMissao,
     eh_erro_503,
+    listar_agentes_diretos_publico,
+    normalizar_agente_alvo,
+    obter_agente_direto,
     obter_fila_modelos_auto,
     obter_modelo,
     orquestrador,
@@ -115,12 +118,16 @@ from mcp_manager import (
 )
 from memoria import (
     apagar_fato,
-    executar_migrations,
+    atualizar_titulo_conversa,
+    criar_conversa,
+    deletar_conversa,
     init_db,
     limpar_mensagens,
+    listar_conversas,
     listar_fatos,
     listar_mensagens,
     montar_contexto_prompt,
+    obter_conversa,
     obter_resumo_telemetria,
     registrar_telemetria,
     salvar_mensagem,
@@ -154,7 +161,6 @@ from voz import (
 
 configurar_logging()
 logger = obter_logger("servidor")
-executar_migrations()
 init_db()
 
 
@@ -792,9 +798,7 @@ def escolher_pasta():
     return _aplicar_pasta_raiz(Path(escolhida))
 
 
-@app.get("/api/historico")
-def ver_historico():
-    mensagens = listar_mensagens(limite=40)
+def _enriquecer_mensagens_acoes_windows(mensagens: list[dict]) -> list[dict]:
     ids_win: list[int] = []
     for m in mensagens:
         meta = m.get("meta")
@@ -818,13 +822,92 @@ def ver_historico():
                     else:
                         atualizadas.append(ac)
                 meta["acoes_windows"] = atualizadas
+    return mensagens
+
+
+class CriarConversaPayload(BaseModel):
+    titulo: str = "Nova conversa"
+    agente_alvo: str = "athena"
+    id: str | None = None
+
+
+class RenomearConversaPayload(BaseModel):
+    titulo: str
+
+
+@app.get("/api/agentes")
+def api_listar_agentes():
+    """Retorna todos os agentes disponiveis para chat direto (Athena + 7 especialistas)."""
+    return {"ok": True, "agentes": listar_agentes_diretos_publico()}
+
+
+@app.get("/api/conversas")
+def api_listar_conversas(limite: int = 50):
+    """Lista conversas recentes ordenadas por `atualizado_em DESC` (incluindo legadas)."""
+    return {"ok": True, "conversas": listar_conversas(limite=limite)}
+
+
+@app.post("/api/conversas")
+def api_criar_conversa(payload: CriarConversaPayload | None = Body(default=None)):
+    """Cria uma nova conversa vinculada a um `agente_alvo` (`athena` ou especialista direto)."""
+    agente = normalizar_agente_alvo(payload.agente_alvo if payload else "athena")
+    titulo = (payload.titulo if payload else "Nova conversa").strip() or "Nova conversa"
+    cid_raw = (payload.id if payload and payload.id else None)
+    cid = _normalizar_conversa_id(cid_raw) if cid_raw else None
+    conv = criar_conversa(conversa_id=cid, titulo=titulo, agente_alvo=agente)
+    return {"ok": True, "conversa": conv}
+
+
+@app.get("/api/conversas/{conversa_id}")
+def api_obter_conversa(conversa_id: str, limite: int = 80):
+    """Retorna metadados + mensagens de uma conversa especifica."""
+    cid = _normalizar_conversa_id(conversa_id)
+    conv = obter_conversa(cid)
+    if conv is None:
+        raise HTTPException(status_code=404, detail=f"Conversa '{cid}' nao encontrada.")
+    mensagens = _enriquecer_mensagens_acoes_windows(listar_mensagens(limite=limite, conversa_id=cid))
+    return {"ok": True, "conversa": conv, "mensagens": mensagens, "fatos": listar_fatos()}
+
+
+@app.patch("/api/conversas/{conversa_id}")
+def api_renomear_conversa(conversa_id: str, payload: RenomearConversaPayload):
+    """Renomeia o titulo de uma conversa existente."""
+    cid = _normalizar_conversa_id(conversa_id)
+    titulo_limpo = (payload.titulo or "").strip()
+    if not titulo_limpo:
+        raise HTTPException(status_code=400, detail="Informe um titulo nao vazio.")
+    conv = atualizar_titulo_conversa(cid, titulo_limpo)
+    if conv is None:
+        raise HTTPException(status_code=404, detail=f"Conversa '{cid}' nao encontrada.")
+    return {"ok": True, "conversa": conv}
+
+
+@app.delete("/api/conversas/{conversa_id}")
+def api_deletar_conversa(conversa_id: str):
+    """Cancela eventual tarefa ativa e apaga a conversa + mensagens + resumo compactado."""
+    cid = _normalizar_conversa_id(conversa_id)
+    reg = TAREFAS_ATIVAS.get(cid)
+    if reg is not None and reg.get("status") == "running":
+        t = reg.get("task")
+        if t is not None and not t.done():
+            reg["cancelada"] = True
+            t.cancel()
+    deletar_conversa(cid)
+    return {"ok": True, "conversa_id": cid}
+
+
+@app.get("/api/historico")
+def ver_historico(conversa_id: str | None = None):
+    cid = _normalizar_conversa_id(conversa_id) if conversa_id else None
+    mensagens = _enriquecer_mensagens_acoes_windows(listar_mensagens(limite=40, conversa_id=cid))
     return {"mensagens": mensagens, "fatos": listar_fatos()}
 
 
 @app.delete("/api/historico")
-def resetar_chat():
-    limpar_mensagens()
-    limpar_resumos_conversa()
+def resetar_chat(conversa_id: str | None = None):
+    cid = _normalizar_conversa_id(conversa_id) if conversa_id else None
+    limpar_mensagens(conversa_id=cid)
+    limpar_resumos_conversa(cid)
     return {"ok": True}
 
 
@@ -1346,13 +1429,14 @@ async def _executar_orquestrador_auto_ou_manual(
     ctx: ContextoMissao,
     fila_modelos: list[str],
     eh_auto: bool,
+    agente_obj=orquestrador,
 ):
-    """Executa `orquestrador.run(...)` com Circuit Breaker + timeout no modo Auto, ou forca o modelo direto no modo manual."""
+    """Executa `agente_obj.run(...)` com Circuit Breaker + timeout no modo Auto, ou forca o modelo direto no modo manual."""
     if not eh_auto:
         modelo_forcado = fila_modelos[0]
         ctx.modelo = modelo_forcado
         ESTADO_EXECUCAO["modelo"] = modelo_forcado
-        res = await orquestrador.run(
+        res = await agente_obj.run(
             entrada_modelo,
             deps=ctx,
             model=obter_modelo(modelo_forcado, usar_fallback=False),
@@ -1369,7 +1453,7 @@ async def _executar_orquestrador_auto_ou_manual(
 
         try:
             async with asyncio.timeout(TIMEOUT_TENTATIVA_AUTO_SEGUNDOS):
-                res = await orquestrador.run(
+                res = await agente_obj.run(
                     entrada_modelo,
                     deps=ctx,
                     model=modelo_direto,
@@ -1409,7 +1493,7 @@ async def _executar_orquestrador_auto_ou_manual(
 
 async def _montar_prompt_com_compactacao(mensagem_atual: str, conversa_id: str = "principal") -> str:
     """Usa compactacao inteligente quando a conversa passa de 16 msgs, preservando as 8 recentes intactas."""
-    historico_total = listar_mensagens(limite=80)
+    historico_total = listar_mensagens(limite=80, conversa_id=conversa_id)
     resumo, recentes = await preparar_historico_compactado(conversa_id, historico_total)
     # Em conversas curtas (sem compactacao), mantem a janela enxuta das ultimas 5 mensagens
     msgs_para_prompt = recentes if resumo else recentes[-5:]
@@ -1813,10 +1897,12 @@ async def conversar_multimodal(
     mensagem: str = Form(""),
     modelo: str | None = Form(None),
     conversa_id: str = Form("principal"),
+    agente_alvo: str = Form("athena"),
     arquivos: list[UploadFile] = File(default=[]),
     arquivo: UploadFile | None = File(None),
 ):
     texto_usuario = (mensagem or "").strip()
+    agente_norm = normalizar_agente_alvo(agente_alvo)
     lista_arquivos = [a for a in (arquivos or []) if a is not None and bool((a.filename or "").strip())]
     if arquivo is not None and bool((arquivo.filename or "").strip()):
         lista_arquivos.append(arquivo)
@@ -1861,7 +1947,7 @@ async def conversar_multimodal(
                 "fatos": listar_fatos(),
             }
 
-    salvar_mensagem("user", msg_historico)
+    salvar_mensagem("user", msg_historico, conversa_id=cid, agente_alvo=agente_norm)
 
     registro, erro_conflito = _iniciar_tarefa_chat_background(
         conversa_id=cid,
@@ -1875,6 +1961,7 @@ async def conversar_multimodal(
         nomes_exibicao=nomes_exibicao,
         caminhos_salvos_rel=caminhos_salvos_rel,
         usar_stream=False,
+        agente_alvo=agente_norm,
     )
     if erro_conflito is not None or registro is None:
         return {
@@ -2176,6 +2263,7 @@ def _iniciar_tarefa_chat_background(
     nomes_exibicao: list[str],
     caminhos_salvos_rel: list[str],
     usar_stream: bool = True,
+    agente_alvo: str = "athena",
 ) -> tuple[dict | None, str | None]:
     """Cria uma `asyncio.Task` independente da conexao HTTP e registra em `TAREFAS_ATIVAS[conversa_id]`."""
     _limpar_tarefas_expiradas()
@@ -2186,12 +2274,21 @@ def _iniciar_tarefa_chat_background(
         if t_exist is not None and not t_exist.done():
             return None, "Ja existe uma resposta em andamento nesta conversa. Aguarde concluir ou clique em Parar."
 
+    info_agente = obter_agente_direto(agente_alvo)
+    agente_id = str(info_agente["id"])
+    agente_nome = str(info_agente["nome"])
+    agente_exec = info_agente["agente"]
+    eh_agente_direto = agente_id != "athena"
+    rotulo_agente_destino = f"Agente {agente_nome}" if eh_agente_direto else "Athena"
+
     modelo_real = fila_modelos[0]
     loop = asyncio.get_running_loop()
     modelo_atual_ref = [modelo_real]
 
     registro: dict = {
         "conversa_id": cid,
+        "agente_alvo": agente_id,
+        "agente_nome": agente_nome,
         "task": None,
         "status": "running",
         "eventos": [],
@@ -2213,6 +2310,8 @@ def _iniciar_tarefa_chat_background(
     def _enfileirar_status(item: dict) -> None:
         payload = {
             "conversa_id": cid,
+            "agente_alvo": agente_id,
+            "agente_nome": agente_nome,
             "passo": _formatar_passo_trilha(item),
             "item": item,
             "trilha": list(ctx.trilha),
@@ -2243,9 +2342,9 @@ def _iniciar_tarefa_chat_background(
     ESTADO_EXECUCAO["modelo"] = modelo_real
     ESTADO_EXECUCAO["trilha"] = ctx.trilha
 
-    ctx.registrar("Voce", f"Athena ({modelo_real})", "delegacao", msg_historico)
+    ctx.registrar("Voce", f"{rotulo_agente_destino} ({modelo_real})", "delegacao", msg_historico)
     if eh_auto:
-        ctx.registrar("Athena", "Roteador", "delegacao", f"Auto escolheu {modelo_real} ({motivo_auto})")
+        ctx.registrar(rotulo_agente_destino, "Roteador", "delegacao", f"Auto escolheu {modelo_real} ({motivo_auto})")
 
     async def _executar_em_segundo_plano() -> None:
         partes_texto: list[str] = []
@@ -2291,12 +2390,12 @@ def _iniciar_tarefa_chat_background(
             return limpo
 
         async def _consumir_stream_eventos(modelo_obj, estado_st: dict, *, retries_override: int | None = None):
-            """Itera `orquestrador.run_stream_events(...)` emitindo cada TextPartDelta sem quebrar tool-calls."""
+            """Itera `agente_exec.run_stream_events(...)` emitindo cada TextPartDelta sem quebrar tool-calls."""
             kwargs_ev: dict = {"deps": ctx, "model": modelo_obj}
             if retries_override is not None:
                 kwargs_ev["retries"] = retries_override
             resultado_ev = None
-            async with orquestrador.run_stream_events(entrada_modelo, **kwargs_ev) as eventos:
+            async with agente_exec.run_stream_events(entrada_modelo, **kwargs_ev) as eventos:
                 async for evento in eventos:
                     if isinstance(evento, PartStartEvent):
                         if isinstance(evento.part, TextPart) and evento.part.content:
@@ -2309,8 +2408,8 @@ def _iniciar_tarefa_chat_background(
             return resultado_ev
 
         try:
-            # Fast-Path deterministico (Zero-LLM) apenas para mensagens de texto sem anexos multimodais
-            if not nomes_exibicao:
+            # Fast-Path deterministico e Cache Semantico apenas na Orquestradora geral (`athena`) sem anexos
+            if not nomes_exibicao and not eh_agente_direto:
                 res_fp = await asyncio.to_thread(tentar_fast_path, ctx.mensagem_atual)
                 if res_fp is not None:
                     rota_fp = str(res_fp.get("rota") or "local")
@@ -2346,10 +2445,14 @@ def _iniciar_tarefa_chat_background(
                         "imagens": [],
                         "acoes_windows": list(ctx.acoes_windows),
                     }
-                    salvar_mensagem("bot", texto_final, ctx.trilha, meta=meta_fp)
+                    salvar_mensagem("bot", texto_final, ctx.trilha, meta=meta_fp, conversa_id=cid, agente_alvo=agente_id)
+                    conv_atual_fp = obter_conversa(cid)
                     payload_done_fp = {
                         "ok": True,
                         "conversa_id": cid,
+                        "conversa_titulo": conv_atual_fp["titulo"] if conv_atual_fp else "",
+                        "agente_alvo": agente_id,
+                        "agente_nome": agente_nome,
                         "resposta": texto_final,
                         "modelo": modelo_config,
                         "modelo_usado": modelo_executado,
@@ -2419,10 +2522,14 @@ def _iniciar_tarefa_chat_background(
                         "imagens": [],
                         "acoes_windows": [],
                     }
-                    salvar_mensagem("bot", texto_final, ctx.trilha, meta=meta_sc)
+                    salvar_mensagem("bot", texto_final, ctx.trilha, meta=meta_sc, conversa_id=cid, agente_alvo=agente_id)
+                    conv_atual_sc = obter_conversa(cid)
                     payload_done_sc = {
                         "ok": True,
                         "conversa_id": cid,
+                        "conversa_titulo": conv_atual_sc["titulo"] if conv_atual_sc else "",
+                        "agente_alvo": agente_id,
+                        "agente_nome": agente_nome,
                         "resposta": texto_final,
                         "modelo": modelo_config,
                         "modelo_usado": modelo_executado,
@@ -2457,7 +2564,7 @@ def _iniciar_tarefa_chat_background(
 
             if not usar_stream:
                 res, modelo_executado = await _executar_orquestrador_auto_ou_manual(
-                    entrada_modelo, ctx, fila_modelos, eh_auto
+                    entrada_modelo, ctx, fila_modelos, eh_auto, agente_obj=agente_exec
                 )
                 resultado_final_obj = res
                 modelo_atual_ref[0] = modelo_executado
@@ -2477,7 +2584,7 @@ def _iniciar_tarefa_chat_background(
                     fallback_out = str(getattr(stream_result, "output", "") or "")
                     texto_final = _finalizar_stream_ollama(modelo_executado, estado_st, fallback_output=fallback_out)
                     if not texto_final:
-                        res_fb = await orquestrador.run(
+                        res_fb = await agente_exec.run(
                             entrada_modelo,
                             deps=ctx,
                             model=modelo_obj,
@@ -2496,7 +2603,7 @@ def _iniciar_tarefa_chat_background(
                     if not _deve_tentar_fallback_run_apos_stream(exc_stream):
                         raise exc_stream
                     if not partes_texto:
-                        res_fb = await orquestrador.run(
+                        res_fb = await agente_exec.run(
                             entrada_modelo,
                             deps=ctx,
                             model=modelo_obj,
@@ -2541,7 +2648,7 @@ def _iniciar_tarefa_chat_background(
                         texto_final = _finalizar_stream_ollama(modelo_executado, estado_st, fallback_output=fallback_out)
                         if not texto_final:
                             async with asyncio.timeout(TIMEOUT_TENTATIVA_AUTO_SEGUNDOS):
-                                res_fb = await orquestrador.run(
+                                res_fb = await agente_exec.run(
                                     entrada_modelo,
                                     deps=ctx,
                                     model=modelo_direto,
@@ -2569,7 +2676,7 @@ def _iniciar_tarefa_chat_background(
                         if not elegivel and not texto_emitido and _deve_tentar_fallback_run_apos_stream(exc_tentativa):
                             try:
                                 async with asyncio.timeout(TIMEOUT_TENTATIVA_AUTO_SEGUNDOS):
-                                    res_fb = await orquestrador.run(
+                                    res_fb = await agente_exec.run(
                                         entrada_modelo,
                                         deps=ctx,
                                         model=modelo_direto,
@@ -2645,13 +2752,16 @@ def _iniciar_tarefa_chat_background(
                 texto_final = _anexar_imagens_no_markdown(texto_final, imagens_geradas)
 
             duracao_ms = max(1, int((time.perf_counter() - t0) * 1000))
+            agentes_usados_tele = (
+                f"Agente {agente_nome} (Direto)" if eh_agente_direto else _extrair_agentes_trilha(ctx.trilha)
+            )
             with suppress(Exception):
                 registrar_telemetria(
                     modelo=modelo_executado,
                     duracao_ms=duracao_ms,
                     tokens_in=tokens_in,
                     tokens_out=tokens_out,
-                    agentes_usados=_extrair_agentes_trilha(ctx.trilha),
+                    agentes_usados=agentes_usados_tele,
                     sucesso=True,
                 )
 
@@ -2659,17 +2769,23 @@ def _iniciar_tarefa_chat_background(
                 "modelo_usado": modelo_executado,
                 "modo_auto": eh_auto,
                 "motivo_modelo": motivo_auto,
+                "agente_alvo": agente_id,
+                "agente_nome": agente_nome,
                 "duracao_ms": duracao_ms,
                 "tokens_in": tokens_in,
                 "tokens_out": tokens_out,
                 "imagens": imagens_geradas,
                 "acoes_windows": list(ctx.acoes_windows),
             }
-            salvar_mensagem("bot", texto_final, ctx.trilha, meta=meta_msg)
+            salvar_mensagem("bot", texto_final, ctx.trilha, meta=meta_msg, conversa_id=cid, agente_alvo=agente_id)
+            conv_atual_done = obter_conversa(cid)
 
             payload_done = {
                 "ok": True,
                 "conversa_id": cid,
+                "conversa_titulo": conv_atual_done["titulo"] if conv_atual_done else "",
+                "agente_alvo": agente_id,
+                "agente_nome": agente_nome,
                 "resposta": texto_final,
                 "modelo": modelo_config,
                 "modelo_usado": modelo_executado,
@@ -2713,7 +2829,8 @@ def _iniciar_tarefa_chat_background(
             _publicar_evento_tarefa(registro, "done", payload_done)
             agentes_turno = _extrair_agentes_trilha(ctx.trilha)
             if (
-                not nomes_exibicao
+                not eh_agente_direto
+                and not nomes_exibicao
                 and not ctx.acoes_windows
                 and "Agente Faxineiro" not in agentes_turno
                 and not imagens_geradas
@@ -2848,6 +2965,7 @@ async def conversar_stream(request: Request):
     texto_usuario = ""
     modelo_req: str | None = None
     conversa_id_req: str | None = None
+    agente_alvo_req: str = "athena"
     lista_arquivos: list = []
 
     if "multipart/form-data" in ctype_req:
@@ -2857,6 +2975,8 @@ async def conversar_stream(request: Request):
         modelo_req = str(mod_val).strip() if mod_val else None
         cid_val = form.get("conversa_id")
         conversa_id_req = str(cid_val).strip() if cid_val else None
+        ag_val = form.get("agente_alvo")
+        agente_alvo_req = str(ag_val).strip() if ag_val else "athena"
         for item in form.getlist("arquivos"):
             if hasattr(item, "read") and bool((getattr(item, "filename", "") or "").strip()):
                 lista_arquivos.append(item)
@@ -2874,8 +2994,11 @@ async def conversar_stream(request: Request):
             modelo_req = str(mod_val).strip() if mod_val else None
             cid_val = body.get("conversa_id")
             conversa_id_req = str(cid_val).strip() if cid_val else None
+            ag_val = body.get("agente_alvo")
+            agente_alvo_req = str(ag_val).strip() if ag_val else "athena"
 
     cid = _normalizar_conversa_id(conversa_id_req)
+    agente_norm = normalizar_agente_alvo(agente_alvo_req)
 
     def _stream_erro_imediato(payload_erro: dict) -> StreamingResponse:
         async def _gen_err():
@@ -2929,7 +3052,7 @@ async def conversar_stream(request: Request):
                 "fatos": listar_fatos(),
             })
 
-    salvar_mensagem("user", msg_historico)
+    salvar_mensagem("user", msg_historico, conversa_id=cid, agente_alvo=agente_norm)
 
     registro, erro_conflito = _iniciar_tarefa_chat_background(
         conversa_id=cid,
@@ -2943,6 +3066,7 @@ async def conversar_stream(request: Request):
         nomes_exibicao=nomes_exibicao,
         caminhos_salvos_rel=caminhos_salvos_rel,
         usar_stream=True,
+        agente_alvo=agente_norm,
     )
     if erro_conflito is not None or registro is None:
         return _stream_erro_imediato({

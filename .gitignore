@@ -13,8 +13,8 @@ wheels/
 
 # Virtual environments & IDE
 .venv/
-.venv
 .vscode/
+.pytest_lab_tmp/
 
 # Segredos e credenciais (exceto .env.example)
 .env

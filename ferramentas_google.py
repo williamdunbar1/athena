@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import base64
 import contextlib
 import html
@@ -5,13 +7,13 @@ import re
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import InstalledAppFlow
-from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
+
+if TYPE_CHECKING:
+    from google.oauth2.credentials import Credentials
 
 from cache_ttl import cache_ttl
 from eficiencia import compactar_saida_tool
@@ -65,6 +67,10 @@ def _fuso_sp():
 
 def conectar_conta_google() -> Credentials:
     """Executa o fluxo OAuth local (navegador) e salva/renova token.json."""
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+    from google_auth_oauthlib.flow import InstalledAppFlow
+
     creds: Credentials | None = None
     if TOKEN_PATH.exists():
         creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
@@ -95,6 +101,9 @@ def conectar_conta_google() -> Credentials:
 
 def _obter_credenciais() -> Credentials:
     """Carrega e renova silenciosamente token.json sem abrir navegador."""
+    from google.auth.transport.requests import Request
+    from google.oauth2.credentials import Credentials
+
     if not TOKEN_PATH.exists():
         raise GoogleNaoConectadoError(MSG_CONECTAR)
 
@@ -124,6 +133,8 @@ def _obter_credenciais() -> Credentials:
 
 
 def _servico(nome: str, versao: str):
+    from googleapiclient.discovery import build
+
     creds = _obter_credenciais()
     return build(nome, versao, credentials=creds, cache_discovery=False)
 
@@ -410,7 +421,12 @@ def marcar_emails_como_lidos(message_ids: list[str]) -> str:
 @cache_ttl(
     300.0,
     chave_fn=lambda dias=7: max(1, min(int(dias), 90)),
-    armazenar_se=lambda txt: isinstance(txt, str) and not txt.startswith("Erro") and "nao conectado" not in txt.lower(),
+    armazenar_se=lambda txt: (
+        isinstance(txt, str)
+        and not txt.startswith("Erro")
+        and "nao conectad" not in txt.lower()
+        and "nao possui as novas permissoes" not in txt.lower()
+    ),
 )
 def listar_proximos_eventos(dias: int = 7, forcar: bool = False) -> str:
     """Lista os compromissos da agenda principal do Google nos proximos X dias (cache RAM 5 min; `forcar=True` atualiza)."""

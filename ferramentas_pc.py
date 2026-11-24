@@ -5,6 +5,9 @@ from pathlib import Path
 
 import httpx
 
+from eficiencia import compactar_saida_tool
+from guardrails import sanitizar_conteudo_externo
+
 CONTAINER = "sandbox-agentes"
 RUNTIME = shutil.which("podman") or shutil.which("docker") or "podman"
 _BASE_DIR = Path(__file__).resolve().parent
@@ -75,6 +78,17 @@ def rodar_comando_seguro(pasta_raiz: Path, comando: str) -> str:
 
 
 async def buscar_url(url: str) -> str:
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-        r = await client.get(url)
-        return f"Status {r.status_code} ({url}):\n{r.text[:6000]}"
+    alvo = (url or "").strip()
+    if not alvo.lower().startswith(("http://", "https://")):
+        return "Erro: informe uma URL valida iniciando com http:// ou https://."
+    try:
+        async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+            r = await client.get(alvo)
+    except httpx.HTTPError as exc:
+        return f"Erro ao consultar URL ({alvo}): {exc}"
+    corpo = compactar_saida_tool(r.text, max_chars=6000)
+    sanitizado, _susp, _pads = sanitizar_conteudo_externo(
+        f"Status {r.status_code} ({alvo}):\n{corpo}",
+        origem=f"url:{alvo}",
+    )
+    return sanitizado

@@ -10,7 +10,10 @@ def main() -> int:
         print(f"[ERRO] Arquivo '{CREDENTIALS_PATH.name}' nao encontrado em: {CREDENTIALS_PATH.parent}")
         print("\nComo gerar o credentials.json:")
         print("1. Acesse https://console.cloud.google.com/ e crie/selecione um projeto.")
-        print("2. Ative as APIs: Gmail API, Google Calendar API e Google Drive API.")
+        print(
+            "2. Ative as APIs: Gmail API, Google Calendar API, Google Drive API, "
+            "Google Docs API, Google Sheets API, Google Slides API e Google Tasks API."
+        )
         print("3. Configure a Tela de Permissao OAuth (External -> adicione seu e-mail em Test users).")
         print("4. Em Credenciais -> Criar credenciais -> ID do cliente OAuth -> Aplicativo para computador (Desktop app).")
         print(f"5. Baixe o JSON e salve como: {CREDENTIALS_PATH}")
@@ -29,7 +32,7 @@ def main() -> int:
         return 1
 
     print(f"\n[OK] Conta Google conectada! Token salvo em: {TOKEN_PATH}")
-    print("O Agente Google ja pode consultar Gmail (e criar rascunhos), Agenda e Drive.")
+    print("O Agente Google ja pode consultar Gmail (e rascunhos), Agenda, Drive, Docs, Sheets, Slides e Tasks.")
     return 0
 
 
