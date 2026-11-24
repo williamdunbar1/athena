@@ -178,6 +178,9 @@ from ferramentas_navegador import (
     ler_pagina_markdown_crawl4ai as _ler_pagina_markdown_crawl4ai,
 )
 from ferramentas_navegador import (
+    solicitar_controle_humano as _solicitar_controle_humano,
+)
+from ferramentas_navegador import (
     tirar_screenshot as _tirar_screenshot,
 )
 from ferramentas_obsidian import (
@@ -1099,6 +1102,7 @@ class ContextoMissao:
     on_evento: Callable[[dict], None] | None = None
     acoes_windows: list[dict] = field(default_factory=list)
     on_permissao_windows: Callable[[dict], None] | None = None
+    on_take_the_wheel: Callable[[dict], None] | None = None
 
     def registrar(self, de: str, para: str, tipo: str, conteudo: str):
         item = {
@@ -1119,6 +1123,13 @@ class ContextoMissao:
         if self.on_permissao_windows is not None:
             with contextlib.suppress(Exception):
                 self.on_permissao_windows(acao)
+
+    def emitir_take_the_wheel(self, dados: dict) -> None:
+        if not isinstance(dados, dict):
+            return
+        if self.on_take_the_wheel is not None:
+            with contextlib.suppress(Exception):
+                self.on_take_the_wheel(dados)
 
 
 agente_sistema = Agent(
@@ -1176,6 +1187,8 @@ agente_pesquisador = Agent(
         "(`abrir_e_ler_pagina`, `tirar_screenshot`, `buscar_no_site`) para busca de elementos interativos ou capturas de tela. "
         "So use `executar_navegacao_autonoma` (browser-use, limite de 8 passos) quando uma pesquisa publica REALMENTE exigir "
         "varios cliques, filtros interativos ou paginacao — NUNCA para bancos, corretoras, compras ou logins. "
+        "Se encontrar CAPTCHA, verificacao anti-bot ou login necessario, NUNCA tente burlar: chame `pedir_ajuda_humana_navegador` "
+        "(Take the wheel) para pausar e aguardar o usuario concluir e devolver o controle. "
         "Nunca peca, colete ou salve senhas ou credenciais."
     ),
 )
@@ -1203,6 +1216,27 @@ async def executar_navegacao_autonoma(
         f"executar_navegacao_autonoma({url_inicial or 'web'}, max_steps={max_steps})",
     )
     return await _executar_tarefa_browser_use(objetivo, url_inicial=url_inicial, max_steps=max_steps)
+
+
+@agente_pesquisador.tool
+async def pedir_ajuda_humana_navegador(
+    ctx: RunContext[ContextoMissao],
+    motivo: str,
+    url: str = "",
+) -> str:
+    """Pausa o agente (Take the wheel) e chama o usuario no chat quando encontrar CAPTCHA ou login necessario, retomando quando o usuario devolver o controle."""
+    ctx.deps.registrar(
+        "Agente Pesquisador",
+        "Take the wheel (Usuario)",
+        "ferramenta",
+        f"pedir_ajuda_humana_navegador({motivo[:80]})",
+    )
+    res = await _solicitar_controle_humano(
+        motivo=motivo,
+        url=url,
+        on_evento=ctx.deps.emitir_take_the_wheel,
+    )
+    return str(res.get("mensagem") or res.get("status") or "Concluido.")
 
 
 @agente_pesquisador.tool

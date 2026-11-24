@@ -5,7 +5,11 @@ import os
 import re
 import sys
 import unicodedata
+import uuid
+from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from eficiencia import compactar_saida_tool
@@ -19,6 +23,9 @@ TIMEOUT_NAVEGACAO_MS = 30000
 TIMEOUT_NETWORKIDLE_MS = 8000
 MAX_STEPS_BROWSER_USE = 8
 TIMEOUT_BROWSER_USE_SEGUNDOS = 90.0
+TIMEOUT_TAKE_WHEEL_PADRAO = 300
+
+SESSOES_TAKE_WHEEL: dict[str, dict[str, Any]] = {}
 
 DOMINIOS_BLOQUEADOS_BROWSER_USE: frozenset[str] = frozenset(
     {
@@ -593,3 +600,144 @@ async def executar_tarefa_browser_use(
         origem=f"browser-use:{url_valida or 'web'}",
     )
     return compactar_saida_tool(sanitizado)
+
+
+# ==============================================================================
+# TAKE THE WHEEL (PAUSA HUMANA CONTROLADA PARA CAPTCHA / LOGIN NO NAVEGADOR)
+# ==============================================================================
+
+
+async def solicitar_controle_humano(
+    motivo: str,
+    url: str = "",
+    timeout_s: int = TIMEOUT_TAKE_WHEEL_PADRAO,
+    *,
+    on_evento: Callable[[dict[str, Any]], None] | None = None,
+) -> dict[str, Any]:
+    """Pausa a execucao do agente aguardando intervencao humana (CAPTCHA/login) via `asyncio.Event`."""
+    motivo_limpo = (" ".join((motivo or "").split()) or "Intervencao humana necessaria no navegador")[:300]
+    url_limpa = (url or "").strip()[:500]
+    sessao_id = f"tw_{uuid.uuid4().hex[:10]}"
+    evento = asyncio.Event()
+    loop_atual = asyncio.get_running_loop()
+
+    sessao: dict[str, Any] = {
+        "sessao_id": sessao_id,
+        "evento": evento,
+        "loop": loop_atual,
+        "motivo": motivo_limpo,
+        "url": url_limpa,
+        "cancelada": False,
+        "retomada": False,
+        "criado_em": datetime.now().isoformat(timespec="seconds"),
+    }
+    SESSOES_TAKE_WHEEL[sessao_id] = sessao
+
+    payload_sse = {
+        "tipo": "take_the_wheel",
+        "sessao_id": sessao_id,
+        "motivo": motivo_limpo,
+        "url": url_limpa,
+    }
+    if on_evento is not None:
+        with contextlib.suppress(Exception):
+            on_evento(payload_sse)
+
+    with contextlib.suppress(Exception):
+        from auditoria import registrar_atividade
+
+        registrar_atividade(
+            agente="Take the wheel",
+            acao="solicitar_controle_humano",
+            alvo=url_limpa or "navegador",
+            status="aguardando",
+            detalhes=f"sessao={sessao_id} | {motivo_limpo}",
+        )
+
+    limite_seg = max(0.05, float(timeout_s or TIMEOUT_TAKE_WHEEL_PADRAO))
+    try:
+        await asyncio.wait_for(evento.wait(), timeout=limite_seg)
+        if sessao["cancelada"]:
+            return {
+                "ok": False,
+                "status": "cancelado",
+                "sessao_id": sessao_id,
+                "cancelada": True,
+                "mensagem": "Intervencao cancelada pelo usuario. Nao prossiga com a navegacao.",
+            }
+        return {
+            "ok": True,
+            "status": "retomado",
+            "sessao_id": sessao_id,
+            "cancelada": False,
+            "mensagem": "Controle devolvido pelo usuario! Continue a tarefa a partir do estado atual.",
+        }
+    except TimeoutError:
+        sessao["cancelada"] = True
+        return {
+            "ok": False,
+            "status": "timeout",
+            "sessao_id": sessao_id,
+            "cancelada": True,
+            "mensagem": f"Tempo limite ({int(limite_seg)}s) esgotado aguardando o usuario devolver o controle.",
+        }
+    finally:
+        SESSOES_TAKE_WHEEL.pop(sessao_id, None)
+
+
+def _sinalizar_evento_take_wheel(sessao: dict[str, Any]) -> None:
+    evento: asyncio.Event = sessao["evento"]
+    loop = sessao.get("loop")
+    if loop is not None and not loop.is_closed():
+        try:
+            loop.call_soon_threadsafe(evento.set)
+            return
+        except RuntimeError:
+            pass
+    evento.set()
+
+
+def retomar_controle_agente(sessao_id: str) -> dict[str, Any]:
+    """Destrava o `asyncio.Event` de uma sessao Take the wheel devolvendo o controle ao agente."""
+    sessao = SESSOES_TAKE_WHEEL.get(sessao_id)
+    if sessao is None:
+        return {"ok": False, "erro": f"Sessao Take the wheel '{sessao_id}' nao encontrada ou ja finalizada."}
+
+    sessao["cancelada"] = False
+    sessao["retomada"] = True
+    _sinalizar_evento_take_wheel(sessao)
+
+    with contextlib.suppress(Exception):
+        from auditoria import registrar_atividade
+
+        registrar_atividade(
+            agente="Take the wheel",
+            acao="retomar_controle",
+            alvo=str(sessao.get("url") or "navegador"),
+            status="sucesso",
+            detalhes=f"sessao={sessao_id} retomada pelo usuario.",
+        )
+    return {"ok": True, "sessao_id": sessao_id, "status": "retomado"}
+
+
+def cancelar_controle_agente(sessao_id: str) -> dict[str, Any]:
+    """Cancela uma sessao Take the wheel e destrava imediatamente o agente para encerrar."""
+    sessao = SESSOES_TAKE_WHEEL.get(sessao_id)
+    if sessao is None:
+        return {"ok": False, "erro": f"Sessao Take the wheel '{sessao_id}' nao encontrada ou ja finalizada."}
+
+    sessao["cancelada"] = True
+    sessao["retomada"] = False
+    _sinalizar_evento_take_wheel(sessao)
+
+    with contextlib.suppress(Exception):
+        from auditoria import registrar_atividade
+
+        registrar_atividade(
+            agente="Take the wheel",
+            acao="cancelar_controle",
+            alvo=str(sessao.get("url") or "navegador"),
+            status="cancelado",
+            detalhes=f"sessao={sessao_id} cancelada pelo usuario.",
+        )
+    return {"ok": True, "sessao_id": sessao_id, "status": "cancelado"}

@@ -104,6 +104,10 @@ from ferramentas_investimentos import (
     responder_proposta,
     salvar_ativo_real_estruturado,
 )
+from ferramentas_navegador import (
+    cancelar_controle_agente,
+    retomar_controle_agente,
+)
 from ferramentas_windows import (
     PASTA_PRINTS,
     aprovar_acao_windows,
@@ -168,6 +172,11 @@ from semantic_cache import (
     salvar_cache_semantico,
 )
 from skills_manager import listar_skills
+from teach_bot import (
+    finalizar_gravacao_skill,
+    iniciar_gravacao_skill,
+    obter_status_gravacao,
+)
 from ulife_v2 import obter_dados_ulife_estruturados, sincronizar_ulife
 from voz import (
     MAX_AUDIO_BYTES,
@@ -2509,6 +2518,14 @@ def _iniciar_tarefa_chat_background(
         }
         loop.call_soon_threadsafe(_publicar_evento_tarefa, registro, "permissao_windows", payload)
 
+    def _enfileirar_take_the_wheel(dados: dict) -> None:
+        payload = {
+            "tipo": "take_the_wheel",
+            "conversa_id": cid,
+            **dados,
+        }
+        loop.call_soon_threadsafe(_publicar_evento_tarefa, registro, "take_the_wheel", payload)
+
     ctx = ContextoMissao(
         pasta_raiz=Path(CONFIG["pasta_raiz"]),
         modelo=modelo_real,
@@ -2516,6 +2533,7 @@ def _iniciar_tarefa_chat_background(
         mensagem_atual=(mensagem_atual or msg_historico),
         on_evento=_enfileirar_status,
         on_permissao_windows=_enfileirar_permissao_windows,
+        on_take_the_wheel=_enfileirar_take_the_wheel,
     )
     ESTADO_EXECUCAO["ativo"] = True
     ESTADO_EXECUCAO["modelo"] = modelo_real
@@ -3099,7 +3117,7 @@ async def _assinar_tarefa_sse(registro: dict, *, replay_compacto: bool = False):
         if registro.get("ultimo_status") is not None:
             eventos_iniciais.append(("status", registro["ultimo_status"]))
         for tipo_ev, payload_ev in registro.get("eventos") or []:
-            if tipo_ev == "permissao_windows":
+            if tipo_ev in ("permissao_windows", "take_the_wheel"):
                 eventos_iniciais.append((tipo_ev, payload_ev))
         texto_acum = str(registro.get("texto_parcial") or "") or "".join(registro.get("partes_texto") or [])
         if texto_acum:
@@ -3359,3 +3377,53 @@ def api_windows_whitelist():
 def api_windows_whitelist_remover(item: str):
     """Remove um aplicativo da whitelist 'Sempre permitir'."""
     return remover_whitelist_windows(item)
+
+
+class IniciarGravacaoSkillPayload(BaseModel):
+    nome_skill: str
+    url_inicial: str
+    descricao: str = ""
+
+
+@app.post("/api/skills/gravar/iniciar")
+async def api_teach_bot_iniciar(payload: IniciarGravacaoSkillPayload):
+    """Inicia uma sessao controlada do 'Teach a Bot' para gravar passos e gerar SKILL.md."""
+    try:
+        return await iniciar_gravacao_skill(
+            payload.nome_skill,
+            payload.url_inicial,
+            descricao=payload.descricao,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.post("/api/skills/gravar/finalizar/{sessao_id}")
+async def api_teach_bot_finalizar(sessao_id: str):
+    """Finaliza a gravacao do 'Teach a Bot', gera skills/<slug>/SKILL.md e recarrega o catalogo."""
+    try:
+        return await finalizar_gravacao_skill(sessao_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@app.get("/api/skills/gravar/status")
+def api_teach_bot_status():
+    """Retorna o status da gravacao ativa do 'Teach a Bot' (se houver)."""
+    return obter_status_gravacao()
+
+
+@app.post("/api/navegador/retomar/{sessao_id}")
+def api_navegador_retomar(sessao_id: str):
+    """Devolve o controle ao agente apos intervencao humana ('Take the wheel')."""
+    return retomar_controle_agente(sessao_id)
+
+
+@app.post("/api/navegador/cancelar/{sessao_id}")
+def api_navegador_cancelar(sessao_id: str):
+    """Cancela a espera de intervencao humana ('Take the wheel') e aborta a navegacao."""
+    return cancelar_controle_agente(sessao_id)

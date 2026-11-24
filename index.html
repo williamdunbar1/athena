@@ -1223,6 +1223,54 @@
     font-weight: 700;
   }
   .btn-win-permitir:hover { background: var(--accent-hover); }
+
+  /* Card amarelo inline "Take the wheel" (intervencao humana controlada no navegador) */
+  .take-wheel-card {
+    margin-top: 12px;
+    background: rgba(234, 179, 8, 0.08);
+    border: 1px solid rgba(234, 179, 8, 0.55);
+    border-left: 4px solid var(--accent);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    max-width: 580px;
+  }
+  .take-wheel-motivo {
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-strong);
+  }
+  .take-wheel-status-done {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--accent-hover);
+  }
+  .teach-bot-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+  }
+  .teach-bot-bar.gravando {
+    border-color: rgba(234, 179, 8, 0.55);
+    background: rgba(234, 179, 8, 0.07);
+  }
+  .teach-bot-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #ef4444;
+    display: inline-block;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25);
+    animation: pulse-dot 1.2s ease-in-out infinite;
+  }
   .btn-win-sempre {
     height: 32px;
     padding: 0 12px;
@@ -3292,6 +3340,27 @@
                 <div id="box-rotinas-dinamicas" class="empty-note">Carregando rotinas dinâmicas...</div>
               </div>
 
+              <div class="panel" id="panel-teach-bot">
+                <h3>
+                  <span style="display:inline-flex;align-items:center;gap:8px;">
+                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
+                    <span>Teach a Bot (Gravar Tarefa → SKILL.md)</span>
+                  </span>
+                  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <button type="button" id="btn-teach-bot-iniciar" class="accent mini" onclick="iniciarTeachBotUI()">
+                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
+                      <span>Ensinar Tarefa (Teach a Bot)</span>
+                    </button>
+                    <button type="button" id="btn-teach-bot-finalizar" class="btn-win-permitir hidden" onclick="finalizarTeachBotUI(this)">
+                      Finalizar e Salvar Skill
+                    </button>
+                  </div>
+                </h3>
+                <div id="teach-bot-status" class="teach-bot-bar">
+                  <span class="empty-note">Clique em <strong>Ensinar Tarefa (Teach a Bot)</strong> para abrir o navegador visível, executar os passos e salvar automaticamente em <code>skills/&lt;nome&gt;/SKILL.md</code>. Bancos são bloqueados e campos de senha nunca são gravados.</span>
+                </div>
+              </div>
+
               <div class="panel" id="panel-atividade-permissoes">
                 <h3>
                   <span style="display:inline-flex;align-items:center;gap:8px;">
@@ -3305,6 +3374,8 @@
                       <option value="Agente Faxineiro">Agente Faxineiro</option>
                       <option value="Agente Sistema">Agente Sistema</option>
                       <option value="Athena Lab">Athena Lab</option>
+                      <option value="Teach a Bot">Teach a Bot</option>
+                      <option value="Navegador">Navegador (Take the wheel)</option>
                       <option value="Permissoes">Permissões</option>
                       <option value="athena">Athena (Rotinas)</option>
                     </select>
@@ -3463,9 +3534,14 @@
           <div id="fatos-temporais" class="mem-bar"></div>
         </div>
         <div>
-          <div class="modal-sub-title">
-            <span>Agent Skills Ativas</span>
-            <span id="skills-count" class="skill-count">0</span>
+          <div class="modal-sub-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
+            <span style="display:inline-flex;align-items:center;gap:8px;">
+              <span>Agent Skills Ativas</span>
+              <span id="skills-count" class="skill-count">0</span>
+            </span>
+            <button type="button" class="ghost mini" onclick="fecharModalMemorias(); iniciarTeachBotUI();">
+              Ensinar Tarefa (Teach a Bot)
+            </button>
           </div>
           <div id="skills-lista" class="skills-bar"></div>
         </div>
@@ -5379,6 +5455,78 @@ async function responderPermissaoWindows(acaoId, aprovar, semprePermitir, btn) {
   }
 }
 
+/* ===== TAKE THE WHEEL (PAUSA HUMANA CONTROLADA NO NAVEGADOR) ===== */
+function criarCardTakeTheWheel(dados) {
+  const card = document.createElement("div");
+  card.className = "take-wheel-card";
+  card.dataset.takeWheelId = String(dados.sessao_id || "");
+
+  const urlSegura = (dados.url && /^https?:\/\//i.test(String(dados.url))) ? String(dados.url) : "";
+  const linkHtml = urlSegura
+    ? `<div class="win-perm-target"><a href="${escHtml(urlSegura)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-hover);text-decoration:underline;">${escHtml(urlSegura)}</a></div>`
+    : "";
+
+  card.innerHTML = `
+    <div class="win-perm-head">
+      <div class="win-perm-title">
+        <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M12 3v6.5"/><path d="M5.6 15.8 9.8 13.3"/><path d="M18.4 15.8 14.2 13.3"/></svg>
+        <span>Assuma o Controle (Take the wheel)</span>
+      </div>
+      <span class="win-perm-risco medio">Aguardando você</span>
+    </div>
+    <div class="take-wheel-motivo">${escHtml(dados.motivo || "O agente precisa da sua intervenção manual (CAPTCHA ou login) para continuar.")}</div>
+    ${linkHtml}
+    <div class="win-perm-actions">
+      <button type="button" class="btn-win-permitir" onclick="responderTakeTheWheel('${escHtml(dados.sessao_id || "")}', true, this)">Devolver Controle ao Agente</button>
+      <button type="button" class="btn-win-recusar" onclick="responderTakeTheWheel('${escHtml(dados.sessao_id || "")}', false, this)">Cancelar</button>
+    </div>
+  `;
+  return card;
+}
+
+function anexarCardTakeTheWheelNaBolha(bubbleOuWrap, dados) {
+  if (!bubbleOuWrap || !dados || !dados.sessao_id) return;
+  const wrap = bubbleOuWrap.classList.contains("msg-bot-wrap")
+    ? bubbleOuWrap
+    : (bubbleOuWrap.parentElement && bubbleOuWrap.parentElement.classList.contains("msg-bot-wrap")
+      ? bubbleOuWrap.parentElement
+      : null);
+  if (!wrap) return;
+  if (wrap.querySelector(`.take-wheel-card[data-take-wheel-id="${dados.sessao_id}"]`)) return;
+
+  const card = criarCardTakeTheWheel(dados);
+  const actionsBar = wrap.querySelector(".msg-actions");
+  if (actionsBar) wrap.insertBefore(card, actionsBar);
+  else wrap.appendChild(card);
+}
+
+async function responderTakeTheWheel(sessaoId, retomar, btn) {
+  if (!sessaoId) return;
+  const card = btn ? btn.closest(".take-wheel-card") : document.querySelector(`.take-wheel-card[data-take-wheel-id="${sessaoId}"]`);
+  const boxAcoes = card ? card.querySelector(".win-perm-actions") : null;
+  if (card) card.querySelectorAll("button").forEach(b => { b.disabled = true; });
+  try {
+    const endpoint = retomar
+      ? `/api/navegador/retomar/${encodeURIComponent(sessaoId)}`
+      : `/api/navegador/cancelar/${encodeURIComponent(sessaoId)}`;
+    const r = await fetch(endpoint, { method: "POST" }).then(x => x.json());
+    if (r && r.ok) {
+      if (boxAcoes) {
+        boxAcoes.innerHTML = `<span class="take-wheel-status-done">${retomar ? "Controle devolvido ao agente ✓ Continuando..." : "Intervenção cancelada."}</span>`;
+      }
+      const badge = card ? card.querySelector(".win-perm-risco") : null;
+      if (badge) badge.textContent = retomar ? "Retomado" : "Cancelado";
+      mostrarToast(retomar ? "Controle devolvido ao agente ✓" : "Navegação cancelada.");
+    } else {
+      if (card) card.querySelectorAll("button").forEach(b => { b.disabled = false; });
+      mostrarToast((r && (r.erro || r.detail)) || "Sessão não encontrada ou já encerrada.", true);
+    }
+  } catch (_) {
+    if (card) card.querySelectorAll("button").forEach(b => { b.disabled = false; });
+    mostrarToast("Falha ao comunicar com o servidor.", true);
+  }
+}
+
 async function consumirFluxoSSEChat(resp, { bubbleInicial = null, modeloInicial = _modeloAtual, modoReattach = false } = {}) {
   const sc = document.getElementById("chat-scroll");
   let temp = bubbleInicial;
@@ -5488,6 +5636,10 @@ async function consumirFluxoSSEChat(resp, { bubbleInicial = null, modeloInicial 
         anexarCardPermissaoNaBolha(alvo, payload.acao);
         rolarSePertoDoFim();
       }
+    } else if (evTipo === "take_the_wheel" || payload.tipo === "take_the_wheel") {
+      const alvo = garantirBolhaBot("Agente pausado aguardando sua intervenção...");
+      anexarCardTakeTheWheelNaBolha(alvo, payload);
+      rolarSePertoDoFim();
     } else if (evTipo === "done") {
       finalPayload = payload;
       if (payload.modelo_usado) modeloUsadoLive = payload.modelo_usado;
@@ -6805,6 +6957,7 @@ async function carregarRotinas() {
 }
 
 async function carregarRotinasDinamicas() {
+  atualizarStatusTeachBot();
   const box = document.getElementById("box-rotinas-dinamicas");
   if (!box) return;
   try {
@@ -7434,6 +7587,117 @@ async function carregarSkills() {
     renderSkills(r.skills || []);
   } catch (_) {
     renderSkills([]);
+  }
+}
+
+/* ===== TEACH A BOT (GRAVAR PASSOS NO NAVEGADOR -> SKILL.md) ===== */
+let _teachBotSessaoId = null;
+let _teachBotPollTimer = null;
+
+function _pararPollTeachBot() {
+  if (_teachBotPollTimer) {
+    clearInterval(_teachBotPollTimer);
+    _teachBotPollTimer = null;
+  }
+}
+
+function renderStatusTeachBot(dados) {
+  const box = document.getElementById("teach-bot-status");
+  const btnIni = document.getElementById("btn-teach-bot-iniciar");
+  const btnFin = document.getElementById("btn-teach-bot-finalizar");
+  if (!box) return;
+
+  const gravando = Boolean(dados && (dados.ativa || dados.gravando));
+  _teachBotSessaoId = gravando ? (dados.sessao_id || _teachBotSessaoId) : null;
+  if (btnIni) btnIni.classList.toggle("hidden", gravando);
+  if (btnFin) btnFin.classList.toggle("hidden", !gravando);
+  box.classList.toggle("gravando", gravando);
+
+  if (!gravando) {
+    _pararPollTeachBot();
+    box.innerHTML = '<span class="empty-note">Clique em <strong>Ensinar Tarefa (Teach a Bot)</strong> para abrir o navegador visível, executar os passos e salvar automaticamente em <code>skills/&lt;nome&gt;/SKILL.md</code>. Bancos são bloqueados e campos de senha nunca são gravados.</span>';
+    return;
+  }
+
+  const passos = Number(dados.total_passos ?? dados.passos_gravados ?? 0);
+  const nome = escHtml(dados.nome_skill || dados.slug || "Skill");
+  const url = escHtml(dados.url_inicial || "");
+  const erroTxt = dados.erro ? `<div style="color:#fca5a5;font-size:12px;margin-top:4px;">Aviso: ${escHtml(dados.erro)}</div>` : "";
+  box.innerHTML = `
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text-strong);font-size:13px;">
+        <span class="teach-bot-dot" aria-hidden="true"></span>
+        <span>Gravando skill: ${nome}</span>
+        <span class="lab-badge accent">${passos} passo(s)</span>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px;">URL inicial: <code>${url}</code> · Execute a tarefa no navegador e clique em <strong>Finalizar e Salvar Skill</strong>.</div>
+      ${erroTxt}
+    </div>
+  `;
+}
+
+async function atualizarStatusTeachBot() {
+  try {
+    const r = await fetch("/api/skills/gravar/status").then(x => x.json());
+    renderStatusTeachBot(r);
+  } catch (_) {}
+}
+
+async function iniciarTeachBotUI() {
+  const nome = window.prompt("Nome da nova skill (ex.: Checar Notas no Portal):");
+  if (!nome || !nome.trim()) return;
+  const url = window.prompt("URL inicial (https://... — bancos/corretoras são bloqueados):", "https://");
+  if (!url || !url.trim() || url.trim() === "https://") return;
+  const descricao = window.prompt("Descrição curta da tarefa (opcional):", "") || "";
+
+  if (typeof mostrarView === "function") mostrarView("rotinas");
+  mostrarToast("Iniciando gravação do Teach a Bot...");
+  try {
+    const resp = await fetch("/api/skills/gravar/iniciar", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nome_skill: nome.trim(), url_inicial: url.trim(), descricao: descricao.trim() }),
+    });
+    const r = await resp.json();
+    if (!resp.ok || !r || !r.ok) {
+      mostrarToast((r && (r.detail || r.erro)) || "Não foi possível iniciar a gravação.", true);
+      return;
+    }
+    renderStatusTeachBot({ ...r, ativa: true, total_passos: 1 });
+    _pararPollTeachBot();
+    _teachBotPollTimer = setInterval(atualizarStatusTeachBot, 2000);
+    mostrarToast("Navegador aberto! Execute os passos e clique em Finalizar e Salvar Skill.");
+  } catch (_) {
+    mostrarToast("Erro de rede ao iniciar o Teach a Bot.", true);
+  }
+}
+
+async function finalizarTeachBotUI(btn) {
+  if (!_teachBotSessaoId) {
+    await atualizarStatusTeachBot();
+    if (!_teachBotSessaoId) {
+      mostrarToast("Nenhuma gravação ativa para finalizar.", true);
+      return;
+    }
+  }
+  if (btn) btn.disabled = true;
+  mostrarToast("Finalizando gravação e gerando SKILL.md...");
+  try {
+    const resp = await fetch(`/api/skills/gravar/finalizar/${encodeURIComponent(_teachBotSessaoId)}`, { method: "POST" });
+    const r = await resp.json();
+    if (!resp.ok || !r || !r.ok) {
+      mostrarToast((r && (r.detail || r.erro)) || "Erro ao finalizar gravação.", true);
+      return;
+    }
+    _pararPollTeachBot();
+    renderStatusTeachBot({ ativa: false });
+    mostrarToast(`Skill "${r.slug}" salva com ${Number(r.total_passos || 0)} passo(s) ✓`);
+    await carregarSkills();
+    if (typeof carregarAuditoriaAtividades === "function") await carregarAuditoriaAtividades();
+  } catch (_) {
+    mostrarToast("Falha de rede ao finalizar o Teach a Bot.", true);
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

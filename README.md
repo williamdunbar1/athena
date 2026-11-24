@@ -68,9 +68,15 @@ flowchart TB
   - **Defesa contra Indirect Prompt Injection**: sanitiza conteúdos vindos de fontes externas não confiáveis (Web, Gmail, Ulife, Logfire), detectando padrões de injeção em PT/EN e encapsulando o conteúdo em `<conteudo_externo_nao_confiavel>`.
   - **Visão de Tela sob Demanda (`mss` + `Pillow`)**: captura redimensionada (`<= 1440px` JPEG) apenas mediante consentimento explícito do usuário a cada solicitação (card inline sem opção *"Sempre permitir"*).
   - **Controle de Acesso e Isolamento**: autenticação opcional por **PIN + Biometria WebAuthn/Passkeys** (cookie `HttpOnly` HMAC-SHA256), faxina local sem exclusão permanente (`send2trash`), ações Windows com aprovação explícita e comandos Linux isolados em container Podman (`sandbox-agentes`).
-- **Voz Neural Local + Interface PWA Mobile/Desktop**:
-  - Suporte opcional a **STT local (`faster-whisper`)** e **TTS neural `pt-BR` (`edge-tts`)** em `voz.py` (extras `voice`), com fallback transparente para `SpeechRecognition` / `speechSynthesis` no navegador.
-  - Streaming SSE em tempo real com trilha de agentes, anexos multimodais (fotos/PDFs) e rotinas agendadas via `APScheduler`.
+- **Voz Neural Local, Chat Rico & Visualizações Interativas**:
+  - **Chat Rico no PWA (`index.html`)**: streaming SSE em tempo real com trilha de agentes, anexos multimodais, equações matemáticas via **KaTeX**, diagramas **Mermaid.js**, blocos de código com **highlight.js** + botão **Copiar** e transcrição de videoaulas do YouTube (`extrair_transcricao_youtube` via `youtube-transcript-api` lazy + guardrails).
+  - **Visualizações Interativas (`vis-network` + `Apache ECharts`)**: grafo clicável do Segundo Cérebro (`GET /api/obsidian/grafo/visual` integrando notas do Obsidian, `#tags` e Memória Temporal) e gráficos financeiros interativos na aba **Carteira** (alocação donut + evolução patrimonial).
+  - Suporte opcional a **STT local (`faster-whisper`)** e **TTS neural `pt-BR` (`edge-tts` + `kokoro-onnx` offline)** em `voz.py`, com fallback transparente para `SpeechRecognition` / `speechSynthesis` no navegador.
+- **Autonomia Controlada & Governança (estilo OpenBot)**:
+  - **Rotinas Dinâmicas pelo Chat (`rotinas.py`, migration `006`)**: agendamento em linguagem natural via chat (`criar_rotina_agendada_tool`, cron de 5 campos) com **auto-pausa de segurança após 3 falhas consecutivas**.
+  - **Trilha de Auditoria Unificada ("Activity") & Permissões por Pasta (`auditoria.py`)**: registro auditável de ações sensíveis com filtro por agente (`GET /api/auditoria/atividades`) e gestão de pastas aprovadas revogáveis com 1 clique (`GET/POST/DELETE /api/permissoes/pastas`).
+  - **Teach a Bot (`teach_bot.py`)**: grava passos executados pelo usuário em navegador visível e gera automaticamente `skills/<slug>/SKILL.md` recarregando o catálogo — bloqueando domínios bancários/corretoras/`gov.br` e omitindo sempre campos `input[type="password"]` (`[SENHA_OMITIDA]`).
+  - **Take the wheel (`ferramentas_navegador.py`)**: pausa controlada via `asyncio.Event` + card amarelo via SSE no chat quando o Agente Pesquisador encontra CAPTCHA ou login manual, com botões **"Devolver Controle ao Agente"** e **"Cancelar"**.
 - **Observabilidade Completa (OpenTelemetry + Logfire + structlog) & Alembic**:
   - Instrumentação unificada (`observabilidade.py`) para Pydantic AI, FastAPI, FastMCP e HTTPX com *scrubbing* de segredos, logs estruturados `structlog` correlacionados a `trace_id`/`span_id` (`ATHENA_LOG_FORMAT=console|json`) e autodiagnóstico somente leitura via `LogfireQueryClient`.
   - Migrations versionadas e idempotentes do `memoria.db` com **Alembic** (`alembic/`), preservando 100% dos dados históricos.
@@ -96,9 +102,10 @@ A Athena aplica uma pilha de 6 camadas complementares para minimizar latência (
 | --- | --- |
 | **Agentes & IA** | Python 3.12, Pydantic AI v2, Google Gemini API, Ollama (fallback local), FastMCP |
 | **Backend & Persistência** | FastAPI, Uvicorn, SSE (`StreamingResponse`), APScheduler, SQLite (WAL), Alembic, SQLAlchemy |
-| **Conhecimento (RAG & Grafo)** | Qdrant Local, FastEmbed (Dense + BM25 + CrossEncoder Reranker), NetworkX (GraphRAG), PyPDF |
-| **Voz & Visão (Extras Opcionais)** | `faster-whisper` (STT local), `edge-tts` (TTS neural pt-BR), `mss` + `Pillow` (visão de tela) |
-| **Integrações** | Google Workspace APIs (OAuth2), Obsidian Vault, Ulife API v2, Banco Central (SGS), yfinance, Playwright |
+| **Conhecimento (RAG & Grafo)** | Qdrant Local, FastEmbed (Dense + BM25 + CrossEncoder Reranker), NetworkX (GraphRAG + Memória Temporal), PyPDF, MarkItDown/Docling (opcionais) |
+| **Interface & Visualização** | PWA Dark-Mode, KaTeX, Mermaid.js, highlight.js, vis-network (Grafo Interativo), Apache ECharts (Carteira) |
+| **Voz & Visão (Extras Opcionais)** | `faster-whisper` (STT local), `edge-tts` + `kokoro-onnx` (TTS neural pt-BR/offline), `mss` + `Pillow` (visão de tela) |
+| **Integrações** | Google Workspace APIs (OAuth2), Obsidian Vault, Ulife API v2, Banco Central (SGS), yfinance, Playwright, Crawl4AI, Browser-Use, YouTube Transcript |
 | **Segurança, Observabilidade & CI** | Guardrails OWASP (`guardrails.py`), Pydantic Logfire, OpenTelemetry, structlog, Pytest, Pydantic Evals, Ruff, Pyright, Gitleaks |
 
 ---
@@ -220,7 +227,9 @@ ecossistema-agentes/
 ├── mcp_manager.py             # Gerenciador persistente de servidores MCP (FastMCP + Pydantic AI)
 ├── mcp_utilidades.py          # Servidor MCP local (calculadora AST segura + diagnostico do PC)
 ├── mcp_athena_lab.py          # Servidor MCP somente leitura do Athena Lab para o Google Antigravity (VS Code)
-├── rotinas.py                 # Agendador APScheduler (sync Ulife + briefing diario no Obsidian)
+├── rotinas.py                 # Agendador APScheduler (rotinas fixas + dinamicas pelo chat com auto-pausa em 3 falhas)
+├── auditoria.py               # Trilha de auditoria unificada ("Activity") + gestao de pastas aprovadas revogaveis
+├── teach_bot.py               # Gravador controlado "Teach a Bot" (navegador visivel -> skills/<slug>/SKILL.md seguro)
 ├── memoria.py                 # Persistencia SQLite WAL (conversas, historico, fatos, resumos e telemetria)
 ├── memoria_temporal.py        # Memoria Temporal em Grafo (fatos_temporais + NetworkX 1-hop + linha do tempo)
 ├── alembic/                   # Migrations versionadas do SQLite (memoria.db)

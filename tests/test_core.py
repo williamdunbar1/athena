@@ -4006,3 +4006,204 @@ def test_migration_006_rotinas_dinamicas_auto_pausa_e_auditoria_pastas(monkeypat
     assert "/api/rotinas/dinamicas" in html
     assert "/api/auditoria/atividades" in html
     assert "/api/permissoes/pastas" in html
+
+
+# ==============================================================================
+# 29. TEACH A BOT (SKILL.md) + TAKE THE WHEEL (PAUSA HUMANA CONTROLADA)
+# ==============================================================================
+
+
+def test_teach_bot_bloqueia_bancos_omite_senhas_e_gera_skill_md(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    import auditoria
+    import teach_bot
+
+    db_audit = tmp_path / "audit_teach.db"
+    monkeypatch.setenv("ATHENA_DB_PATH", str(db_audit))
+
+    # 1) Bloqueio rigido de bancos/corretoras/gov.br e hosts locais (SSRF)
+    for url_bloqueada in (
+        "https://www.mercadopago.com.br/home",
+        "https://nubank.com.br/login",
+        "https://www.itau.com.br/empresas",
+        "https://sso.acesso.gov.br/login",
+        "http://127.0.0.1:8000/api",
+    ):
+        with pytest.raises(ValueError):
+            teach_bot.validar_url_teach_bot(url_bloqueada)
+
+    # iniciar_gravacao_skill deve rejeitar banco ANTES de abrir qualquer navegador/thread
+    with pytest.raises(ValueError, match="bloqueado|nao permitida"):
+        _executar_async_real_teste(
+            teach_bot.iniciar_gravacao_skill("Skill Banco Proibido", "https://nubank.com.br/login")
+        )
+
+    assert teach_bot.validar_url_teach_bot("https://example.com/portal") == "https://example.com/portal"
+
+    # 2) Sanitizacao de passos: NUNCA grava valor de input[type="password"] nem segredos
+    passo_nav = teach_bot.sanitizar_passo_gravado({"tipo": "navegar", "url": "https://example.com/portal"})
+    passo_user = teach_bot.sanitizar_passo_gravado(
+        {
+            "tipo": "preencher",
+            "seletor": "#usuario",
+            "rotulo": "E-mail",
+            "valor": "aluno@example.com",
+            "tipo_input": "email",
+        }
+    )
+    passo_senha = teach_bot.sanitizar_passo_gravado(
+        {
+            "tipo": "preencher",
+            "seletor": 'input[type="password"]#senha',
+            "rotulo": "Senha",
+            "valor": "MinhaSenhaSuperSecreta123!",
+            "tipo_input": "password",
+        }
+    )
+    passo_clique = teach_bot.sanitizar_passo_gravado(
+        {"tipo": "clique", "seletor": 'button[type="submit"]', "texto": "Entrar no Portal"}
+    )
+
+    assert passo_senha["valor"] == teach_bot.MARCADOR_SENHA_OMITIDA
+    assert "MinhaSenhaSuperSecreta123!" not in str(passo_senha)
+
+    # 3) Geracao e salvamento seguro em tmp_path/skills/<slug>/SKILL.md + auditoria
+    passos_lista = [passo_nav, passo_user, passo_senha, passo_clique]
+    md = teach_bot.gerar_skill_markdown(
+        nome_skill="Checar Notas Portal",
+        descricao="Verifica notas no portal academico",
+        passos=passos_lista,
+        url_inicial="https://example.com/portal",
+    )
+    assert md.startswith("---\n")
+    assert "name: checar-notas-portal" in md
+    assert 'description: "Verifica notas no portal academico"' in md
+    assert teach_bot.MARCADOR_SENHA_OMITIDA in md
+    assert "MinhaSenhaSuperSecreta123!" not in md
+    assert "1. Navegar para `https://example.com/portal`" in md
+    assert "Entrar no Portal" in md
+
+    skills_dir_tmp = tmp_path / "skills"
+    res = teach_bot.salvar_skill_gerada(
+        nome_skill="Checar Notas Portal",
+        descricao="Verifica notas no portal academico",
+        passos=passos_lista,
+        url_inicial="https://example.com/portal",
+        skills_dir=skills_dir_tmp,
+        db_path=db_audit,
+    )
+    caminho_salvo = Path(res["caminho"])
+    assert caminho_salvo == (skills_dir_tmp / "checar-notas-portal" / "SKILL.md").resolve()
+    assert caminho_salvo.is_file()
+    assert res["total_passos"] == 4
+    conteudo_disco = caminho_salvo.read_text(encoding="utf-8")
+    assert teach_bot.MARCADOR_SENHA_OMITIDA in conteudo_disco
+    assert "MinhaSenhaSuperSecreta123!" not in conteudo_disco
+
+    # Path traversal e bloqueado com ValueError
+    with pytest.raises(ValueError):
+        teach_bot.salvar_skill_gerada(
+            nome_skill="../../etc/passwd",
+            descricao="Invalido",
+            passos=passos_lista,
+            skills_dir=skills_dir_tmp,
+            db_path=db_audit,
+        )
+
+    # Auditoria registrou a criacao da skill
+    atividades = auditoria.listar_atividades(agente="Teach a Bot", db_path=db_audit)
+    assert len(atividades) >= 1
+    assert atividades[0]["acao"] == "criar_skill"
+
+
+def test_take_the_wheel_pausa_retoma_e_cancela_asyncio_event(monkeypatch, tmp_path):
+    import asyncio
+    from pathlib import Path
+
+    import agentes
+    import ferramentas_navegador as fn
+    import servidor
+
+    monkeypatch.setenv("ATHENA_DB_PATH", str(tmp_path / "audit_wheel.db"))
+
+    # 1) Fluxo de retomada humana: solicitar_controle_humano pausa e retomar_controle_agente destrava asyncio.Event
+    async def _cenario_retomar():
+        eventos_sse: list[dict] = []
+
+        async def _devolver_controle_depois():
+            for _ in range(50):
+                if eventos_sse:
+                    break
+                await asyncio.sleep(0.01)
+            assert eventos_sse, "Evento SSE take_the_wheel nao foi emitido"
+            sid = eventos_sse[0]["sessao_id"]
+            assert sid in fn.SESSOES_TAKE_WHEEL
+            resp = fn.retomar_controle_agente(sid)
+            assert resp["ok"] is True
+            assert resp["status"] == "retomado"
+
+        t_humano = asyncio.create_task(_devolver_controle_depois())
+        resultado = await fn.solicitar_controle_humano(
+            "Resolver CAPTCHA na pagina de login",
+            url="https://example.com/login",
+            timeout_s=5,
+            on_evento=eventos_sse.append,
+        )
+        await t_humano
+        return resultado, eventos_sse
+
+    res_ok, evs_ok = _executar_async_real_teste(_cenario_retomar())
+    assert res_ok["ok"] is True
+    assert res_ok["status"] == "retomado"
+    assert res_ok["cancelada"] is False
+    assert evs_ok[0]["tipo"] == "take_the_wheel"
+    assert "CAPTCHA" in evs_ok[0]["motivo"]
+    assert evs_ok[0]["sessao_id"] not in fn.SESSOES_TAKE_WHEEL
+
+    # 2) Fluxo de cancelamento humano: cancelar_controle_agente destrava asyncio.Event marcando cancelada=True
+    async def _cenario_cancelar():
+        eventos_sse: list[dict] = []
+
+        async def _cancelar_depois():
+            for _ in range(50):
+                if eventos_sse:
+                    break
+                await asyncio.sleep(0.01)
+            sid = eventos_sse[0]["sessao_id"]
+            resp = fn.cancelar_controle_agente(sid)
+            assert resp["ok"] is True
+            assert resp["status"] == "cancelado"
+
+        t_humano = asyncio.create_task(_cancelar_depois())
+        resultado = await fn.solicitar_controle_humano(
+            "Login manual solicitado",
+            url="https://example.com/auth",
+            timeout_s=5,
+            on_evento=eventos_sse.append,
+        )
+        await t_humano
+        return resultado
+
+    res_cancel = _executar_async_real_teste(_cenario_cancelar())
+    assert res_cancel["ok"] is False
+    assert res_cancel["status"] == "cancelado"
+    assert res_cancel["cancelada"] is True
+
+    # 3) Tool no Agente Pesquisador, endpoints REST e marcadores da UI em index.html
+    tools_pesq = set((getattr(getattr(agentes.agente_pesquisador, "_function_toolset", None), "tools", None) or {}).keys())
+    assert "pedir_ajuda_humana_navegador" in tools_pesq
+
+    status_tb = servidor.api_teach_bot_status()
+    assert status_tb["ok"] is True
+    assert status_tb["ativa"] is False
+
+    html = (Path(__file__).resolve().parent.parent / "index.html").read_text(encoding="utf-8")
+    assert "/api/skills/gravar/iniciar" in html
+    assert "/api/skills/gravar/finalizar/" in html
+    assert "/api/navegador/retomar/" in html
+    assert "/api/navegador/cancelar/" in html
+    assert "Ensinar Tarefa (Teach a Bot)" in html
+    assert "Assuma o Controle (Take the wheel)" in html
+    assert "Devolver Controle ao Agente" in html
+
