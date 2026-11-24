@@ -21,6 +21,8 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/styles/atom-one-dark.min.css" />
 <script defer src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.10.0/build/highlight.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
 <style>
   :root {
     --bg: #111214;
@@ -2689,6 +2691,104 @@
     box-shadow: 0 0 0 2px rgba(17, 18, 20, 0.7);
   }
   .nav-badge.hidden { display: none; }
+
+  /* ===== VISUALIZACOES INTERATIVAS (vis-network + Apache ECharts) ===== */
+  .charts-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+  }
+  @media (max-width: 900px) {
+    .charts-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .chart-canvas {
+    width: 100%;
+    height: 290px;
+    min-height: 250px;
+  }
+  .grafo-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .grafo-filter-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .grafo-filter-btn {
+    height: 30px;
+    padding: 0 11px;
+    border-radius: 999px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .grafo-filter-btn:hover {
+    color: var(--text-strong);
+    border-color: var(--border-hover);
+  }
+  .grafo-filter-btn.active {
+    background: var(--accent-soft);
+    border-color: rgba(234, 179, 8, 0.45);
+    color: var(--accent-hover);
+  }
+  .grafo-search {
+    min-width: 190px;
+    max-width: 260px;
+    height: 32px;
+    font-size: 12.5px;
+  }
+  .grafo-canvas-wrap {
+    position: relative;
+    width: 100%;
+    height: 430px;
+    background: #14161b;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  #grafo-vis-canvas {
+    width: 100%;
+    height: 100%;
+  }
+  .grafo-legend {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .grafo-dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+  .grafo-detail-card {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 10px;
+    font-size: 12.5px;
+    color: var(--text);
+  }
+  .grafo-detail-card.hidden { display: none; }
 </style>
 </head>
 <body>
@@ -2963,6 +3063,23 @@
                 </div>
               </div>
 
+              <div class="charts-grid">
+                <div class="panel">
+                  <h3>
+                    <span>Alocação da Carteira (Donut)</span>
+                    <span id="chart-donut-meta" style="font-size:11.5px;font-weight:500;color:var(--muted);">R$ e % por categoria</span>
+                  </h3>
+                  <div id="chart-carteira-donut" class="chart-canvas"></div>
+                </div>
+                <div class="panel">
+                  <h3>
+                    <span>Principais Ativos &amp; Rendimento vs CDI</span>
+                    <span id="chart-barras-meta" style="font-size:11.5px;font-weight:500;color:var(--muted);">Valor em R$</span>
+                  </h3>
+                  <div id="chart-carteira-barras" class="chart-canvas"></div>
+                </div>
+              </div>
+
               <div class="panel">
                 <h3>
                   <span>Saldos e Ativos Reais (Mercado Pago)</span>
@@ -3074,6 +3191,37 @@
                   </button>
                 </h3>
                 <div id="box-materias" class="empty-note">Carregando...</div>
+              </div>
+
+              <div class="panel" id="panel-grafo-visual">
+                <h3>
+                  <span class="ulife-head-info">
+                    <span>Grafo do Segundo Cérebro (Obsidian + Memória Temporal)</span>
+                    <span id="grafo-vis-meta" class="ulife-sub">Carregando grafo interativo...</span>
+                  </span>
+                  <button type="button" class="ghost mini" onclick="carregarGrafoVisual()">
+                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span>Atualizar</span>
+                  </button>
+                </h3>
+                <div class="grafo-toolbar">
+                  <div class="grafo-filter-group" role="group" aria-label="Filtros do grafo">
+                    <button type="button" class="grafo-filter-btn active" data-grafo-filtro="todos" onclick="aplicarFiltroGrafo('todos', this)">Todos</button>
+                    <button type="button" class="grafo-filter-btn" data-grafo-filtro="obsidian" onclick="aplicarFiltroGrafo('obsidian', this)">Obsidian</button>
+                    <button type="button" class="grafo-filter-btn" data-grafo-filtro="memoria" onclick="aplicarFiltroGrafo('memoria', this)">Memória Temporal</button>
+                  </div>
+                  <input id="grafo-busca-input" class="field-dark grafo-search" type="search" placeholder="Buscar nó no grafo..." oninput="buscarNoNoGrafo(this.value)" />
+                </div>
+                <div class="grafo-canvas-wrap">
+                  <div id="grafo-vis-canvas"></div>
+                </div>
+                <div class="grafo-legend">
+                  <span><span class="grafo-dot" style="background:#eab308;"></span>Notas Obsidian</span>
+                  <span><span class="grafo-dot" style="background:#64748b;"></span>#Tags</span>
+                  <span><span class="grafo-dot" style="background:#34d399;"></span>Memória Temporal</span>
+                  <span style="margin-left:auto;">Clique em um nó para ver detalhes · Arraste ou dê zoom</span>
+                </div>
+                <div id="grafo-node-detalhe" class="grafo-detail-card hidden"></div>
               </div>
             </div>
           </div>
@@ -3751,8 +3899,15 @@ function abrirAba(nome, btn) {
     fecharDrawersMobile();
   }
 
-  if (_abaAtiva === "carteira") carregarCarteira();
-  if (_abaAtiva === "estudos") carregarEstudos();
+  if (_abaAtiva === "carteira") {
+    carregarCarteira();
+    requestAnimationFrame(() => redimensionarGraficosCarteira());
+    setTimeout(() => redimensionarGraficosCarteira(), 100);
+  }
+  if (_abaAtiva === "estudos") {
+    carregarEstudos();
+    setTimeout(() => redimensionarGrafoVisual(), 120);
+  }
   if (_abaAtiva === "faxina") carregarFaxina();
   if (_abaAtiva === "rotinas") carregarRotinas();
   if (_abaAtiva === "lab") carregarAthenaLab();
@@ -5529,6 +5684,7 @@ async function carregarCarteiraReal(forcar = false) {
         `<span class="ulife-aval-pill">${escHtml(a.label)}: <strong>${a.pct}%</strong></span>`
       ).join("");
     }
+    renderGraficosCarteira(r);
 
     const boxAtivos = document.getElementById("box-real-ativos");
     if (!r.ativos || !r.ativos.length) {
@@ -5731,6 +5887,165 @@ async function carregarCarteiraSimulada(forcar = false) {
   } catch (e) {
     mostrarToast("Erro ao carregar a carteira simulada.", true);
   }
+}
+
+let _chartDonutCarteira = null;
+let _chartBarrasCarteira = null;
+
+function redimensionarGraficosCarteira() {
+  if (_chartDonutCarteira) {
+    try { _chartDonutCarteira.resize(); } catch (_) {}
+  }
+  if (_chartBarrasCarteira) {
+    try { _chartBarrasCarteira.resize(); } catch (_) {}
+  }
+}
+
+function renderGraficosCarteira(dadosReal) {
+  const elDonut = document.getElementById("chart-carteira-donut");
+  const elBarras = document.getElementById("chart-carteira-barras");
+  if (!elDonut || !elBarras) return;
+
+  if (!window.echarts) {
+    elDonut.innerHTML = '<div class="empty-note" style="padding:24px;text-align:center;">Apache ECharts indisponível offline.</div>';
+    elBarras.innerHTML = '<div class="empty-note" style="padding:24px;text-align:center;">Apache ECharts indisponível offline.</div>';
+    return;
+  }
+
+  const ativos = Array.isArray(dadosReal && dadosReal.ativos) ? dadosReal.ativos : [];
+  const alocacao = Array.isArray(dadosReal && dadosReal.alocacao) ? dadosReal.alocacao : [];
+  const bcb = (dadosReal && dadosReal.bcb) || {};
+  const paleta = ["#eab308", "#34d399", "#60a5fa", "#f59e0b", "#a78bfa", "#f87171", "#2dd4bf"];
+
+  // 1) Donut de Alocacao (R$ e % por categoria/ativo)
+  const seriesDonut = alocacao.length
+    ? alocacao
+        .filter(a => Number(a.valor || a.total || a.pct || 0) > 0)
+        .map(a => ({
+          name: a.label || a.tipo || "Outro",
+          value: Number(a.valor ?? a.total ?? 0) > 0 ? Number(a.valor ?? a.total) : Number(a.pct || 0),
+          pct: Number(a.pct || 0),
+        }))
+    : ativos.filter(a => Number(a.valor_atual || 0) > 0).map(a => ({
+        name: a.nome || a.ticker || "Ativo",
+        value: Number(a.valor_atual || 0),
+        pct: Number(a.pct || 0),
+      }));
+
+  if (!seriesDonut.length) {
+    if (_chartDonutCarteira) { _chartDonutCarteira.dispose(); _chartDonutCarteira = null; }
+    elDonut.innerHTML = '<div class="empty-note" style="padding:40px 16px;text-align:center;">Cadastre seus ativos reais para visualizar a alocação.</div>';
+  } else {
+    elDonut.innerHTML = "";
+    if (_chartDonutCarteira) _chartDonutCarteira.dispose();
+    _chartDonutCarteira = window.echarts.init(elDonut);
+    _chartDonutCarteira.setOption({
+      backgroundColor: "transparent",
+      color: paleta,
+      tooltip: {
+        trigger: "item",
+        backgroundColor: "#181a1f",
+        borderColor: "#3c424f",
+        textStyle: { color: "#f8fafc", fontSize: 12 },
+        formatter: (p) => {
+          const valFmt = fmtBRL(p.value);
+          return `<strong>${escHtml(p.name)}</strong><br/>${valFmt} (${p.percent}%)`;
+        },
+      },
+      legend: {
+        bottom: 0,
+        textStyle: { color: "#9ca3af", fontSize: 11.5 },
+        icon: "circle",
+      },
+      series: [
+        {
+          name: "Alocação",
+          type: "pie",
+          radius: ["48%", "74%"],
+          center: ["50%", "44%"],
+          avoidLabelOverlap: true,
+          itemStyle: { borderRadius: 6, borderColor: "#181a1f", borderWidth: 2 },
+          label: { show: false },
+          emphasis: {
+            label: { show: true, fontSize: 13, fontWeight: "bold", color: "#f8fafc", formatter: "{b}\n{d}%" },
+          },
+          data: seriesDonut,
+        },
+      ],
+    });
+  }
+
+  // 2) Barras Horizontais (principais ativos por valor em R$ + referencia CDI no subtitulo)
+  const metaBarras = document.getElementById("chart-barras-meta");
+  if (metaBarras && bcb.cdi_anual) {
+    metaBarras.textContent = `Top ativos (R$) · Selic ${Number(bcb.selic_anual || 0).toFixed(2)}% / CDI ${Number(bcb.cdi_anual || 0).toFixed(2)}% a.a.`;
+  }
+
+  const topAtivos = ativos
+    .filter(a => Number(a.valor_atual || 0) > 0)
+    .slice()
+    .sort((a, b) => Number(b.valor_atual || 0) - Number(a.valor_atual || 0))
+    .slice(0, 7)
+    .reverse();
+
+  if (!topAtivos.length) {
+    if (_chartBarrasCarteira) { _chartBarrasCarteira.dispose(); _chartBarrasCarteira = null; }
+    elBarras.innerHTML = '<div class="empty-note" style="padding:40px 16px;text-align:center;">Sem ativos cadastrados para o gráfico de barras.</div>';
+  } else {
+    elBarras.innerHTML = "";
+    if (_chartBarrasCarteira) _chartBarrasCarteira.dispose();
+    _chartBarrasCarteira = window.echarts.init(elBarras);
+    _chartBarrasCarteira.setOption({
+      backgroundColor: "transparent",
+      tooltip: {
+        trigger: "axis",
+        axisPointer: { type: "shadow" },
+        backgroundColor: "#181a1f",
+        borderColor: "#3c424f",
+        textStyle: { color: "#f8fafc", fontSize: 12 },
+        formatter: (params) => {
+          const item = Array.isArray(params) ? params[0] : params;
+          const idx = item.dataIndex;
+          const ativo = topAtivos[idx] || {};
+          const taxa = ativo.taxa_info ? `<br/>Taxa: ${escHtml(ativo.taxa_info)}` : "";
+          return `<strong>${escHtml(ativo.nome || item.name)}</strong><br/>Valor: ${fmtBRL(item.value)} (${ativo.pct || 0}%)${taxa}`;
+        },
+      },
+      grid: { left: 10, right: 24, top: 12, bottom: 12, containLabel: true },
+      xAxis: {
+        type: "value",
+        axisLabel: {
+          color: "#9ca3af",
+          fontSize: 11,
+          formatter: (v) => (v >= 1000 ? `R$${(v / 1000).toFixed(1)}k` : `R$${v}`),
+        },
+        splitLine: { lineStyle: { color: "#262a32" } },
+      },
+      yAxis: {
+        type: "category",
+        data: topAtivos.map(a => {
+          const nm = String(a.nome || a.ticker || "Ativo");
+          return nm.length > 18 ? nm.slice(0, 17) + "…" : nm;
+        }),
+        axisLabel: { color: "#e5e7eb", fontSize: 11.5 },
+        axisLine: { lineStyle: { color: "#2c3038" } },
+      },
+      series: [
+        {
+          name: "Valor",
+          type: "bar",
+          barMaxWidth: 22,
+          itemStyle: {
+            borderRadius: [0, 6, 6, 0],
+            color: (p) => paleta[p.dataIndex % paleta.length],
+          },
+          data: topAtivos.map(a => Number(a.valor_atual || 0)),
+        },
+      ],
+    });
+  }
+
+  requestAnimationFrame(() => redimensionarGraficosCarteira());
 }
 
 async function carregarCarteira(forcar = false) {
@@ -5967,6 +6282,7 @@ async function sincronizarQdrant() {
 
 async function carregarEstudos() {
   carregarUlife();
+  carregarGrafoVisual();
   try {
     const r = await fetch("/api/painel/estudos").then(x => x.json());
     atualizarMetaRag(r.rag);
@@ -6000,6 +6316,220 @@ async function carregarEstudos() {
     }
   } catch (e) {
     mostrarToast("Erro ao carregar dados de estudos.", true);
+  }
+}
+
+/* ===== GRAFO DO SEGUNDO CEREBRO (vis-network: Obsidian + Memoria Temporal) ===== */
+let _grafoVisNetwork = null;
+let _grafoDadosBrutos = null;
+let _grafoFiltroAtual = "todos";
+let _grafoMapaNos = {};
+
+function redimensionarGrafoVisual() {
+  if (_grafoVisNetwork) {
+    try {
+      _grafoVisNetwork.redraw();
+      _grafoVisNetwork.fit({ animation: false });
+    } catch (_) {}
+  }
+}
+
+function mostrarDetalhesNoGrafo(nodeId) {
+  const card = document.getElementById("grafo-node-detalhe");
+  if (!card) return;
+  const no = _grafoMapaNos[nodeId];
+  if (!no) {
+    card.classList.add("hidden");
+    return;
+  }
+  const det = no.detalhes || {};
+  const grupoRotulo = no.group === "nota" ? "Nota Obsidian" : (no.group === "tag" ? "Tag" : "Memória Temporal");
+  const edges = (_grafoDadosBrutos && Array.isArray(_grafoDadosBrutos.edges)) ? _grafoDadosBrutos.edges : [];
+  const conexoes = edges
+    .filter(e => e.from === nodeId || e.to === nodeId)
+    .slice(0, 8)
+    .map(e => {
+      const outroId = e.from === nodeId ? e.to : e.from;
+      const outro = _grafoMapaNos[outroId];
+      const lbl = outro ? outro.label : outroId;
+      return `<span class="lab-badge">${escHtml(e.label || "link")}: ${escHtml(lbl)}</span>`;
+    })
+    .join("");
+
+  const tagsHtml = Array.isArray(det.tags) && det.tags.length
+    ? `<div style="margin-top:6px;display:flex;gap:5px;flex-wrap:wrap;">${det.tags.map(t => `<span class="lab-badge">#${escHtml(t)}</span>`).join("")}</div>`
+    : "";
+
+  card.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+      <strong style="color:var(--text-strong);font-size:13.5px;">${escHtml(no.label)}</strong>
+      <span class="lab-badge accent">${escHtml(grupoRotulo)} · grau ${Number(no.value || 1)}</span>
+    </div>
+    ${det.caminho ? `<div style="color:var(--muted);font-size:11.5px;margin-bottom:4px;"><code>${escHtml(det.caminho)}</code></div>` : ""}
+    ${det.resumo ? `<div style="line-height:1.45;">${escHtml(det.resumo)}</div>` : ""}
+    ${tagsHtml}
+    ${conexoes ? `<div style="margin-top:8px;display:flex;gap:5px;flex-wrap:wrap;">${conexoes}</div>` : ""}
+  `;
+  card.classList.remove("hidden");
+}
+
+function renderGrafoVisual() {
+  const container = document.getElementById("grafo-vis-canvas");
+  const meta = document.getElementById("grafo-vis-meta");
+  const detalhe = document.getElementById("grafo-node-detalhe");
+  if (!container) return;
+
+  const dados = _grafoDadosBrutos || { nodes: [], edges: [], stats: {} };
+  const todosNos = Array.isArray(dados.nodes) ? dados.nodes : [];
+  const todasArestas = Array.isArray(dados.edges) ? dados.edges : [];
+  const busca = (document.getElementById("grafo-busca-input")?.value || "").trim().toLowerCase();
+
+  let nosFiltrados = todosNos.filter(n => {
+    if (_grafoFiltroAtual === "obsidian") return n.group === "nota" || n.group === "tag";
+    if (_grafoFiltroAtual === "memoria") return n.group === "memoria";
+    return true;
+  });
+
+  if (busca) {
+    const idsMatch = new Set(
+      nosFiltrados
+        .filter(n =>
+          String(n.label || "").toLowerCase().includes(busca) ||
+          String(n.title || "").toLowerCase().includes(busca)
+        )
+        .map(n => n.id)
+    );
+    // Inclui vizinhos diretos dos nos encontrados na busca
+    for (const e of todasArestas) {
+      if (idsMatch.has(e.from)) idsMatch.add(e.to);
+      if (idsMatch.has(e.to)) idsMatch.add(e.from);
+    }
+    nosFiltrados = nosFiltrados.filter(n => idsMatch.has(n.id));
+  }
+
+  const idsVisiveis = new Set(nosFiltrados.map(n => n.id));
+  const arestasFiltradas = todasArestas.filter(e => idsVisiveis.has(e.from) && idsVisiveis.has(e.to));
+
+  _grafoMapaNos = {};
+  for (const n of todosNos) _grafoMapaNos[n.id] = n;
+
+  const st = dados.stats || {};
+  if (meta) {
+    meta.textContent = `${nosFiltrados.length} nó(s) · ${arestasFiltradas.length} conexão(ões) (Notas: ${st.notas || 0} · Tags: ${st.tags || 0} · Memória: ${st.memoria || 0})`;
+  }
+
+  if (!nosFiltrados.length) {
+    if (_grafoVisNetwork) { _grafoVisNetwork.destroy(); _grafoVisNetwork = null; }
+    container.innerHTML = '<div class="empty-note" style="padding:36px 16px;text-align:center;">Nenhum nó encontrado para este filtro no Segundo Cérebro.</div>';
+    if (detalhe) detalhe.classList.add("hidden");
+    return;
+  }
+
+  if (!window.vis || !window.vis.Network) {
+    container.innerHTML = `<div class="empty-note" style="padding:20px;"><code>vis-network</code> indisponível offline. Nós carregados: ${nosFiltrados.slice(0, 20).map(n => escHtml(n.label)).join(", ")}.</div>`;
+    return;
+  }
+
+  container.innerHTML = "";
+  const dataVis = {
+    nodes: new window.vis.DataSet(nosFiltrados),
+    edges: new window.vis.DataSet(
+      arestasFiltradas.map(e => ({
+        from: e.from,
+        to: e.to,
+        label: e.label === "wikilink" || e.label === "tag" ? "" : e.label,
+        title: e.label || "",
+        arrows: e.label === "tag" ? "" : "to",
+        color: {
+          color: e.label === "tag" ? "rgba(100,116,139,0.45)" : "rgba(234,179,8,0.42)",
+          highlight: "#facc15",
+        },
+        font: { color: "#9ca3af", size: 10, strokeWidth: 0, align: "middle" },
+        smooth: { type: "continuous" },
+      }))
+    ),
+  };
+
+  const options = {
+    autoResize: true,
+    interaction: { hover: true, tooltipDelay: 140, zoomView: true, dragView: true },
+    nodes: {
+      shape: "dot",
+      scaling: { min: 10, max: 28 },
+      font: { color: "#e5e7eb", size: 12, face: "Inter, system-ui, sans-serif" },
+      borderWidth: 1.5,
+    },
+    groups: {
+      nota: {
+        color: {
+          background: "#eab308",
+          border: "#facc15",
+          highlight: { background: "#fde047", border: "#ffffff" },
+        },
+      },
+      tag: {
+        shape: "box",
+        color: {
+          background: "#262a32",
+          border: "#64748b",
+          highlight: { background: "#334155", border: "#94a3b8" },
+        },
+        font: { color: "#cbd5e1", size: 11 },
+      },
+      memoria: {
+        color: {
+          background: "#10b981",
+          border: "#34d399",
+          highlight: { background: "#6ee7b7", border: "#eab308" },
+        },
+      },
+    },
+    physics: {
+      solver: "barnesHut",
+      barnesHut: {
+        gravitationalConstant: -2600,
+        centralGravity: 0.25,
+        springLength: 115,
+        springConstant: 0.035,
+        damping: 0.35,
+      },
+      stabilization: { iterations: 120, fit: true },
+    },
+  };
+
+  if (_grafoVisNetwork) _grafoVisNetwork.destroy();
+  _grafoVisNetwork = new window.vis.Network(container, dataVis, options);
+  _grafoVisNetwork.on("selectNode", (params) => {
+    if (params && params.nodes && params.nodes.length) {
+      mostrarDetalhesNoGrafo(params.nodes[0]);
+    }
+  });
+  _grafoVisNetwork.on("deselectNode", () => {
+    if (detalhe) detalhe.classList.add("hidden");
+  });
+}
+
+function aplicarFiltroGrafo(filtro, btn) {
+  _grafoFiltroAtual = filtro || "todos";
+  document.querySelectorAll(".grafo-filter-btn").forEach(b => b.classList.remove("active"));
+  if (btn) btn.classList.add("active");
+  renderGrafoVisual();
+}
+
+function buscarNoNoGrafo(_termo) {
+  renderGrafoVisual();
+}
+
+async function carregarGrafoVisual() {
+  const meta = document.getElementById("grafo-vis-meta");
+  try {
+    const r = await fetch("/api/obsidian/grafo/visual?incluir_temporal=true").then(x => x.json());
+    if (r && r.ok) {
+      _grafoDadosBrutos = r;
+      renderGrafoVisual();
+    }
+  } catch (_) {
+    if (meta) meta.textContent = "Não foi possível carregar o grafo visual.";
   }
 }
 
@@ -7001,6 +7531,8 @@ window.addEventListener("resize", () => {
     if (sb) sb.classList.remove("mobile-open");
   }
   atualizarBackdrop();
+  redimensionarGraficosCarteira();
+  redimensionarGrafoVisual();
 });
 
 iniciarAplicacao();

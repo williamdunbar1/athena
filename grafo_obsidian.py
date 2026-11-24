@@ -298,6 +298,162 @@ def estatisticas_grafo(vault_dir: Path | None = None) -> dict[str, Any]:
     return _calcular_estatisticas_de_grafo(construir_grafo_vault(vault_dir))
 
 
+def exportar_grafo_visual(
+    incluir_temporal: bool = True,
+    vault_dir: Path | None = None,
+    db_path: Path | None = None,
+) -> dict[str, Any]:
+    """Exporta grafo completo (Obsidian notas + #tags + Memoria Temporal) no formato `vis-network`.
+
+    Retorna `{"ok": True, "nodes": [...], "edges": [...], "stats": {...}}`.
+    """
+    nodes_map: dict[str, dict[str, Any]] = {}
+    edges_list: list[dict[str, Any]] = []
+    arestas_vistas: set[tuple[str, str, str]] = set()
+    graus: dict[str, int] = {}
+
+    def _add_node(
+        node_id: str,
+        label: str,
+        group: str,
+        title: str,
+        detalhes: dict[str, Any],
+    ) -> None:
+        if node_id not in nodes_map:
+            rotulo = label.strip()
+            if len(rotulo) > 42:
+                rotulo = rotulo[:39].rstrip() + "..."
+            nodes_map[node_id] = {
+                "id": node_id,
+                "label": rotulo or node_id,
+                "group": group,
+                "title": title[:260],
+                "value": 1,
+                "detalhes": detalhes,
+            }
+
+    def _add_edge(origem: str, destino: str, label: str) -> None:
+        if not origem or not destino or origem == destino:
+            return
+        chave = (origem, destino, label)
+        if chave in arestas_vistas:
+            return
+        arestas_vistas.add(chave)
+        edges_list.append({"from": origem, "to": destino, "label": label})
+        graus[origem] = graus.get(origem, 0) + 1
+        graus[destino] = graus.get(destino, 0) + 1
+
+    # 1) Notas e #tags do Obsidian Vault
+    try:
+        grafo = construir_grafo_vault(vault_dir)
+    except Exception:
+        grafo = None
+
+    if grafo is not None:
+        for no_id, attrs in grafo.nodes(data=True):
+            nid = f"nota:{no_id}"
+            titulo = str(attrs.get("titulo") or no_id)
+            caminho = str(attrs.get("caminho") or f"{no_id}.md")
+            resumo = str(attrs.get("resumo") or "")
+            tags = [str(t) for t in (attrs.get("tags") or [])]
+            tooltip = f"{titulo} ({caminho})" + (f" — {resumo[:120]}" if resumo else "")
+            _add_node(
+                nid,
+                titulo,
+                "nota",
+                tooltip,
+                {
+                    "tipo": "nota",
+                    "caminho": caminho,
+                    "resumo": resumo[:260],
+                    "tags": tags[:12],
+                },
+            )
+            for tg in tags[:10]:
+                tid = f"tag:{tg}"
+                _add_node(
+                    tid,
+                    f"#{tg}",
+                    "tag",
+                    f"Tag #{tg} no Obsidian Vault",
+                    {"tipo": "tag", "caminho": f"#{tg}", "resumo": f"Agrupa notas com #{tg}"},
+                )
+                _add_edge(nid, tid, "tag")
+
+        for u, v in grafo.edges():
+            _add_edge(f"nota:{u}", f"nota:{v}", "wikilink")
+
+    # 2) Entidades e fatos vigentes da Memoria Temporal em Grafo
+    if incluir_temporal:
+        try:
+            from memoria_temporal import resumo_memoria_temporal
+
+            res_temp = resumo_memoria_temporal(limite_vigentes=120, db_path=db_path)
+            vigentes = res_temp.get("vigentes") or []
+        except Exception:
+            vigentes = []
+
+        for fato in vigentes:
+            suj = str(fato.get("sujeito") or "").strip()
+            rel = str(fato.get("relacao") or "").strip()
+            obj = str(fato.get("objeto") or "").strip()
+            if not suj or not rel or not obj:
+                continue
+            cat = str(fato.get("categoria") or "geral")
+            desde = str(fato.get("valido_de") or "")[:16]
+            sid = f"mem:{_normalizar(suj)}"
+            oid = f"mem:{_normalizar(obj)}"
+            _add_node(
+                sid,
+                suj,
+                "memoria",
+                f"Entidade de Memória Temporal: {suj}",
+                {
+                    "tipo": "memoria",
+                    "caminho": f"memoria/{cat}",
+                    "resumo": f"Entidade com fatos vigentes ({rel}: {obj})",
+                },
+            )
+            _add_node(
+                oid,
+                obj,
+                "memoria",
+                f"{suj} --[{rel}]--> {obj} (desde {desde})",
+                {
+                    "tipo": "memoria",
+                    "caminho": f"memoria/{cat}",
+                    "resumo": f"{suj} · {rel}: {obj} (vigente desde {desde})",
+                    "relacao": rel,
+                    "valido_de": desde,
+                },
+            )
+            _add_edge(sid, oid, rel)
+
+    nodes_list: list[dict[str, Any]] = []
+    cont_grupos = {"nota": 0, "tag": 0, "memoria": 0}
+    for nid, item in nodes_map.items():
+        item["value"] = max(1, graus.get(nid, 0))
+        grp = str(item.get("group") or "nota")
+        if grp in cont_grupos:
+            cont_grupos[grp] += 1
+        nodes_list.append(item)
+
+    nodes_list.sort(key=lambda n: (-int(n["value"]), str(n["label"]).lower()))
+    return {
+        "ok": True,
+        "nodes": nodes_list,
+        "edges": edges_list,
+        "stats": {
+            "total_nos": len(nodes_list),
+            "total_arestas": len(edges_list),
+            "notas": cont_grupos["nota"],
+            "tags": cont_grupos["tag"],
+            "memoria": cont_grupos["memoria"],
+            "incluir_temporal": bool(incluir_temporal),
+        },
+    }
+
+
 def _pontuar_semente(no_id: str, attrs: dict[str, Any], consulta_norm: str, tokens: list[str]) -> float:
     titulo_norm = _normalizar(str(attrs.get("titulo") or no_id))
     caminho_norm = _normalizar(no_id)

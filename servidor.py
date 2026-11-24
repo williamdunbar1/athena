@@ -111,7 +111,7 @@ from ferramentas_windows import (
 from ferramentas_windows import (
     remover_whitelist as remover_whitelist_windows,
 )
-from grafo_obsidian import estatisticas_grafo
+from grafo_obsidian import estatisticas_grafo, exportar_grafo_visual
 from logging_config import configurar_logging, obter_logger
 from mcp_manager import (
     encerrar_conexoes_mcp,
@@ -1077,6 +1077,12 @@ def ver_skills():
 async def ver_grafo_obsidian():
     """Retorna metricas do GraphRAG do Obsidian Vault (nos, arestas, top 5 hubs e notas orfas)."""
     return await asyncio.to_thread(estatisticas_grafo)
+
+
+@app.get("/api/obsidian/grafo/visual")
+async def ver_grafo_obsidian_visual(incluir_temporal: bool = True):
+    """Exporta o grafo visual (Obsidian + #tags + Memoria Temporal) pronto para vis-network."""
+    return await asyncio.to_thread(exportar_grafo_visual, incluir_temporal=incluir_temporal)
 
 
 @app.get("/api/cache/semantico/stats")

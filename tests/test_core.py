@@ -3808,3 +3808,80 @@ def test_extrair_transcricao_youtube_mock_guardrails_compactacao_e_ui_rica(monke
     assert "mermaid.min.js" in html
     assert "enriquecerBolhaBot(" in html
     assert "Copiado ✓" in html
+
+
+# ==============================================================================
+# 29. VISUALIZACOES INTERATIVAS: GRAFO VISUAL (vis-network) & CARTEIRA (ECharts)
+# ==============================================================================
+
+
+def test_exportar_grafo_visual_obsidian_tags_temporal_e_ui(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    import grafo_obsidian as go
+    import memoria
+    import memoria_temporal as mt
+    import servidor
+
+    # Mini-vault com 2 notas ligadas por wikilink + #tags
+    vault = tmp_path / "vault_visual"
+    vault.mkdir()
+    (vault / "Calculo.md").write_text(
+        "---\ntags:\n  - matematica\n---\n# Calculo\nVer tambem [[Fisica]] #faculdade.\n",
+        encoding="utf-8",
+    )
+    (vault / "Fisica.md").write_text(
+        "# Fisica\nAplicacao de derivadas em mecanica #faculdade.\n",
+        encoding="utf-8",
+    )
+
+    # Banco temporario com fato vigente e fato historico (so vigentes entram no grafo visual)
+    db_vis = tmp_path / "grafo_visual.db"
+    memoria.executar_migrations(db_vis)
+    mt.registrar_fato_temporal("William", "modelo_preferido", "Flash-Lite", db_path=db_vis)
+    mt.registrar_fato_temporal("William", "modelo_preferido", "Hydrogen", db_path=db_vis)
+
+    res = go.exportar_grafo_visual(incluir_temporal=True, vault_dir=vault, db_path=db_vis)
+    assert res["ok"] is True
+    assert res["stats"]["notas"] == 2
+    assert res["stats"]["tags"] == 2
+    assert res["stats"]["memoria"] == 2
+    assert res["stats"]["total_nos"] == len(res["nodes"]) == 6
+    assert res["stats"]["total_arestas"] == len(res["edges"])
+
+    grupos = {n["group"] for n in res["nodes"]}
+    assert grupos == {"nota", "tag", "memoria"}
+    labels = {n["label"] for n in res["nodes"]}
+    assert {"Calculo", "Fisica", "#faculdade", "#matematica", "William", "Hydrogen"}.issubset(labels)
+    assert "Flash-Lite" not in labels  # encerrado nao polui o grafo vigente
+
+    for n in res["nodes"]:
+        assert {"id", "label", "group", "title", "value", "detalhes"}.issubset(n.keys())
+        assert n["value"] >= 1
+    edge_labels = {e["label"] for e in res["edges"]}
+    assert {"wikilink", "tag", "modelo_preferido"}.issubset(edge_labels)
+
+    # Sem temporal: apenas Obsidian + tags
+    res_obs = go.exportar_grafo_visual(incluir_temporal=False, vault_dir=vault, db_path=db_vis)
+    assert res_obs["stats"]["memoria"] == 0
+    assert res_obs["stats"]["notas"] == 2
+
+    # Endpoint REST /api/obsidian/grafo/visual responde consistente
+    monkeypatch.setenv("OBSIDIAN_VAULT", str(vault))
+    monkeypatch.setenv("ATHENA_DB_PATH", str(db_vis))
+    monkeypatch.setattr(servidor.asyncio, "to_thread", lambda fn, *a, **kw: _coro_retorno(fn(*a, **kw)))
+    res_ep = _executar_coro_sync(servidor.ver_grafo_obsidian_visual(incluir_temporal=True))
+    assert res_ep["ok"] is True and res_ep["stats"]["notas"] == 2
+
+    # UI: vis-network + Apache ECharts + containers e handlers presentes
+    html = (Path(__file__).resolve().parent.parent / "index.html").read_text(encoding="utf-8")
+    assert "vis-network.min.js" in html
+    assert "echarts.min.js" in html
+    assert 'id="grafo-vis-canvas"' in html
+    assert 'id="chart-carteira-donut"' in html
+    assert 'id="chart-carteira-barras"' in html
+    assert "redimensionarGraficosCarteira()" in html
+
+
+async def _coro_retorno(valor):
+    return valor
