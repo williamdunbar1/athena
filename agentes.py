@@ -166,6 +166,9 @@ from ferramentas_navegador import (
     buscar_no_site as _buscar_no_site,
 )
 from ferramentas_navegador import (
+    ler_pagina_markdown_crawl4ai as _ler_pagina_markdown_crawl4ai,
+)
+from ferramentas_navegador import (
     tirar_screenshot as _tirar_screenshot,
 )
 from ferramentas_obsidian import (
@@ -1099,13 +1102,20 @@ agente_pesquisador = Agent(
     instructions=(
         "Voce e o Agente Pesquisador. Busque informacoes na web, URLs/APIs e navegue em paginas reais quando solicitado, "
         "devolvendo fatos objetivos, organizados em portugues do Brasil e SEMPRE incluindo os links clicaveis das fontes retornadas pelo DuckDuckGo e WebFetch. "
-        "Prefira as capabilities locais gratuitas `WebSearch` (DuckDuckGo local, sem custo de grounding) e `WebFetch` (leitura local direta de URLs em Markdown) "
-        "para buscas rapidas, noticias, documentacao e leitura de paginas estaticas. "
-        "Use `ler_pagina_web` como HTTP GET simples se necessario e reserve o navegador Playwright "
-        "(`abrir_e_ler_pagina`, `tirar_screenshot`, `buscar_no_site`) apenas para sites dinamicos (JS/SPA), "
-        "busca de elementos interativos ou capturas de tela. Nunca peca, colete ou salve senhas ou credenciais."
+        "Prefira as capabilities locais gratuitas `WebSearch` (DuckDuckGo local, sem custo de grounding) e `ler_pagina_markdown` "
+        "(Crawl4AI em Markdown limpo sem lixo de HTML/menus, com fallback automatico) ou `WebFetch` para ler artigos, documentacoes e paginas dinamicas. "
+        "Use `ler_pagina_web` como HTTP GET simples se necessario e reserve o navegador Playwright direto "
+        "(`abrir_e_ler_pagina`, `tirar_screenshot`, `buscar_no_site`) para busca de elementos interativos ou capturas de tela. "
+        "Nunca peca, colete ou salve senhas ou credenciais."
     ),
 )
+
+
+@agente_pesquisador.tool
+async def ler_pagina_markdown(ctx: RunContext[ContextoMissao], url: str) -> str:
+    """Metodo preferencial para ler artigos, documentacoes e paginas dinamicas em Markdown limpo (Crawl4AI com fallback automatico)."""
+    ctx.deps.registrar("Agente Pesquisador", "Web Markdown (Crawl4AI)", "ferramenta", f"ler_pagina_markdown({url})")
+    return await _ler_pagina_markdown_crawl4ai(url)
 
 
 @agente_pesquisador.tool

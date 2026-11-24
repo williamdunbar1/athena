@@ -62,8 +62,10 @@ from agentes import (
     verificar_ollama_disponivel,
 )
 from athena_lab import (
+    STATUS_ACIONAVEIS_LAB,
     aprovar_proposta_lab,
     listar_propostas_lab,
+    obter_status_cli_antigravity,
     obter_status_lab,
     rejeitar_proposta_lab,
     rodar_ciclo_rd,
@@ -133,7 +135,11 @@ from memoria import (
     salvar_mensagem,
 )
 from observabilidade import configurar_observabilidade
-from otimizador_midia import otimizar_imagem_para_llm, processar_pdf_para_llm
+from otimizador_midia import (
+    EXTENSOES_DOCUMENTO_SUPORTADAS,
+    extrair_documento_para_markdown,
+    otimizar_imagem_para_llm,
+)
 from rag_qdrant import obter_estatisticas_rag, sincronizar_indice_vetorial
 from rotinas import (
     atualizar_rotina,
@@ -1088,15 +1094,16 @@ _TAREFA_LAB_ATUAL: asyncio.Task | None = None
 
 @app.get("/api/lab/propostas")
 def api_lab_propostas():
-    """Lista todas as propostas do Athena Lab, contagem de pendentes e status do ciclo/Sentinel."""
+    """Lista todas as propostas do Athena Lab, contagem de pendentes, status do ciclo/Sentinel e Antigravity CLI."""
     propostas = listar_propostas_lab()
-    pendentes = sum(1 for p in propostas if p.get("status") == "pendente")
+    pendentes = sum(1 for p in propostas if p.get("status") in STATUS_ACIONAVEIS_LAB)
     return {
         "ok": True,
         "status": obter_status_lab(),
         "propostas": propostas,
         "pendentes": pendentes,
         "sentinel_ativo": sentinel_ativo(),
+        "cli_antigravity": obter_status_cli_antigravity(),
     }
 
 
@@ -1731,6 +1738,13 @@ TIPOS_UPLOAD_PERMITIDOS = frozenset({
     "image/png",
     "image/webp",
     "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "text/csv",
+    "text/html",
+    "text/plain",
+    "text/markdown",
 })
 EXT_PARA_MIME = {
     ".jpg": "image/jpeg",
@@ -1738,6 +1752,14 @@ EXT_PARA_MIME = {
     ".png": "image/png",
     ".webp": "image/webp",
     ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".csv": "text/csv",
+    ".html": "text/html",
+    ".htm": "text/html",
+    ".txt": "text/plain",
+    ".md": "text/markdown",
 }
 PASTA_UPLOADS = BASE_DIR / "sandbox_files" / "uploads"
 PASTA_IMAGENS_GERADAS = BASE_DIR / "sandbox_files" / "imagens"
@@ -2046,7 +2068,10 @@ async def _preparar_uploads_stream(
             return (
                 {
                     "ok": False,
-                    "erro": f"Tipo nao permitido em '{nome_original}' ({ctype or 'desconhecido'}). Use JPG, PNG, WebP ou PDF.",
+                    "erro": (
+                        f"Tipo nao permitido em '{nome_original}' ({ctype or 'desconhecido'}). "
+                        "Use JPG, PNG, WebP, PDF, DOCX, PPTX, XLSX, CSV, HTML, TXT ou MD."
+                    ),
                     "modelo": modelo_escolhido,
                     "trilha": [],
                     "fatos": listar_fatos(),
@@ -2114,35 +2139,46 @@ async def _preparar_uploads_stream(
                 f"copia em /workspace/uploads/{nome_disco})"
             )
             conteudos_binarios.append(BinaryContent(data=dados_envio, media_type=mime_envio))
-        elif ctype == "application/pdf":
-            res_pdf = await asyncio.to_thread(processar_pdf_para_llm, dados, nome_original)
-            if res_pdf["modo"] == "texto":
-                conteudo_pdf = str(res_pdf.get("conteudo") or "")
-                paginas_pdf = int(res_pdf.get("paginas") or 0)
-                bytes_depois_pdf = len(conteudo_pdf.encode("utf-8"))
-                reducao_pdf = (
-                    round(((len(dados) - bytes_depois_pdf) / len(dados)) * 100.0, 1)
-                    if len(dados) > 0 and bytes_depois_pdf <= len(dados)
+        elif ctype == "application/pdf" or ext in EXTENSOES_DOCUMENTO_SUPORTADAS:
+            res_doc = await asyncio.to_thread(extrair_documento_para_markdown, dados, nome_original)
+            if res_doc.get("modo") == "texto":
+                conteudo_doc = str(res_doc.get("conteudo") or "")
+                paginas_doc = int(res_doc.get("paginas") or 0)
+                motor_doc = str(res_doc.get("motor") or "texto")
+                bytes_depois_doc = len(conteudo_doc.encode("utf-8"))
+                reducao_doc = (
+                    round(((len(dados) - bytes_depois_doc) / len(dados)) * 100.0, 1)
+                    if len(dados) > 0 and bytes_depois_doc <= len(dados)
                     else 0.0
                 )
                 logger.info(
                     "midia_otimizada",
-                    tipo="pdf_texto",
+                    tipo="pdf_texto" if ext == ".pdf" else "documento_markdown",
+                    motor=motor_doc,
                     arquivo=nome_original,
-                    paginas=paginas_pdf,
+                    paginas=paginas_doc,
                     bytes_antes=len(dados),
-                    bytes_depois=bytes_depois_pdf,
-                    reducao_pct=reducao_pdf,
+                    bytes_depois=bytes_depois_doc,
+                    reducao_pct=reducao_doc,
                 )
-                detalhes_prompt.append(
-                    f"{nome_original} (PDF digital extraido em texto, {paginas_pdf} pagina(s), "
-                    f"copia em /workspace/uploads/{nome_disco})"
-                )
-                blocos_pdfs_texto.append(
-                    f"[TEXTO EXTRAIDO DO PDF '{nome_original}' ({paginas_pdf} pagina(s))]\n{conteudo_pdf}"
-                )
-            else:
-                paginas_pdf = int(res_pdf.get("paginas") or 0)
+                if ext == ".pdf":
+                    detalhes_prompt.append(
+                        f"{nome_original} (PDF digital extraido via {motor_doc}, {paginas_doc} pagina(s), "
+                        f"copia em /workspace/uploads/{nome_disco})"
+                    )
+                    blocos_pdfs_texto.append(
+                        f"[TEXTO EXTRAIDO DO PDF '{nome_original}' ({paginas_doc} pagina(s), motor: {motor_doc})]\n{conteudo_doc}"
+                    )
+                else:
+                    detalhes_prompt.append(
+                        f"{nome_original} (documento convertido em Markdown via {motor_doc}, "
+                        f"copia em /workspace/uploads/{nome_disco})"
+                    )
+                    blocos_pdfs_texto.append(
+                        f"[DOCUMENTO CONVERTIDO PARA MARKDOWN '{nome_original}' (motor: {motor_doc})]\n{conteudo_doc}"
+                    )
+            elif res_doc.get("modo") == "binario":
+                paginas_pdf = int(res_doc.get("paginas") or 0)
                 logger.info(
                     "midia_otimizada",
                     tipo="pdf_binario",
@@ -2156,7 +2192,21 @@ async def _preparar_uploads_stream(
                     f"{nome_original} (application/pdf escaneado, {paginas_pdf} pagina(s), "
                     f"copia em /workspace/uploads/{nome_disco})"
                 )
-                conteudos_binarios.append(BinaryContent(data=res_pdf["dados"], media_type="application/pdf"))
+                conteudos_binarios.append(BinaryContent(data=res_doc["dados"], media_type="application/pdf"))
+            else:
+                return (
+                    {
+                        "ok": False,
+                        "erro": str(res_doc.get("erro") or f"Nao foi possivel processar '{nome_original}'."),
+                        "modelo": modelo_escolhido,
+                        "trilha": [],
+                        "fatos": listar_fatos(),
+                    },
+                    "",
+                    texto_usuario,
+                    [],
+                    [],
+                )
         else:
             detalhes_prompt.append(f"{nome_original} ({ctype}, copia em /workspace/uploads/{nome_disco})")
             conteudos_binarios.append(BinaryContent(data=dados, media_type=ctype))

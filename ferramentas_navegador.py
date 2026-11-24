@@ -1,6 +1,8 @@
 import asyncio
 import contextlib
+import importlib
 import re
+import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -312,3 +314,80 @@ async def tirar_screenshot(url: str, nome_arquivo: str) -> str:
 async def buscar_no_site(url: str, texto_busca: str) -> str:
     """Abre a URL e procura links e elementos visiveis contendo o texto informado."""
     return await asyncio.to_thread(_buscar_no_site_sync, url, texto_busca)
+
+
+def _extrair_markdown_resultado_crawl4ai(resultado) -> str:
+    """Extrai o Markdown mais limpo de um retorno do Crawl4AI (v0.3+ / v0.4+)."""
+    if resultado is None:
+        return ""
+    if getattr(resultado, "success", True) is False:
+        return ""
+    md = getattr(resultado, "markdown", None)
+    if isinstance(md, str):
+        return md.strip()
+    if md is not None:
+        for attr in ("fit_markdown", "raw_markdown", "markdown_with_citations"):
+            val = getattr(md, attr, None)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+    md_v2 = getattr(resultado, "markdown_v2", None)
+    if md_v2 is not None:
+        for attr in ("fit_markdown", "raw_markdown"):
+            val = getattr(md_v2, attr, None)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+    return ""
+
+
+async def _executar_crawl4ai_async(url_valida: str) -> str:
+    """Executa `AsyncWebCrawler` do `crawl4ai` via lazy import."""
+    mod = importlib.import_module("crawl4ai")
+    crawler_cls = getattr(mod, "AsyncWebCrawler", None)
+    if crawler_cls is None:
+        raise ImportError("AsyncWebCrawler indisponivel em crawl4ai.")
+
+    async with crawler_cls() as crawler:
+        res = await crawler.arun(url=url_valida)
+    return _extrair_markdown_resultado_crawl4ai(res)
+
+
+def _rodar_crawl4ai_em_thread(url_valida: str) -> str:
+    """Executa Crawl4AI em um event loop proprio (seguro no Windows com Uvicorn/Proactor)."""
+    if sys.platform == "win32":
+        policy_cls = getattr(asyncio, "WindowsProactorEventLoopPolicy", None)
+        if policy_cls is not None:
+            loop = asyncio.ProactorEventLoop()  # type: ignore[attr-defined]
+            try:
+                asyncio.set_event_loop(loop)
+                return loop.run_until_complete(_executar_crawl4ai_async(url_valida))
+            finally:
+                loop.close()
+    return asyncio.run(_executar_crawl4ai_async(url_valida))
+
+
+async def ler_pagina_markdown_crawl4ai(url: str) -> str:
+    """Le uma pagina web convertida em Markdown limpo via `crawl4ai` (lazy import) com fallback automatico.
+
+    - Aplica `sanitizar_conteudo_externo` (anti-prompt injection / mascaramento) e `compactar_saida_tool`.
+    - Se `crawl4ai` nao estiver instalado ou falhar, cai automaticamente para `abrir_e_ler_pagina` (Playwright/HTTP).
+    """
+    try:
+        url_valida = _validar_url(url)
+    except ValueError as e:
+        return f"Erro ao validar URL: {e}"
+
+    try:
+        importlib.import_module("crawl4ai")
+    except Exception:
+        return await abrir_e_ler_pagina(url_valida)
+
+    try:
+        markdown = await asyncio.to_thread(_rodar_crawl4ai_em_thread, url_valida)
+        if markdown and markdown.strip():
+            bruto = f"URL: {url_valida}\n\n{markdown.strip()}"
+            sanitizado, _susp, _pads = sanitizar_conteudo_externo(bruto, origem=f"web:{url_valida}")
+            return compactar_saida_tool(sanitizado)
+    except Exception:
+        pass
+
+    return await abrir_e_ler_pagina(url_valida)

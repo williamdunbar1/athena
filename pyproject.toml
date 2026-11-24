@@ -41,6 +41,13 @@ voice = [
     "edge-tts>=7.0.0",
     "faster-whisper>=1.1.0",
 ]
+docs = [
+    "markitdown[all]",
+    "docling",
+]
+web = [
+    "crawl4ai",
+]
 
 [dependency-groups]
 dev = [

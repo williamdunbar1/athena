@@ -192,37 +192,8 @@
     flex-shrink: 0;
   }
 
-  .btn-novo-chat {
-    flex: 1;
-    min-width: 0;
-    height: 38px;
-    padding: 0 13px;
-    border-radius: 999px;
-    background: var(--accent-soft);
-    border: 1px solid rgba(234, 179, 8, 0.42);
-    color: var(--accent-hover);
-    font-family: var(--font-ui);
-    font-size: 13px;
-    font-weight: 700;
-    justify-content: flex-start;
-    gap: 9px;
-  }
-  .btn-novo-chat:hover {
-    background: rgba(234, 179, 8, 0.22);
-    border-color: var(--accent);
-    color: #fef08a;
-  }
   .sidebar.collapsed .sidebar-top {
-    flex-direction: column;
-    gap: 6px;
-  }
-  .sidebar.collapsed .btn-novo-chat {
-    width: 42px;
-    height: 38px;
-    flex: none;
-    padding: 0;
     justify-content: center;
-    border-radius: 10px;
   }
 
   .menu-btn {
@@ -348,6 +319,51 @@
     height: 16px;
   }
 
+  .nav-item.agent-row {
+    display: flex;
+    align-items: center;
+    padding: 0 6px 0 11px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .agent-row .nav-label {
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+  }
+  .agent-new-btn {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    margin-left: auto;
+    border-radius: 6px;
+    background: transparent;
+    border: 0;
+    color: var(--muted-2);
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  }
+  .agent-new-btn .ico {
+    width: 14px;
+    height: 14px;
+    color: currentColor;
+  }
+  .nav-item.agent-row.active .agent-new-btn .ico {
+    color: currentColor;
+  }
+  .agent-new-btn:hover,
+  .agent-new-btn:focus-visible {
+    background: rgba(234, 179, 8, 0.14);
+    color: #eab308;
+  }
+  .nav-item.agent-row.active .agent-new-btn:hover,
+  .nav-item.agent-row.active .agent-new-btn:focus-visible {
+    color: #eab308;
+  }
+
   .conv-item {
     position: relative;
     display: flex;
@@ -455,12 +471,14 @@
     transition: opacity 150ms var(--ease);
   }
 
-  .sidebar.collapsed .nav-item {
+  .sidebar.collapsed .nav-item,
+  .sidebar.collapsed .nav-item.agent-row {
     padding: 0;
     justify-content: center;
   }
 
   .sidebar.collapsed .nav-label,
+  .sidebar.collapsed .agent-new-btn,
   .sidebar.collapsed .sb-section-head,
   .sidebar.collapsed #sec-conversas {
     opacity: 0;
@@ -2319,24 +2337,25 @@
       width: min(286px, 86vw);
     }
     .sidebar.collapsed .sidebar-top {
-      flex-direction: row;
-      gap: 8px;
-    }
-    .sidebar.collapsed .btn-novo-chat {
-      flex: 1;
-      width: auto;
-      padding: 0 13px;
       justify-content: flex-start;
-      border-radius: 999px;
     }
     .sidebar.collapsed .nav-item {
       padding: 0 11px;
+      justify-content: flex-start;
+    }
+    .sidebar.collapsed .nav-item.agent-row {
+      padding: 0 6px 0 11px;
       justify-content: flex-start;
     }
     .sidebar.collapsed .nav-label {
       opacity: 1;
       width: auto;
       display: inline;
+    }
+    .sidebar.collapsed .agent-new-btn {
+      opacity: 1;
+      width: 24px;
+      display: inline-flex;
     }
     .sidebar.collapsed .sb-section-head {
       opacity: 1;
@@ -2592,10 +2611,6 @@
         <button type="button" class="menu-btn" id="btn-sidebar-toggle" onclick="alternarSidebar()" title="Expandir ou recolher menu" aria-label="Alternar menu lateral">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>
         </button>
-        <button type="button" class="btn-novo-chat" id="btn-novo-chat" onclick="iniciarNovoChat('athena')" title="Iniciar uma nova conversa com a Athena">
-          <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          <span class="nav-label">Novo chat</span>
-        </button>
       </div>
 
       <nav class="sidebar-nav" aria-label="Seções da Athena">
@@ -2716,7 +2731,7 @@
                 <input
                   type="file"
                   id="input-arquivo"
-                  accept="image/*,application/pdf"
+                  accept="image/*,application/pdf,.docx,.pptx,.xlsx,.csv,.html,.htm,.txt,.md"
                   multiple
                   style="display:none;"
                   onchange="selecionarArquivo(event)"
@@ -3085,9 +3100,10 @@
             <div class="page">
               <div class="panel">
                 <h3>
-                  <span style="display:inline-flex;align-items:center;gap:8px;">
+                  <span style="display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;">
                     <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9.5V3"/><path d="M8.5 14h7"/></svg>
                     <span>Athena Lab (R&amp;D — Auto-Evolução Controlada)</span>
+                    <span id="lab-cli-badge" class="lab-badge" title="Status do motor Google Antigravity CLI">Modo Briefing VS Code</span>
                   </span>
                   <button type="button" class="ghost mini" onclick="carregarAthenaLab()">
                     <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
@@ -3197,7 +3213,19 @@ const STORAGE_KEY_CONVERSA = "athena_conversa_id";
 const STORAGE_KEY_AGENTE = "athena_agente_alvo";
 const MAX_UPLOAD_ARQUIVOS = 6;
 const MAX_UPLOAD_SOMA_BYTES = 18 * 1024 * 1024;
-const TIPOS_UPLOAD_PERMITIDOS = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+const TIPOS_UPLOAD_PERMITIDOS = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/csv",
+  "text/html",
+  "text/plain",
+  "text/markdown",
+]);
 const MODELO_ROTULOS = {
   "auto": "Auto · Inteligente",
   "gemini-3.5-flash-lite": "Flash-Lite",
@@ -3865,7 +3893,7 @@ function adicionarAnexos(fileList, ehPaste = false) {
     const ext = (file.name || "").split(".").pop().toLowerCase();
     const mimeRaw = (file.type || "").toLowerCase();
     const mime = mimeRaw === "image/jpg" ? "image/jpeg" : mimeRaw;
-    const extOk = ["jpg", "jpeg", "png", "webp", "pdf"].includes(ext);
+    const extOk = ["jpg", "jpeg", "png", "webp", "pdf", "docx", "pptx", "xlsx", "csv", "html", "htm", "txt", "md"].includes(ext);
 
     if (!TIPOS_UPLOAD_PERMITIDOS.has(mime) && !extOk) {
       avisoTipo = true;
@@ -4268,17 +4296,30 @@ function renderAgentesSidebar() {
     const ativo = _abaAtiva === "chat" && _agenteAlvo === ag.id;
     const ico = AGENTE_ICONES_SVG[ag.id] || AGENTE_ICONES_SVG.athena;
     const rotulo = ag.id === "athena" ? "Athena" : ag.nome;
+    const idEsc = escHtml(ag.id);
+    const rotEsc = escHtml(rotulo);
     return `
-      <button
-        type="button"
-        class="nav-item${ativo ? " active" : ""}"
-        data-agente-id="${escHtml(ag.id)}"
-        onclick="iniciarNovoChat('${escHtml(ag.id)}')"
-        title="${escHtml(rotulo)} — ${escHtml(ag.descricao || "")}"
+      <div
+        role="button"
+        tabindex="0"
+        class="nav-item agent-row${ativo ? " active" : ""}"
+        data-agente-id="${idEsc}"
+        onclick="selecionarAgenteChat('${idEsc}')"
+        onkeydown="if((event.key==='Enter'||event.key===' ')&&event.target===this){event.preventDefault();selecionarAgenteChat('${idEsc}');}"
+        title="${rotEsc} — ${escHtml(ag.descricao || "")}"
       >
         ${ico}
-        <span class="nav-label">${escHtml(rotulo)}</span>
-      </button>
+        <span class="nav-label">${rotEsc}</span>
+        <button
+          type="button"
+          class="agent-new-btn"
+          onclick="novoChatAgente('${idEsc}', event)"
+          title="Novo chat com ${rotEsc}"
+          aria-label="Novo chat com ${rotEsc}"
+        >
+          <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        </button>
+      </div>
     `;
   }).join("");
 }
@@ -4353,6 +4394,24 @@ async function carregarConversas() {
     }
   } catch (_) {}
   renderConversasSidebar();
+}
+
+async function novoChatAgente(agenteId, ev) {
+  if (ev) ev.stopPropagation();
+  await iniciarNovoChat(agenteId);
+}
+
+async function selecionarAgenteChat(agenteId) {
+  const alvo = obterInfoAgente(agenteId).id;
+  await carregarConversas();
+  const candidatas = _conversasLista
+    .filter(c => String(c.agente_alvo || "athena").trim().toLowerCase() === alvo)
+    .sort((a, b) => String(b.atualizado_em || "").localeCompare(String(a.atualizado_em || "")));
+  if (candidatas.length) {
+    const ok = await abrirConversa(candidatas[0].id);
+    if (ok) return;
+  }
+  await iniciarNovoChat(alvo);
 }
 
 async function iniciarNovoChat(agenteId = null) {
@@ -6283,6 +6342,7 @@ async function carregarSkills() {
 /* ===== ATHENA LAB (R&D) ===== */
 let _labPollTimer = null;
 let _labBadgeInterval = null;
+let _labBriefingsPorId = {};
 
 function atualizarBadgeNavLab(qtdPendentes) {
   const el = document.getElementById("nav-badge-lab");
@@ -6292,13 +6352,55 @@ function atualizarBadgeNavLab(qtdPendentes) {
   el.classList.toggle("hidden", n <= 0);
 }
 
+function atualizarBadgeCliLab(infoCli) {
+  const el = document.getElementById("lab-cli-badge");
+  if (!el) return;
+  const cliAtivo = Boolean(infoCli && infoCli.disponivel && infoCli.habilitado);
+  el.className = "lab-badge " + (cliAtivo ? "ok" : "accent");
+  el.textContent = cliAtivo ? "CLI Ativo" : "Modo Briefing VS Code";
+  el.title = cliAtivo
+    ? `Google Antigravity CLI detectado (${infoCli.caminho || "PATH"})`
+    : "Antigravity CLI não detectado localmente — propostas são salvas com briefing cirúrgico para o VS Code";
+}
+
+async function copiarPromptAntigravity(propostaId, btn) {
+  const promptTxt = _labBriefingsPorId[propostaId] || "";
+  if (!promptTxt.trim()) {
+    mostrarToast("Nenhum briefing disponível para esta proposta.", true);
+    return;
+  }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(promptTxt);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = promptTxt;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = "Prompt copiado ✓";
+      setTimeout(() => { btn.textContent = orig; }, 1800);
+    }
+    mostrarToast("Prompt copiado! Cole no Google Antigravity (VS Code).");
+  } catch (_) {
+    mostrarToast("Não foi possível copiar para a área de transferência.", true);
+  }
+}
+
 async function atualizarBadgeAthenaLab() {
   try {
     const r = await fetch("/api/lab/propostas").then(x => x.json());
+    if (r && r.cli_antigravity) atualizarBadgeCliLab(r.cli_antigravity);
     if (r && typeof r.pendentes === "number") {
       atualizarBadgeNavLab(r.pendentes);
     } else if (r && Array.isArray(r.propostas)) {
-      atualizarBadgeNavLab(r.propostas.filter(p => p.status === "pendente").length);
+      atualizarBadgeNavLab(r.propostas.filter(p => p.status === "pendente" || p.status === "pronta_antigravity").length);
     }
   } catch (_) {}
 }
@@ -6340,7 +6442,10 @@ function _renderCardPropostaLab(p, ehPendente) {
     .join("");
 
   const notaCrit = crit.nota !== undefined ? `<span class="lab-badge accent">Crítico: ${escHtml(crit.nota)}/10</span>` : "";
-  const badgeStatus = `<span class="lab-badge ${p.status === "aprovada" ? "ok" : (p.status === "pendente" ? "accent" : "fail")}">${escHtml(p.status)}</span>`;
+  const ehProntaAgy = p.status === "pronta_antigravity";
+  const statusTexto = p.status_label || (ehProntaAgy ? "Pronta para Antigravity (VS Code)" : p.status);
+  const statusCls = p.status === "aprovada" ? "ok" : ((p.status === "pendente" || ehProntaAgy) ? "accent" : "fail");
+  const badgeStatus = `<span class="lab-badge ${statusCls}">${escHtml(statusTexto)}</span>`;
   const ehAutoFix = String(p.categoria || "").toLowerCase() === "auto-fix-logfire";
   const badgeCategoria = ehAutoFix
     ? '<span class="lab-badge autofix">Auto-Fix · Logfire</span>'
@@ -6350,12 +6455,14 @@ function _renderCardPropostaLab(p, ehPendente) {
     ? `<details class="lab-diff-details"><summary>Ver git diff (${escHtml(p.branch || "patch")})</summary><pre class="lab-diff-pre">${escHtml(p.diff_texto)}</pre></details>`
     : "";
 
-  const botoes = ehPendente
-    ? `<div class="lab-actions">
-        <button type="button" class="mini" onclick="aprovarPropostaLab('${escHtml(p.id)}', this)">Aprovar e Aplicar</button>
-        <button type="button" class="btn-recusar mini" onclick="rejeitarPropostaLab('${escHtml(p.id)}', this)">Rejeitar</button>
-      </div>`
+  const btnCopiarAgy = `<button type="button" class="ghost mini" onclick="copiarPromptAntigravity('${escHtml(p.id)}', this)" title="Copiar briefing técnico cirúrgico para colar no Antigravity (VS Code)">Copiar Prompt pro Antigravity</button>`;
+  const btnAprovar = (ehPendente && p.status === "pendente" && p.branch)
+    ? `<button type="button" class="mini" onclick="aprovarPropostaLab('${escHtml(p.id)}', this)">Aprovar e Aplicar</button>`
     : "";
+  const btnRejeitar = ehPendente
+    ? `<button type="button" class="btn-recusar mini" onclick="rejeitarPropostaLab('${escHtml(p.id)}', this)">Rejeitar</button>`
+    : "";
+  const botoes = `<div class="lab-actions">${btnCopiarAgy}${btnAprovar}${btnRejeitar}</div>`;
 
   return `
     <div class="lab-card">
@@ -6413,6 +6520,14 @@ async function carregarAthenaLab() {
     }
     const st = (r && r.status) || {};
     const lista = Array.isArray(r && r.propostas) ? r.propostas : [];
+    atualizarBadgeCliLab((r && r.cli_antigravity) || st.cli_antigravity || null);
+
+    _labBriefingsPorId = {};
+    for (const item of lista) {
+      if (item && item.id) {
+        _labBriefingsPorId[item.id] = item.briefing_prompt || "";
+      }
+    }
 
     if (banner && bannerTxt) {
       if (st.ativo) {
@@ -6431,8 +6546,8 @@ async function carregarAthenaLab() {
       }
     }
 
-    const pendentes = lista.filter(p => p.status === "pendente");
-    const historico = lista.filter(p => p.status !== "pendente");
+    const pendentes = lista.filter(p => p.status === "pendente" || p.status === "pronta_antigravity");
+    const historico = lista.filter(p => p.status !== "pendente" && p.status !== "pronta_antigravity");
     atualizarBadgeNavLab(Number((r && r.pendentes) ?? pendentes.length));
     if (badgeCount) badgeCount.textContent = `${pendentes.length} pendente(s)`;
 

@@ -5,7 +5,7 @@ Fluxo seguro:
 2. Agente Arquiteto -> elabora plano tecnico detalhado e alteracoes cirurgicas.
 3. Agente Critico (Revisor Adversarial) -> avalia risco, CI Linux, seguranca e custo/beneficio.
    So avanca se `aprovado=True` e `nota >= 7`.
-4. Validacao em `git worktree` isolado (`sandbox_files/worktrees/<id>`, branch `lab/<id>`):
+4. Validacao em `git worktree` isolado fora do repositorio (`<temp>/athena_lab_worktrees/<id>`, branch `lab/<id>`):
    bloqueia arquivos sensiveis, aplica patch e executa `ruff check .`, `pyright` e `pytest -v`
    (no maximo 1 retry de correcao).
 5. Somente propostas 100% verdes nos 3 checks sao salvas como `pendente` em `lab_propostas`
@@ -23,6 +23,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from contextlib import contextmanager, suppress
@@ -37,16 +38,22 @@ from pydantic_ai.capabilities import WebSearch
 from agentes import MODELO, _criar_retry_503
 from eficiencia import compactar_saida_tool
 from ferramentas_logfire import buscar_erros_logfire, consultar_erros_logfire_estruturados
+from guardrails import mascarar_segredos_e_pii
 from logging_config import obter_logger
 from memoria import obter_db_path
 
 _log = obter_logger("athena_lab")
 
 BASE_DIR = Path(__file__).resolve().parent
-WORKTREES_DIR = BASE_DIR / "sandbox_files" / "worktrees"
+WORKTREES_DIR = Path(tempfile.gettempdir()) / "athena_lab_worktrees"
 MAX_RETRIES_CORRECAO = 1
 TIMEOUT_CHECK_SEGUNDOS = 180
+TIMEOUT_CLI_SEGUNDOS = 180
 NOTA_MINIMA_APROVACAO = 7
+CANDIDATOS_CLI_ANTIGRAVITY: tuple[str, ...] = ("agy", "antigravity")
+STATUS_PRONTA_ANTIGRAVITY = "pronta_antigravity"
+ROTULO_PRONTA_ANTIGRAVITY = "Pronta para Antigravity (VS Code)"
+STATUS_ACIONAVEIS_LAB: frozenset[str] = frozenset({"pendente", STATUS_PRONTA_ANTIGRAVITY})
 
 ARQUIVOS_SENSIVEIS_EXATOS: frozenset[str] = frozenset(
     {
@@ -246,6 +253,22 @@ def _row_para_proposta(row: tuple) -> dict[str, Any]:
         checks = json.loads(row[8] or "{}")
     except Exception:
         checks = {}
+    status_val = str(row[9] or "")
+    briefing_salvo = str(debate.get("briefing_prompt") or "").strip() if isinstance(debate, dict) else ""
+    if not briefing_salvo:
+        briefing_salvo = montar_briefing_prompt_antigravity(
+            titulo=str(row[1] or ""),
+            categoria=str(row[2] or ""),
+            resumo=str(row[3] or ""),
+            ganho_estimado=str(row[4] or ""),
+            debate=debate if isinstance(debate, dict) else {},
+            branch=str(row[6] or ""),
+        )
+    modo_exec = (
+        str(debate.get("modo_execucao") or "").strip()
+        if isinstance(debate, dict)
+        else ""
+    ) or ("briefing_vscode" if status_val == STATUS_PRONTA_ANTIGRAVITY else "worktree")
     return {
         "id": row[0],
         "titulo": row[1],
@@ -256,7 +279,10 @@ def _row_para_proposta(row: tuple) -> dict[str, Any]:
         "branch": row[6],
         "diff_texto": row[7],
         "checks": checks,
-        "status": row[9],
+        "status": status_val,
+        "status_label": ROTULO_PRONTA_ANTIGRAVITY if status_val == STATUS_PRONTA_ANTIGRAVITY else status_val,
+        "modo_execucao": modo_exec,
+        "briefing_prompt": briefing_salvo,
         "criado_em": row[10],
     }
 
@@ -362,12 +388,14 @@ def _rodar_cmd(
     cwd: Path,
     timeout: int = TIMEOUT_CHECK_SEGUNDOS,
     compactar: bool = True,
+    stdin_devnull: bool = False,
 ) -> tuple[int, str]:
     env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
     try:
         proc = subprocess.run(
             cmd,
             cwd=str(cwd),
+            stdin=subprocess.DEVNULL if stdin_devnull else None,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -386,6 +414,338 @@ def _rodar_cmd(
         return 1, f"Erro ao executar {' '.join(cmd)}: {exc}"
 
 
+# ==============================================================================
+# INTEGRACAO ANTIGRAVITY CLI (HEADLESS) & MODO BRIEFING VS CODE
+# ==============================================================================
+
+
+def lab_usar_cli_habilitado() -> bool:
+    """Indica se o Athena Lab deve preferir o Antigravity CLI/Briefing (ATHENA_LAB_USE_CLI=true)."""
+    return (os.getenv("ATHENA_LAB_USE_CLI", "true") or "true").strip().lower() in (
+        "1",
+        "true",
+        "sim",
+        "yes",
+        "on",
+    )
+
+
+def detectar_antigravity_cli() -> str | None:
+    """Detecta o binario do Antigravity CLI via ATHENA_CODING_CLI ou shutil.which('agy'/'antigravity')."""
+    custom = (os.getenv("ATHENA_CODING_CLI") or "").strip()
+    if custom:
+        encontrado = shutil.which(custom)
+        if encontrado:
+            return encontrado
+        cand_path = Path(custom).expanduser()
+        if cand_path.is_file():
+            return str(cand_path.resolve())
+        return None
+
+    for nome in CANDIDATOS_CLI_ANTIGRAVITY:
+        encontrado = shutil.which(nome)
+        if encontrado:
+            return encontrado
+    return None
+
+
+def obter_status_cli_antigravity() -> dict[str, Any]:
+    """Retorna diagnostico somente leitura da integracao com o Antigravity CLI."""
+    caminho = detectar_antigravity_cli()
+    habilitado = lab_usar_cli_habilitado()
+    ativo = bool(caminho and habilitado)
+    return {
+        "disponivel": bool(caminho),
+        "caminho": caminho or "",
+        "habilitado": habilitado,
+        "modo": "cli" if ativo else "briefing_vscode",
+        "rotulo": "CLI Ativo" if ativo else "Modo Briefing VS Code",
+    }
+
+
+def montar_briefing_prompt_antigravity(
+    *,
+    titulo: str,
+    categoria: str = "",
+    resumo: str = "",
+    ganho_estimado: str = "",
+    debate: dict[str, Any] | None = None,
+    traceback_logfire: str = "",
+    arquivos_alvo: list[str] | None = None,
+    branch: str = "",
+) -> str:
+    """Monta um prompt tecnico cirurgico pronto para o Antigravity CLI ou VS Code."""
+    deb: dict[str, Any] = debate if isinstance(debate, dict) else {}
+    raw_scout = deb.get("scout")
+    raw_arq = deb.get("arquiteto")
+    raw_crit = deb.get("critico")
+    scout: dict[str, Any] = raw_scout if isinstance(raw_scout, dict) else {}
+    arq: dict[str, Any] = raw_arq if isinstance(raw_arq, dict) else {}
+    crit: dict[str, Any] = raw_crit if isinstance(raw_crit, dict) else {}
+
+    alvos = [
+        str(c).strip()
+        for c in (arquivos_alvo or scout.get("arquivos_alvo") or [])
+        if str(c).strip() and not eh_arquivo_sensivel(str(c))
+    ]
+    for alt in arq.get("alteracoes") or []:
+        if isinstance(alt, dict):
+            cam = str(alt.get("caminho") or "").strip()
+            if cam and cam not in alvos and not eh_arquivo_sensivel(cam):
+                alvos.append(cam)
+
+    tb_bruto = (traceback_logfire or str(deb.get("traceback_logfire") or "")).strip()
+    if tb_bruto:
+        tb_seguro, _ = mascarar_segredos_e_pii(tb_bruto[-2500:])
+    else:
+        tb_seguro = ""
+
+    linhas: list[str] = [
+        f"# Athena Lab — Briefing Tecnico para Antigravity: {titulo or 'Melhoria / Auto-Fix'}",
+        "",
+        f"- **Categoria:** {categoria or 'eficiencia'}",
+    ]
+    if ganho_estimado:
+        linhas.append(f"- **Ganho estimado:** {ganho_estimado}")
+    if branch:
+        linhas.append(f"- **Branch isolada alvo:** `{branch}`")
+    if alvos:
+        linhas.append("- **Arquivos alvo sugeridos:** " + ", ".join(f"`{a}`" for a in alvos[:8]))
+
+    linhas.extend(["", "## Contexto e Diagnostico"])
+    problema = str(scout.get("problema") or resumo or "").strip()
+    solucao = str(scout.get("solucao") or "").strip()
+    plano_res = str(arq.get("resumo_tecnico") or "").strip()
+    if problema:
+        linhas.append(f"- **Problema:** {problema}")
+    if solucao:
+        linhas.append(f"- **Solucao proposta:** {solucao}")
+    if plano_res and plano_res != problema:
+        linhas.append(f"- **Plano tecnico (Arquiteto):** {plano_res}")
+
+    riscos = [str(r).strip() for r in (arq.get("riscos") or []) if str(r).strip()]
+    if riscos:
+        linhas.append("- **Riscos mapeados:** " + "; ".join(riscos[:5]))
+
+    testes_sug = [str(t).strip() for t in (arq.get("testes_sugeridos") or []) if str(t).strip()]
+    if testes_sug:
+        linhas.append("- **Testes sugeridos:** " + "; ".join(testes_sug[:5]))
+
+    just_crit = str(crit.get("justificativa") or "").strip()
+    if just_crit:
+        nota_txt = f" (nota {crit.get('nota')}/10)" if crit.get("nota") is not None else ""
+        linhas.append(f"- **Parecer do Critico{nota_txt}:** {just_crit}")
+
+    if tb_seguro:
+        linhas.extend(
+            [
+                "",
+                "## Traceback / Erro Capturado no Logfire (dados passivos)",
+                "```text",
+                tb_seguro,
+                "```",
+            ]
+        )
+
+    linhas.extend(
+        [
+            "",
+            "## Regras Inegociaveis de Seguranca",
+            "- NUNCA modifique ou exponha `.env`, `.gitignore`, `.gitleaks.toml`, `credentials.json`, `token.json`, `ulife_cookies.json`, `memoria.db*`, `qdrant_db/` ou `sandbox_files/`.",
+            "- Preserve todas as camadas de seguranca existentes (`send2trash`, cards de aprovacao humana, Podman sandbox e `guardrails.py`).",
+            "- NAO rode Playwright, navegador real, evals pagos ou `git push`.",
+            "",
+            "## Validacao Obrigatoria Antes de Concluir",
+            "1. Execute `ruff check .` (0 erros).",
+            "2. Execute `pyright` (0 erros em Windows e Linux).",
+            "3. Execute `pytest -v` (todos os testes offline passando, sem chamadas reais de rede/LLM).",
+        ]
+    )
+    prompt_final, _ = mascarar_segredos_e_pii("\n".join(linhas))
+    return prompt_final
+
+
+def _extrair_arquivos_alterados_porcelain(saida_status: str) -> list[str]:
+    arquivos: list[str] = []
+    for linha in (saida_status or "").splitlines():
+        if len(linha) < 4:
+            continue
+        caminho = linha[3:].strip()
+        if " -> " in caminho:
+            caminho = caminho.split(" -> ", 1)[-1].strip()
+        caminho = caminho.strip('"')
+        if caminho:
+            arquivos.append(caminho)
+    return arquivos
+
+
+def executar_antigravity_cli_em_worktree(
+    branch_nome: str,
+    briefing_prompt: str,
+    *,
+    cli_path: str | None = None,
+    repo_dir: Path | None = None,
+    worktree_base: Path | None = None,
+    timeout_cli: int = TIMEOUT_CLI_SEGUNDOS,
+    timeout_check: int = TIMEOUT_CHECK_SEGUNDOS,
+) -> dict[str, Any]:
+    """Executa o Antigravity CLI em modo headless dentro de um `git worktree` isolado e valida com CI local."""
+    cli = (cli_path or "").strip() or detectar_antigravity_cli()
+    if not cli:
+        return {
+            "ok": False,
+            "cli_disponivel": False,
+            "modo": "briefing_vscode",
+            "erro": "Antigravity CLI nao encontrado no ambiente local.",
+            "branch": "",
+            "worktree": "",
+            "diff": "",
+            "checks": {
+                "antigravity_cli": {
+                    "ok": False,
+                    "detalhe": "CLI ausente — fallback para Modo Briefing VS Code.",
+                }
+            },
+        }
+
+    repo = (repo_dir or BASE_DIR).resolve()
+    branch = branch_nome.strip()
+    if not branch.startswith("lab/"):
+        branch = f"lab/{branch}"
+    wt_dir = _resolver_worktree_dir(repo, branch, worktree_base=worktree_base, gerar_fallback=True)
+    if wt_dir is None:
+        raise ValueError(f"Nao foi possivel resolver diretorio de worktree seguro para branch '{branch}'.")
+    wt_dir.parent.mkdir(parents=True, exist_ok=True)
+
+    _limpar_worktree_e_branch(repo, wt_dir, branch, remover_branch=True)
+    rc_wt, out_wt = _rodar_cmd(["git", "worktree", "add", "-b", branch, str(wt_dir), "HEAD"], cwd=repo, timeout=60)
+    if rc_wt != 0:
+        return {
+            "ok": False,
+            "cli_disponivel": True,
+            "modo": "cli",
+            "cli_path": cli,
+            "erro": f"Falha ao criar git worktree isolado: {out_wt}",
+            "branch": branch,
+            "worktree": str(wt_dir),
+            "diff": "",
+            "checks": {},
+        }
+
+    checks: dict[str, dict[str, Any]] = {}
+    diff_txt = ""
+    try:
+        rc_cli, out_cli = _rodar_cmd(
+            [cli, "-p", briefing_prompt],
+            cwd=wt_dir,
+            timeout=timeout_cli,
+            stdin_devnull=True,
+        )
+        checks["antigravity_cli"] = {"ok": rc_cli == 0, "saida": out_cli}
+        if rc_cli != 0:
+            _limpar_worktree_e_branch(repo, wt_dir, branch, remover_branch=True)
+            return {
+                "ok": False,
+                "cli_disponivel": True,
+                "modo": "cli",
+                "cli_path": cli,
+                "erro": f"Antigravity CLI retornou codigo {rc_cli}: {out_cli[:300]}",
+                "branch": branch,
+                "worktree": str(wt_dir),
+                "diff": "",
+                "checks": checks,
+            }
+
+        # Bloqueia imediatamente se o CLI tiver tocado em qualquer arquivo sensivel
+        _rc_st, out_st = _rodar_cmd(["git", "status", "--porcelain"], cwd=wt_dir, timeout=30, compactar=False)
+        for arq_tocado in _extrair_arquivos_alterados_porcelain(out_st):
+            if eh_arquivo_sensivel(arq_tocado):
+                raise ValueError(f"Edicao bloqueada por seguranca (Antigravity CLI): '{arq_tocado}'.")
+
+        _rodar_cmd(["git", "add", "-N", "."], cwd=wt_dir, timeout=30)
+        _rc_diff, diff_txt = _rodar_cmd(["git", "diff", "HEAD"], cwd=wt_dir, timeout=30, compactar=False)
+        if not diff_txt.strip():
+            raise ValueError("Antigravity CLI concluiu sem produzir alteracoes no git diff.")
+
+        # 1) Ruff
+        cmd_ruff = [*_resolver_ferramenta_venv("ruff", repo), "check", "."]
+        rc_ruff, out_ruff = _rodar_cmd(cmd_ruff, cwd=wt_dir, timeout=timeout_check)
+        checks["ruff"] = {"ok": rc_ruff == 0, "saida": out_ruff}
+
+        # 2) Pyright
+        cmd_pyright = _resolver_ferramenta_venv("pyright", repo)
+        rc_pyr, out_pyr = _rodar_cmd(cmd_pyright, cwd=wt_dir, timeout=timeout_check)
+        checks["pyright"] = {"ok": rc_pyr == 0, "saida": out_pyr}
+
+        # 3) Pytest
+        pytest_tmp = wt_dir / ".pytest_lab_tmp"
+        cmd_pytest = [*_resolver_ferramenta_venv("pytest", repo), "-v", f"--basetemp={pytest_tmp}"]
+        rc_pyt, out_pyt = _rodar_cmd(cmd_pytest, cwd=wt_dir, timeout=timeout_check)
+        with suppress(OSError):
+            shutil.rmtree(pytest_tmp, ignore_errors=True)
+        checks["pytest"] = {"ok": rc_pyt == 0, "saida": out_pyt}
+
+        todos_ok = all(bool(checks[k]["ok"]) for k in ("ruff", "pyright", "pytest"))
+        if not todos_ok:
+            _limpar_worktree_e_branch(repo, wt_dir, branch, remover_branch=True)
+            falhas = [k for k in ("ruff", "pyright", "pytest") if not checks[k]["ok"]]
+            return {
+                "ok": False,
+                "cli_disponivel": True,
+                "modo": "cli",
+                "cli_path": cli,
+                "erro": f"Checks falharam apos Antigravity CLI no worktree: {', '.join(falhas)}",
+                "branch": branch,
+                "worktree": str(wt_dir),
+                "diff": diff_txt,
+                "checks": checks,
+            }
+
+        _rodar_cmd(["git", "add", "--", ".", ":!.pytest_lab_tmp"], cwd=wt_dir, timeout=30)
+        rc_cm, out_cm = _rodar_cmd(
+            ["git", "commit", "-m", f"Athena Lab ({branch}): implementado via Antigravity CLI"],
+            cwd=wt_dir,
+            timeout=30,
+        )
+        if rc_cm != 0:
+            _limpar_worktree_e_branch(repo, wt_dir, branch, remover_branch=True)
+            return {
+                "ok": False,
+                "cli_disponivel": True,
+                "modo": "cli",
+                "cli_path": cli,
+                "erro": f"Falha ao registrar commit na branch isolada {branch}: {out_cm}",
+                "branch": branch,
+                "worktree": str(wt_dir),
+                "diff": diff_txt,
+                "checks": checks,
+            }
+
+        return {
+            "ok": True,
+            "cli_disponivel": True,
+            "modo": "cli",
+            "cli_path": cli,
+            "branch": branch,
+            "worktree": str(wt_dir),
+            "diff": diff_txt,
+            "checks": checks,
+        }
+    except Exception as exc:
+        _limpar_worktree_e_branch(repo, wt_dir, branch, remover_branch=True)
+        return {
+            "ok": False,
+            "cli_disponivel": True,
+            "modo": "cli",
+            "cli_path": cli,
+            "erro": str(exc),
+            "branch": branch,
+            "worktree": str(wt_dir),
+            "diff": diff_txt,
+            "checks": checks,
+        }
+
+
 def _resolver_worktree_dir(
     repo: Path,
     branch: str,
@@ -398,7 +758,8 @@ def _resolver_worktree_dir(
         if not gerar_fallback:
             return None
         slug_wt = uuid.uuid4().hex[:8]
-    base_wt = (worktree_base or (WORKTREES_DIR if repo == BASE_DIR.resolve() else repo / "sandbox_files" / "worktrees")).resolve()
+    base_wt = (worktree_base or WORKTREES_DIR).resolve()
+    base_wt.mkdir(parents=True, exist_ok=True)
     wt_dir = (base_wt / slug_wt).resolve()
     if wt_dir == base_wt or base_wt not in wt_dir.parents:
         return None
@@ -699,17 +1060,21 @@ def _ler_trechos_arquivos_alvo(repo_dir: Path, arquivos_alvo: list[str]) -> str:
 
 
 def obter_status_lab() -> dict[str, Any]:
-    return dict(ESTADO_LAB)
+    return {
+        **ESTADO_LAB,
+        "cli_antigravity": obter_status_cli_antigravity(),
+    }
 
 
 async def rodar_ciclo_rd(
     foco: str = "eficiencia e tokens",
     *,
     categoria: str | None = None,
+    traceback_logfire: str = "",
     db_path: str | Path | None = None,
     repo_dir: Path | None = None,
 ) -> dict[str, Any]:
-    """Executa um ciclo completo do Athena Lab (Scout -> Arquiteto -> Critico -> git worktree CI)."""
+    """Executa um ciclo completo do Athena Lab (Scout -> Arquiteto -> Critico -> Antigravity CLI/Briefing ou worktree)."""
     if _LAB_LOCK.locked():
         return {"ok": False, "erro": "Ja existe um ciclo do Athena Lab em andamento."}
 
@@ -760,14 +1125,28 @@ async def rodar_ciclo_rd(
             )
             veredito: VereditoCritico = res_crit.output
 
-            debate = {
+            categoria_final = (categoria or proposta.categoria or "eficiencia").strip()[:60]
+            debate: dict[str, Any] = {
                 "foco": foco_limpo,
                 "scout": proposta.model_dump(),
                 "arquiteto": plano.model_dump(),
                 "critico": veredito.model_dump(),
             }
+            if traceback_logfire.strip():
+                tb_seg, _ = mascarar_segredos_e_pii(traceback_logfire.strip()[:3000])
+                debate["traceback_logfire"] = tb_seg
 
-            categoria_final = (categoria or proposta.categoria or "eficiencia").strip()[:60]
+            briefing_prompt = montar_briefing_prompt_antigravity(
+                titulo=proposta.titulo,
+                categoria=categoria_final,
+                resumo=plano.resumo_tecnico or f"{proposta.problema} -> {proposta.solucao}",
+                ganho_estimado=proposta.ganho_estimado,
+                debate=debate,
+                traceback_logfire=traceback_logfire,
+                arquivos_alvo=proposta.arquivos_alvo,
+                branch=branch,
+            )
+            debate["briefing_prompt"] = briefing_prompt
 
             if (not veredito.aprovado) or int(veredito.nota) < NOTA_MINIMA_APROVACAO:
                 salva = salvar_proposta_lab(
@@ -800,42 +1179,87 @@ async def rodar_ciclo_rd(
                 ESTADO_LAB["ultimo_resultado"] = res_final
                 return res_final
 
-            # 4) Validacao isolada em git worktree (com no maximo 1 retry de correcao)
-            alteracoes_dicts = [alt.model_dump() for alt in plano.alteracoes]
-            validacao: dict[str, Any] = {"ok": False, "erro": "Nao executada", "diff": "", "checks": {}}
+            # 4) Implementacao: Antigravity CLI headless (se disponivel e ATHENA_LAB_USE_CLI=true),
+            # fallback limpo para "Pronta para Antigravity (VS Code)" quando CLI ausente,
+            # ou patcher local em worktree quando ATHENA_LAB_USE_CLI=false.
+            usar_cli = lab_usar_cli_habilitado()
+            cli_path = detectar_antigravity_cli() if usar_cli else None
 
-            for tentativa in range(MAX_RETRIES_CORRECAO + 1):
-                ESTADO_LAB["etapa"] = (
-                    f"Validando em git worktree isolado (tentativa {tentativa + 1}/{MAX_RETRIES_CORRECAO + 1})..."
+            if usar_cli and cli_path:
+                ESTADO_LAB["etapa"] = "Executando Antigravity CLI (headless) em git worktree isolado..."
+                validacao = await asyncio.to_thread(
+                    executar_antigravity_cli_em_worktree,
+                    branch,
+                    briefing_prompt,
+                    cli_path=cli_path,
+                    repo_dir=repo,
                 )
-                try:
-                    validacao = await asyncio.to_thread(
-                        validar_em_worktree,
-                        branch,
-                        alteracoes_dicts,
-                        repo_dir=repo,
-                    )
-                except ValueError as exc_seg:
-                    validacao = {"ok": False, "erro": str(exc_seg), "diff": "", "checks": {}}
-                    break
-
                 if validacao.get("ok"):
-                    break
-
-                if tentativa < MAX_RETRIES_CORRECAO:
-                    ESTADO_LAB["etapa"] = "Corrigindo falhas de CI com Agente Arquiteto (retry unico)..."
-                    res_retry = await agente_arquiteto.run(
-                        f"As alteracoes anteriores falharam nos checks do worktree:\n"
-                        f"Erro: {validacao.get('erro')}\n"
-                        f"Checks: {json.dumps(validacao.get('checks') or {}, ensure_ascii=False)[:2200]}\n\n"
-                        f"Plano anterior:\n{plano.model_dump_json(indent=2)}\n\n"
-                        "Corrija o plano para passar em ruff, pyright e pytest."
+                    debate["modo_execucao"] = "antigravity_cli"
+                    status_final = "pendente"
+                    branch_final = branch
+                else:
+                    # Fallback seguro: preserva proposta aprovada pelo Critico como Briefing VS Code
+                    debate["modo_execucao"] = "briefing_vscode"
+                    status_final = STATUS_PRONTA_ANTIGRAVITY
+                    branch_final = ""
+                checks_finais = dict(validacao.get("checks") or {})
+                diff_final = str(validacao.get("diff") or "")
+                erro_val = "" if status_final == "pendente" else str(validacao.get("erro") or "")
+            elif usar_cli and not cli_path:
+                debate["modo_execucao"] = "briefing_vscode"
+                status_final = STATUS_PRONTA_ANTIGRAVITY
+                branch_final = ""
+                diff_final = ""
+                checks_finais = {
+                    "antigravity_cli": {
+                        "ok": False,
+                        "modo": "briefing_vscode",
+                        "detalhe": "Antigravity CLI nao detectado — prompt cirurgico pronto para VS Code.",
+                    }
+                }
+                erro_val = ""
+            else:
+                alteracoes_dicts = [alt.model_dump() for alt in plano.alteracoes]
+                validacao = {"ok": False, "erro": "Nao executada", "diff": "", "checks": {}}
+                for tentativa in range(MAX_RETRIES_CORRECAO + 1):
+                    ESTADO_LAB["etapa"] = (
+                        f"Validando em git worktree isolado (tentativa {tentativa + 1}/{MAX_RETRIES_CORRECAO + 1})..."
                     )
-                    plano = res_retry.output
-                    debate["arquiteto_retry"] = plano.model_dump()
-                    alteracoes_dicts = [alt.model_dump() for alt in plano.alteracoes]
+                    try:
+                        validacao = await asyncio.to_thread(
+                            validar_em_worktree,
+                            branch,
+                            alteracoes_dicts,
+                            repo_dir=repo,
+                        )
+                    except ValueError as exc_seg:
+                        validacao = {"ok": False, "erro": str(exc_seg), "diff": "", "checks": {}}
+                        break
 
-            status_final = "pendente" if validacao.get("ok") else "descartada"
+                    if validacao.get("ok"):
+                        break
+
+                    if tentativa < MAX_RETRIES_CORRECAO:
+                        ESTADO_LAB["etapa"] = "Corrigindo falhas de CI com Agente Arquiteto (retry unico)..."
+                        res_retry = await agente_arquiteto.run(
+                            f"As alteracoes anteriores falharam nos checks do worktree:\n"
+                            f"Erro: {validacao.get('erro')}\n"
+                            f"Checks: {json.dumps(validacao.get('checks') or {}, ensure_ascii=False)[:2200]}\n\n"
+                            f"Plano anterior:\n{plano.model_dump_json(indent=2)}\n\n"
+                            "Corrija o plano para passar em ruff, pyright e pytest."
+                        )
+                        plano = res_retry.output
+                        debate["arquiteto_retry"] = plano.model_dump()
+                        alteracoes_dicts = [alt.model_dump() for alt in plano.alteracoes]
+
+                debate["modo_execucao"] = "worktree"
+                status_final = "pendente" if validacao.get("ok") else "descartada"
+                branch_final = branch if status_final == "pendente" else ""
+                diff_final = str(validacao.get("diff") or "")
+                checks_finais = dict(validacao.get("checks") or {})
+                erro_val = "" if status_final == "pendente" else str(validacao.get("erro") or "")
+
             salva = salvar_proposta_lab(
                 proposta_id=proposta_id,
                 titulo=proposta.titulo,
@@ -843,9 +1267,9 @@ async def rodar_ciclo_rd(
                 resumo=plano.resumo_tecnico or f"{proposta.problema} -> {proposta.solucao}",
                 ganho_estimado=proposta.ganho_estimado,
                 debate=debate,
-                branch=branch if status_final == "pendente" else "",
-                diff_texto=str(validacao.get("diff") or ""),
-                checks=dict(validacao.get("checks") or {}),
+                branch=branch_final,
+                diff_texto=diff_final,
+                checks=checks_finais,
                 status=status_final,
                 db_path=db_path,
             )
@@ -854,14 +1278,16 @@ async def rodar_ciclo_rd(
                 "athena_lab_ciclo_concluido",
                 proposta_id=proposta_id,
                 status=status_final,
+                modo_execucao=debate.get("modo_execucao"),
                 nota_critico=veredito.nota,
                 latencia_ms=dur_ms,
             )
             res_final = {
                 "ok": True,
                 "status": status_final,
+                "modo_execucao": debate.get("modo_execucao"),
                 "proposta": salva,
-                "erro_validacao": "" if status_final == "pendente" else str(validacao.get("erro") or ""),
+                "erro_validacao": erro_val,
             }
             ESTADO_LAB["ultimo_resultado"] = res_final
             return res_final
@@ -1134,9 +1560,16 @@ async def verificar_erros_logfire_sentinel(
             background_lab=background_lab,
         )
 
+        tb_erro = str(erro.get("exception_stacktrace") or "").strip()
         if background_lab:
             task = asyncio.create_task(
-                rodar_ciclo_rd(foco=foco_fix, categoria="auto-fix-logfire", db_path=db_path, repo_dir=repo_dir)
+                rodar_ciclo_rd(
+                    foco=foco_fix,
+                    categoria="auto-fix-logfire",
+                    traceback_logfire=tb_erro,
+                    db_path=db_path,
+                    repo_dir=repo_dir,
+                )
             )
             _SENTINEL_TASKS_BG.add(task)
             task.add_done_callback(_SENTINEL_TASKS_BG.discard)
@@ -1154,6 +1587,7 @@ async def verificar_erros_logfire_sentinel(
         res_lab = await rodar_ciclo_rd(
             foco=foco_fix,
             categoria="auto-fix-logfire",
+            traceback_logfire=tb_erro,
             db_path=db_path,
             repo_dir=repo_dir,
         )

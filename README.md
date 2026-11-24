@@ -158,6 +158,37 @@ uv run --env-file .env python -m evals.athena_evals
 
 ---
 
+## Athena Lab + Google Antigravity (CLI & MCP no VS Code)
+
+O **Athena Lab** (`athena_lab.py`) integra-se diretamente ao ecossistema **Google Antigravity**:
+
+- **Executor Headless via Antigravity CLI**: quando `ATHENA_LAB_USE_CLI=true` e o binário `agy` / `antigravity` (ou o caminho em `ATHENA_CODING_CLI`) é detectado via `shutil.which`, o Lab executa a implementação/auto-fix dentro de um `git worktree` isolado fora do repositório (`<temp>/athena_lab_worktrees/<id>`, evitando reloads do `uvicorn --reload`, timeout de 180s) e valida automaticamente com `ruff`, `pyright` e `pytest`.
+- **Fallback Limpo (Modo Briefing VS Code)**: quando o CLI não está instalado (ou no CI Linux), a proposta aprovada pelo Crítico é salva como **"Pronta para Antigravity (VS Code)"** com um `briefing_prompt` cirúrgico copiável com 1 clique na aba **Athena Lab**.
+- **Servidor MCP Local Somente Leitura (`mcp_athena_lab.py`)**: expõe `listar_propostas_lab`, `ler_ultimos_erros_logfire` e `resumo_saude_athena` para o Antigravity no VS Code inspecionar a Athena ao vivo.
+
+Adicione o bloco abaixo em `~/.gemini/config/mcp_config.json` (ajuste o caminho do repositório se necessário):
+
+```json
+{
+  "mcpServers": {
+    "athena-lab": {
+      "command": "uv",
+      "args": [
+        "run",
+        "--directory",
+        "C:/Users/William/Documents/ecossistema-agentes",
+        "--env-file",
+        ".env",
+        "python",
+        "mcp_athena_lab.py"
+      ]
+    }
+  }
+}
+```
+
+---
+
 ## Estrutura do Projeto
 
 ```text
@@ -181,8 +212,10 @@ ecossistema-agentes/
 ├── logging_config.py          # Logs estruturados structlog correlacionados com trace_id/span_id OTel
 ├── observabilidade.py         # Configuracao OpenTelemetry + Logfire com scrubbing de dados sensiveis
 ├── ferramentas_logfire.py     # Consulta somente leitura ao Logfire via LogfireQueryClient (<= 3000 chars)
+├── athena_lab.py              # Athena Lab R&D (Scout/Arquiteto/Critico), Logfire Sentinel e Antigravity CLI/Briefing
 ├── mcp_manager.py             # Gerenciador persistente de servidores MCP (FastMCP + Pydantic AI)
 ├── mcp_utilidades.py          # Servidor MCP local (calculadora AST segura + diagnostico do PC)
+├── mcp_athena_lab.py          # Servidor MCP somente leitura do Athena Lab para o Google Antigravity (VS Code)
 ├── rotinas.py                 # Agendador APScheduler (sync Ulife + briefing diario no Obsidian)
 ├── memoria.py                 # Persistencia SQLite WAL (historico, fatos, resumos e telemetria)
 ├── alembic/                   # Migrations versionadas do SQLite (memoria.db)

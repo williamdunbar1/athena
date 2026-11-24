@@ -465,21 +465,39 @@ def sincronizar_indice_vetorial() -> dict:
             metadados_chunks: list[dict] = []
             try:
                 if fonte == "pdf":
-                    from pypdf import PdfReader
+                    from otimizador_midia import extrair_documento_para_markdown
 
-                    reader = PdfReader(str(caminho))
-                    for num_pag, pag in enumerate(reader.pages, start=1):
-                        txt = (pag.extract_text() or "").strip()
-                        if not txt:
-                            continue
-                        for trecho in _dividir_em_chunks(txt):
+                    res_md = extrair_documento_para_markdown(
+                        caminho.read_bytes(),
+                        nome_arq,
+                        max_chars=250_000,
+                    )
+                    if res_md.get("modo") == "texto" and res_md.get("motor") in ("docling", "markitdown"):
+                        txt_md = str(res_md.get("conteudo") or "").strip()
+                        for trecho in _dividir_em_chunks(txt_md):
                             metadados_chunks.append({
                                 "fonte": "pdf",
                                 "materia": materia,
                                 "arquivo": nome_arq,
-                                "pagina": num_pag,
+                                "pagina": None,
                                 "texto": trecho,
                             })
+                    else:
+                        from pypdf import PdfReader
+
+                        reader = PdfReader(str(caminho))
+                        for num_pag, pag in enumerate(reader.pages, start=1):
+                            txt = (pag.extract_text() or "").strip()
+                            if not txt:
+                                continue
+                            for trecho in _dividir_em_chunks(txt):
+                                metadados_chunks.append({
+                                    "fonte": "pdf",
+                                    "materia": materia,
+                                    "arquivo": nome_arq,
+                                    "pagina": num_pag,
+                                    "texto": trecho,
+                                })
                 else:
                     conteudo = caminho.read_text(encoding="utf-8-sig", errors="replace").strip()
                     for trecho in _dividir_em_chunks(conteudo):
