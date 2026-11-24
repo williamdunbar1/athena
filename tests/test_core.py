@@ -4034,7 +4034,7 @@ def test_teach_bot_bloqueia_bancos_omite_senhas_e_gera_skill_md(monkeypatch, tmp
             teach_bot.validar_url_teach_bot(url_bloqueada)
 
     # iniciar_gravacao_skill deve rejeitar banco ANTES de abrir qualquer navegador/thread
-    with pytest.raises(ValueError, match="bloqueado|nao permitida"):
+    with pytest.raises(ValueError, match="bloquead|denylist"):
         _executar_async_real_teste(
             teach_bot.iniciar_gravacao_skill("Skill Banco Proibido", "https://nubank.com.br/login")
         )
