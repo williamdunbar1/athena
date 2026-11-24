@@ -3411,10 +3411,9 @@
 
       <!-- AREA 3: RODAPE COMPACTO (2 BOTOES DISCRETOS) -->
       <div class="sidebar-footer">
-        <button type="button" class="nav-item nav-util" id="btn-paineis-menu" onclick="alternarMenuPaineis(event)" title="Abrir Painéis (Estudos, Carteira, Automação, Lab)" aria-haspopup="true" aria-expanded="false">
+        <button type="button" class="nav-item nav-util" id="btn-paineis-menu" onclick="alternarMenuPaineis(event)" title="Abrir Painéis (Estudos, Carteira, Rotinas, Atividade)" aria-haspopup="true" aria-expanded="false">
           <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
           <span class="nav-label">Painéis</span>
-          <span id="paineis-dot" class="paineis-dot hidden" title="Há itens pendentes na Faxina ou no Athena Lab"></span>
         </button>
 
         <button type="button" class="nav-item nav-util" id="btn-abrir-config" onclick="abrirModalMemorias('memorias')" title="Configurações, Memórias, Segurança e Sistema">
@@ -3427,35 +3426,23 @@
     <!-- POPOVER CATEGORIZADO DE PAINEIS -->
     <div id="paineis-popover" class="paineis-popover" role="menu" aria-label="Navegar para Painéis">
       <div class="paineis-cat">Pessoal</div>
+      <button type="button" class="paineis-item" data-aba="carteira" onclick="abrirPainelPeloMenu('carteira')" role="menuitem">
+        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+        <span>Economia &amp; Carteira</span>
+      </button>
       <button type="button" class="paineis-item" data-aba="estudos" onclick="abrirPainelPeloMenu('estudos')" role="menuitem">
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
         <span>Estudos &amp; Grafo</span>
       </button>
-      <button type="button" class="paineis-item" data-aba="carteira" onclick="abrirPainelPeloMenu('carteira')" role="menuitem">
-        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-        <span>Carteira</span>
-      </button>
 
-      <div class="paineis-cat">Automação</div>
-      <button type="button" class="paineis-item" data-aba="faxina" onclick="abrirPainelPeloMenu('faxina')" role="menuitem">
-        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.8L20 10.7l-5.1 3.7 1.9 5.8L12 16.5l-4.8 3.7 1.9-5.8L4 10.7l6.1-1.9z"/></svg>
-        <span>Faxina &amp; Aprovações</span>
-        <span id="nav-badge-faxina" class="nav-badge hidden" title="Ações pendentes na Faxina">0</span>
-      </button>
+      <div class="paineis-cat">Organização</div>
       <button type="button" class="paineis-item" data-aba="rotinas" onclick="abrirPainelPeloMenu('rotinas')" role="menuitem">
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        <span>Rotinas &amp; Skills</span>
+        <span>Rotinas &amp; Telemetria</span>
       </button>
       <button type="button" class="paineis-item" data-aba="atividade" onclick="abrirPainelPeloMenu('atividade')" role="menuitem">
         <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        <span>Atividade &amp; Permissões</span>
-      </button>
-
-      <div class="paineis-cat">Engenharia</div>
-      <button type="button" class="paineis-item" data-aba="lab" onclick="abrirPainelPeloMenu('lab')" role="menuitem">
-        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9.5V3"/><path d="M8.5 14h7"/></svg>
-        <span>Athena Lab (R&amp;D)</span>
-        <span id="nav-badge-lab" class="nav-badge hidden" title="Propostas pendentes no Athena Lab">0</span>
+        <span>Atividade</span>
       </button>
     </div>
 
@@ -3546,31 +3533,14 @@
 
                     <button
                       type="button"
-                      id="btn-composer-mais"
+                      id="btn-anexar"
                       class="composer-icon-btn"
-                      onclick="alternarPopoverMais(event)"
-                      title="Anexar arquivo, capturar tela ou ensinar tarefa"
-                      aria-haspopup="true"
-                      aria-expanded="false"
-                      aria-label="Mais ações de entrada"
+                      onclick="abrirSeletorArquivo()"
+                      title="Anexar foto, PDF, extrato ou documento"
+                      aria-label="Anexar arquivo ou PDF"
                     >
-                      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
                     </button>
-
-                    <div id="composer-plus-popover" class="composer-plus-popover" role="menu" aria-label="Ações de entrada">
-                      <button type="button" id="btn-anexar" class="composer-plus-item" onclick="fecharPopoverMais(); abrirSeletorArquivo()" role="menuitem">
-                        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
-                        <span>Anexar arquivo / PDF</span>
-                      </button>
-                      <button type="button" id="btn-capturar-tela" class="composer-plus-item" onclick="fecharPopoverMais(); capturarTelaParaChat()" role="menuitem">
-                        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                        <span>Capturar tela</span>
-                      </button>
-                      <button type="button" class="composer-plus-item" onclick="fecharPopoverMais(); iniciarTeachBotUI()" role="menuitem">
-                        <svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
-                        <span>Ensinar tarefa (Teach a Bot)</span>
-                      </button>
-                    </div>
 
                     <div id="model-popover" class="model-popover" role="menu" aria-label="Selecionar modelo de IA">
                       <div class="model-popover-title">Modelo da Athena</div>
@@ -3870,48 +3840,7 @@
           </div>
         </main>
 
-        <!-- ABA 4: FAXINA & APROVACOES -->
-        <main id="view-faxina" class="view">
-          <div class="page-scroll">
-            <div class="page">
-              <div class="panel-topbar">
-                <div class="panel-topbar-left">
-                  <button type="button" class="btn-voltar-chat" onclick="abrirAba('chat')">← Voltar ao Chat</button>
-                  <h2 class="panel-page-title">
-                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.8L20 10.7l-5.1 3.7 1.9 5.8L12 16.5l-4.8 3.7 1.9-5.8L4 10.7l6.1-1.9z"/></svg>
-                    <span>Faxina &amp; Aprovações</span>
-                  </h2>
-                </div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                  <button type="button" id="btn-aprovar-todas" class="btn-aprovar mini" onclick="aprovarTodasAcoes(this)" style="display:none;">
-                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                    <span class="btn-label">Aprovar Tudo</span>
-                  </button>
-                  <button type="button" class="ghost mini" onclick="carregarFaxina()">
-                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                    <span>Atualizar</span>
-                  </button>
-                </div>
-              </div>
-
-              <div class="kpis">
-                <div class="kpi"><div class="lbl">Ações Pendentes</div><div id="kpi-fax-pend" class="val">--</div></div>
-                <div class="kpi"><div class="lbl">Ações Executadas</div><div id="kpi-fax-exec" class="val pos">--</div></div>
-                <div class="kpi"><div class="lbl">Ações Recusadas</div><div id="kpi-fax-rec" class="val neg">--</div></div>
-              </div>
-              <div class="panel">
-                <h3><span>Ações Pendentes de Aprovação</span></h3>
-                <div id="box-fax-pendentes" class="empty-note">Carregando...</div>
-              </div>
-              <div class="panel">
-                <h3><span>Histórico de Faxina (Executadas, Recusadas &amp; Desfeitas)</span></h3>
-                <div id="box-fax-historico" class="table-wrap empty-note">Carregando...</div>
-              </div>
-            </div>
-          </div>
-        </main>
-
-        <!-- ABA 5: ROTINAS & SKILLS (SUB-ABAS: ROTINAS AGENDADAS | SKILLS & TEACH A BOT) -->
+        <!-- ABA 4: ROTINAS & TELEMETRIA -->
         <main id="view-rotinas" class="view">
           <div class="page-scroll">
             <div class="page">
@@ -3920,7 +3849,7 @@
                   <button type="button" class="btn-voltar-chat" onclick="abrirAba('chat')">← Voltar ao Chat</button>
                   <h2 class="panel-page-title">
                     <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    <span>Rotinas &amp; Skills</span>
+                    <span>Rotinas &amp; Telemetria</span>
                   </h2>
                 </div>
                 <button type="button" class="ghost mini" onclick="carregarRotinas()">
@@ -3929,157 +3858,65 @@
                 </button>
               </div>
 
-              <div class="subtabs-bar" role="tablist" aria-label="Seções de Rotinas e Skills">
-                <button type="button" class="subtab-btn active" data-subtab-group="rotinas" data-subtab="rotinas-agendadas" onclick="selecionarSubAba('rotinas', 'rotinas-agendadas', this)" role="tab" aria-selected="true">Rotinas Agendadas</button>
-                <button type="button" class="subtab-btn" data-subtab-group="rotinas" data-subtab="rotinas-skills" onclick="selecionarSubAba('rotinas', 'rotinas-skills', this)" role="tab" aria-selected="false">Skills &amp; Teach a Bot</button>
-                <button type="button" class="subtab-btn" data-subtab-group="rotinas" data-subtab="rotinas-board" onclick="selecionarSubAba('rotinas', 'rotinas-board', this)" role="tab" aria-selected="false">Quadro (Board)</button>
-                <button type="button" class="subtab-btn" data-subtab-group="rotinas" data-subtab="rotinas-recibo" onclick="selecionarSubAba('rotinas', 'rotinas-recibo', this)" role="tab" aria-selected="false">Recibo Semanal</button>
+              <div class="panel">
+                <h3><span>Rotinas Agendadas (America/Sao_Paulo)</span></h3>
+                <div id="box-rotinas" class="empty-note">Carregando rotinas...</div>
               </div>
 
-              <div id="subtab-rotinas-agendadas" class="subtab-pane active" data-subtab-pane="rotinas">
-                <div class="panel">
-                  <h3><span>Rotinas Agendadas (America/Sao_Paulo)</span></h3>
-                  <div id="box-rotinas" class="empty-note">Carregando rotinas...</div>
-                </div>
-
-                <div class="panel" id="panel-rotinas-dinamicas">
-                  <h3>
-                    <span style="display:inline-flex;align-items:center;gap:8px;">
-                      <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></svg>
-                      <span>Rotinas Dinâmicas (Criadas pelo Chat · Auto-pausa em 3 falhas)</span>
-                    </span>
-                    <button type="button" class="ghost mini" onclick="carregarRotinasDinamicas()">
-                      <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                      <span>Atualizar</span>
-                    </button>
-                  </h3>
-                  <div id="box-rotinas-dinamicas" class="empty-note">Carregando rotinas dinâmicas...</div>
-                </div>
-
-                <div class="rotinas-side-grid">
-                  <div class="panel">
-                    <h3>
-                      <span style="display:inline-flex;align-items:center;gap:8px;">
-                        <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v6"/><path d="M12 16v6"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="M2 12h6"/><path d="M16 12h6"/><path d="m4.93 19.07 4.24-4.24"/><path d="m14.83 9.17 4.24-4.24"/></svg>
-                        <span>Servidores MCP Conectados</span>
-                      </span>
-                      <button type="button" class="ghost mini" onclick="carregarServidoresMcp()">
-                        <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                        <span>Atualizar</span>
-                      </button>
-                    </h3>
-                    <div id="box-mcp-servidores" class="empty-note">Carregando servidores MCP...</div>
-                  </div>
-
-                  <div class="panel">
-                    <h3>
-                      <span style="display:inline-flex;align-items:center;gap:8px;">
-                        <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
-                        <span>Telemetria da Athena</span>
-                      </span>
-                      <button type="button" class="ghost mini" onclick="carregarTelemetria()">
-                        <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                        <span>Atualizar</span>
-                      </button>
-                    </h3>
-                    <div class="tele-kpis">
-                      <div class="tele-kpi">
-                        <div class="lbl">Tempo Médio</div>
-                        <div id="kpi-tele-ms" class="val" style="color:var(--accent-hover);">--</div>
-                        <div class="sub">latência média</div>
-                      </div>
-                      <div class="tele-kpi">
-                        <div class="lbl">Tokens Hoje</div>
-                        <div id="kpi-tele-tok" class="val">--</div>
-                        <div id="kpi-tele-tok-sub" class="sub">in / out</div>
-                      </div>
-                      <div class="tele-kpi">
-                        <div class="lbl">Execuções</div>
-                        <div id="kpi-tele-exec" class="val">--</div>
-                        <div id="kpi-tele-hoje" class="sub">hoje: --</div>
-                      </div>
-                      <div class="tele-kpi">
-                        <div class="lbl">Sucesso</div>
-                        <div id="kpi-tele-ok" class="val pos">--</div>
-                        <div class="sub">taxa geral</div>
-                      </div>
-                    </div>
-                    <div id="box-telemetria" class="table-wrap empty-note">Carregando telemetria...</div>
-                  </div>
-                </div>
+              <div class="panel" id="panel-rotinas-dinamicas">
+                <h3>
+                  <span style="display:inline-flex;align-items:center;gap:8px;">
+                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m4.9 19.1 2.9-2.9"/><path d="M2 12h4"/><path d="m4.9 4.9 2.9 2.9"/></svg>
+                    <span>Rotinas Dinâmicas (Criadas pelo Chat · Auto-pausa em 3 falhas)</span>
+                  </span>
+                  <button type="button" class="ghost mini" onclick="carregarRotinasDinamicas()">
+                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span>Atualizar</span>
+                  </button>
+                </h3>
+                <div id="box-rotinas-dinamicas" class="empty-note">Carregando rotinas dinâmicas...</div>
               </div>
 
-              <div id="subtab-rotinas-skills" class="subtab-pane" data-subtab-pane="rotinas">
-                <div class="panel" id="panel-teach-bot">
-                  <h3>
-                    <span style="display:inline-flex;align-items:center;gap:8px;">
-                      <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
-                      <span>Teach a Bot (Gravar Tarefa → SKILL.md)</span>
-                    </span>
-                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                      <button type="button" id="btn-teach-bot-iniciar" class="accent mini" onclick="iniciarTeachBotUI()">
-                        <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/></svg>
-                        <span>Ensinar Tarefa (Teach a Bot)</span>
-                      </button>
-                      <button type="button" id="btn-teach-bot-finalizar" class="btn-win-permitir hidden" onclick="finalizarTeachBotUI(this)">
-                        Finalizar e Salvar Skill
-                      </button>
-                    </div>
-                  </h3>
-                  <div id="teach-bot-status" class="teach-bot-bar">
-                    <span class="empty-note">Clique em <strong>Ensinar Tarefa (Teach a Bot)</strong> para abrir o navegador visível, executar os passos e salvar automaticamente em <code>skills/&lt;nome&gt;/SKILL.md</code>. Bancos são bloqueados e campos de senha nunca são gravados.</span>
+              <div class="panel">
+                <h3>
+                  <span style="display:inline-flex;align-items:center;gap:8px;">
+                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    <span>Telemetria da Athena</span>
+                  </span>
+                  <button type="button" class="ghost mini" onclick="carregarTelemetria()">
+                    <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    <span>Atualizar</span>
+                  </button>
+                </h3>
+                <div class="tele-kpis">
+                  <div class="tele-kpi">
+                    <div class="lbl">Tempo Médio</div>
+                    <div id="kpi-tele-ms" class="val" style="color:var(--accent-hover);">--</div>
+                    <div class="sub">latência média</div>
+                  </div>
+                  <div class="tele-kpi">
+                    <div class="lbl">Tokens Hoje</div>
+                    <div id="kpi-tele-tok" class="val">--</div>
+                    <div id="kpi-tele-tok-sub" class="sub">in / out</div>
+                  </div>
+                  <div class="tele-kpi">
+                    <div class="lbl">Execuções</div>
+                    <div id="kpi-tele-exec" class="val">--</div>
+                    <div id="kpi-tele-hoje" class="sub">hoje: --</div>
+                  </div>
+                  <div class="tele-kpi">
+                    <div class="lbl">Sucesso</div>
+                    <div id="kpi-tele-ok" class="val pos">--</div>
+                    <div class="sub">taxa geral</div>
                   </div>
                 </div>
-
-                <div class="panel">
-                  <h3>
-                    <span>Agent Skills Instaladas</span>
-                    <span id="skills-count-rotinas" class="skill-count">0</span>
-                  </h3>
-                  <div id="skills-lista-rotinas" class="skills-bar"><span class="empty-note">Carregando skills...</span></div>
-                </div>
-              </div>
-
-              <!-- SUB-ABA 3: QUADRO (THE BOARD + CHECKER) -->
-              <div id="subtab-rotinas-board" class="subtab-pane" data-subtab-pane="rotinas">
-                <div class="panel">
-                  <h3>
-                    <span style="display:inline-flex;align-items:center;gap:8px;">
-                      <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
-                      <span>The Board (Handoff Enxuto + Agente Checker)</span>
-                    </span>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                      <button type="button" class="accent mini" onclick="criarCardBoardUI()">+ Novo Card</button>
-                      <button type="button" class="ghost mini" onclick="carregarBoard()">Atualizar</button>
-                    </div>
-                  </h3>
-                  <div id="box-board-colunas" class="board-grid">
-                    <div class="empty-note">Carregando quadro de tarefas...</div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- SUB-ABA 4: RECIBO SEMANAL (FRIDAY RECEIPT) -->
-              <div id="subtab-rotinas-recibo" class="subtab-pane" data-subtab-pane="rotinas">
-                <div class="panel">
-                  <h3>
-                    <span style="display:inline-flex;align-items:center;gap:8px;">
-                      <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 2v20l3-2 3 2 3-2 3 2 4-2V2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="13" y2="15"/></svg>
-                      <span>Friday Receipt — Recibo Semanal (Sexta 18:00 · 0 LLM)</span>
-                    </span>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                      <button type="button" class="accent mini" onclick="gerarReciboSemanalUI(this)">Gerar Recibo Agora</button>
-                      <button type="button" class="ghost mini" onclick="carregarRecibosSemanais()">Atualizar</button>
-                    </div>
-                  </h3>
-                  <div id="box-recibos-semanais" class="empty-note">Carregando recibos semanais...</div>
-                </div>
+                <div id="box-telemetria" class="table-wrap empty-note">Carregando telemetria...</div>
               </div>
             </div>
           </div>
         </main>
 
-        <!-- ABA 6: ATIVIDADE & PERMISSOES (SUB-ABAS: TRILHA DE AUDITORIA | PASTAS APROVADAS) -->
+        <!-- ABA 5: ATIVIDADE & AUDITORIA -->
         <main id="view-atividade" class="view">
           <div class="page-scroll">
             <div class="page">
@@ -4088,7 +3925,7 @@
                   <button type="button" class="btn-voltar-chat" onclick="abrirAba('chat')">← Voltar ao Chat</button>
                   <h2 class="panel-page-title">
                     <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                    <span>Atividade &amp; Permissões</span>
+                    <span>Atividade &amp; Auditoria</span>
                   </h2>
                 </div>
                 <button type="button" class="ghost mini" onclick="carregarAuditoriaEPermissoes()">
@@ -4097,7 +3934,7 @@
                 </button>
               </div>
 
-              <div class="subtabs-bar" role="tablist" aria-label="Seções de Atividade e Permissões">
+              <div class="subtabs-bar" role="tablist" aria-label="Seções de Atividade">
                 <button type="button" class="subtab-btn active" data-subtab-group="atividade" data-subtab="atividade-trilha" onclick="selecionarSubAba('atividade', 'atividade-trilha', this)" role="tab" aria-selected="true">Trilha de Auditoria</button>
                 <button type="button" class="subtab-btn" data-subtab-group="atividade" data-subtab="atividade-pastas" onclick="selecionarSubAba('atividade', 'atividade-pastas', this)" role="tab" aria-selected="false">Pastas Aprovadas</button>
               </div>
@@ -4108,14 +3945,11 @@
                     <span>Trilha de Auditoria Unificada</span>
                     <select id="filtro-auditoria-agente" class="field-dark" style="height:32px;font-size:12px;" onchange="carregarAuditoriaAtividades()" aria-label="Filtrar auditoria por agente">
                       <option value="">Todos os agentes</option>
-                      <option value="Windows Nativo">Windows Nativo</option>
-                      <option value="Agente Faxineiro">Agente Faxineiro</option>
-                      <option value="Agente Sistema">Agente Sistema</option>
-                      <option value="Athena Lab">Athena Lab</option>
-                      <option value="Teach a Bot">Teach a Bot</option>
-                      <option value="Navegador">Navegador (Take the wheel)</option>
-                      <option value="Permissoes">Permissões</option>
                       <option value="athena">Athena (Rotinas)</option>
+                      <option value="investimentos">Economia</option>
+                      <option value="estudos">Estudos</option>
+                      <option value="google">Google</option>
+                      <option value="Permissoes">Permissões</option>
                     </select>
                   </h3>
                   <div id="box-auditoria-atividades" class="table-wrap empty-note">Carregando trilha de atividade...</div>
@@ -4133,61 +3967,6 @@
                   </h3>
                   <div id="box-pastas-aprovadas" class="empty-note">Carregando pastas aprovadas...</div>
                 </div>
-              </div>
-            </div>
-          </div>
-        </main>
-
-        <!-- ABA 7: ATHENA LAB (R&D — AUTO-EVOLUCAO CONTROLADA) -->
-        <main id="view-lab" class="view">
-          <div class="page-scroll">
-            <div class="page">
-              <div class="panel-topbar">
-                <div class="panel-topbar-left">
-                  <button type="button" class="btn-voltar-chat" onclick="abrirAba('chat')">← Voltar ao Chat</button>
-                  <h2 class="panel-page-title">
-                    <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6"/><path d="M10 3v6.5L4.5 19a2 2 0 0 0 1.7 3h11.6a2 2 0 0 0 1.7-3L14 9.5V3"/><path d="M8.5 14h7"/></svg>
-                    <span>Athena Lab (R&amp;D)</span>
-                    <span id="lab-cli-badge" class="lab-badge" title="Status do motor Google Antigravity CLI">Modo Briefing VS Code</span>
-                  </h2>
-                </div>
-                <button type="button" class="ghost mini" onclick="carregarAthenaLab()">
-                  <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                  <span>Atualizar</span>
-                </button>
-              </div>
-
-              <div class="panel">
-                <p style="font-size:12.5px;color:var(--muted);margin:0 0 12px;">
-                  Pipeline multi-agente (<strong>Scout → Arquiteto → Crítico Adversarial</strong>) com validação isolada em
-                  <code>git worktree</code> (<code>ruff</code> + <code>pyright</code> + <code>pytest</code>). Nenhuma alteração toca sua branch principal sem aprovação explícita.
-                </p>
-                <div class="lab-toolbar">
-                  <input id="lab-foco-input" class="field-dark" type="text" placeholder="Foco opcional (ex.: reduzir tokens, melhorar RAG, segurança)..." />
-                  <button type="button" id="btn-lab-executar" onclick="dispararCicloLab()">
-                    <span>Rodar Ciclo R&amp;D</span>
-                  </button>
-                  <button type="button" id="btn-lab-sentinel" class="ghost" onclick="checarLogfireSentinelAgora(this)" title="Consultar erros recentes no Logfire (0 tokens) e gerar Auto-Fix se houver bug novo">
-                    <span>Checar Logfire agora</span>
-                  </button>
-                </div>
-                <div id="lab-status-banner" class="lab-status-banner hidden">
-                  <span class="thinking-dot"></span>
-                  <span id="lab-status-texto">Executando ciclo R&amp;D em segundo plano...</span>
-                </div>
-              </div>
-
-              <div class="panel">
-                <h3>
-                  <span>Propostas Validadas Aguardando Aprovação</span>
-                  <span id="lab-pendentes-count" class="lab-badge accent">0 pendente(s)</span>
-                </h3>
-                <div id="box-lab-pendentes" class="empty-note">Nenhuma proposta no momento. Clique em "Rodar Ciclo R&amp;D" ou "Checar Logfire agora".</div>
-              </div>
-
-              <div class="panel">
-                <h3><span>Histórico do Athena Lab</span></h3>
-                <div id="box-lab-historico" class="empty-note">Sem execuções registradas.</div>
               </div>
             </div>
           </div>
@@ -4217,7 +3996,7 @@
           <button type="button" class="subtab-btn" data-subtab-group="config" data-subtab="config-sistema" onclick="selecionarSubAba('config', 'config-sistema', this)" role="tab" aria-selected="false">Sistema</button>
         </div>
 
-        <!-- ABA CONFIG 1: MEMORIAS & TEMPORAL + SKILLS -->
+        <!-- ABA CONFIG 1: MEMORIAS & TEMPORAL -->
         <div id="subtab-config-memorias" class="subtab-pane active" data-subtab-pane="config">
           <div>
             <div class="modal-sub-title"><span>Memórias Salvas</span></div>
@@ -4229,18 +4008,6 @@
               <span id="mem-temporal-count" class="skill-count">0 vigentes · 0 históricos</span>
             </div>
             <div id="fatos-temporais" class="mem-bar"></div>
-          </div>
-          <div>
-            <div class="modal-sub-title" style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-              <span style="display:inline-flex;align-items:center;gap:8px;">
-                <span>Agent Skills Ativas</span>
-                <span id="skills-count" class="skill-count">0</span>
-              </span>
-              <button type="button" class="ghost mini" onclick="fecharModalMemorias(); iniciarTeachBotUI();">
-                Ensinar Tarefa (Teach a Bot)
-              </button>
-            </div>
-            <div id="skills-lista" class="skills-bar"></div>
           </div>
         </div>
 
@@ -4268,18 +4035,8 @@
           </div>
         </div>
 
-        <!-- ABA CONFIG 3: SISTEMA (SANDBOX / CACHE SEMANTICO / OLLAMA & CLI) -->
+        <!-- ABA CONFIG 3: SISTEMA (CACHE SEMANTICO / OLLAMA) -->
         <div id="subtab-config-sistema" class="subtab-pane" data-subtab-pane="config">
-          <div class="config-card-row">
-            <div class="config-row-info">
-              <span class="config-row-title">Pasta Ativa / Sandbox</span>
-              <span id="config-pasta-caminho" class="config-row-sub">Nenhuma pasta carregada</span>
-            </div>
-            <button type="button" class="ghost mini" id="btn-escolher-pasta" onclick="escolherPasta()">
-              <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>
-              <span class="nav-label" id="pasta-label">Alterar pasta</span>
-            </button>
-          </div>
           <div class="config-card-row">
             <div class="config-row-info">
               <span class="config-row-title">Cache Semântico Local (0 tokens)</span>
@@ -4293,13 +4050,6 @@
               <span id="config-ollama-status" class="config-row-sub">Verificando disponibilidade local...</span>
             </div>
             <span id="config-ollama-badge" class="lab-badge">Verificando</span>
-          </div>
-          <div class="config-card-row">
-            <div class="config-row-info">
-              <span class="config-row-title">Google Antigravity CLI (Athena Lab)</span>
-              <span id="config-cli-status" class="config-row-sub">Verificando CLI no sistema...</span>
-            </div>
-            <span id="config-cli-badge" class="lab-badge">Verificando</span>
           </div>
         </div>
       </div>
@@ -4379,65 +4129,51 @@ const MODELO_ROTULOS = {
   "ollama-local": "Ollama (Local)",
 };
 const AGENTES_PADRAO = [
-  { id: "athena", nome: "Athena", descricao: "Orquestradora geral com roteamento inteligente e todos os especialistas" },
-  { id: "estudos", nome: "Estudos", descricao: "PDFs da faculdade, Ulife, provas, simulados e plano de estudos" },
-  { id: "investimentos", nome: "Investimentos", descricao: "Carteira Real Mercado Pago, Selic/CDI, cotações e simulador" },
-  { id: "faxineiro", nome: "Faxineiro", descricao: "Organização segura de pastas, duplicados e Lixeira com aprovação" },
-  { id: "pesquisador", nome: "Pesquisador", descricao: "Busca web, leitura de sites dinâmicos e capturas de tela" },
+  { id: "athena", nome: "Athena", descricao: "Assistente pessoal de economia, estudos, Google Workspace e Obsidian" },
+  { id: "investimentos", nome: "Economia", descricao: "Carteira Real Mercado Pago, Selic/CDI, cotações, notícias e simulador" },
+  { id: "estudos", nome: "Estudos", descricao: "PDFs da faculdade, Ulife, videoaulas, provas, simulados e plano de estudos" },
   { id: "google", nome: "Google", descricao: "Gmail, Google Agenda, Drive, Docs, Sheets, Slides e Tasks" },
-  { id: "sistema", nome: "Sistema", descricao: "Sandbox Linux Podman, scripts, arquivos e servidores MCP" },
-  { id: "analista", nome: "Analista", descricao: "Relatórios, sínteses executivas, Obsidian e análise crítica" },
+  { id: "pesquisador", nome: "Pesquisa", descricao: "Busca web leve com DuckDuckGo e leitura de artigos com fontes" },
+  { id: "analista", nome: "Analista", descricao: "Relatórios, sínteses executivas, Obsidian e análise profunda" },
 ];
 const AGENTE_ICONES_SVG = {
   athena: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/></svg>',
-  estudos: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
   investimentos: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>',
-  faxineiro: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l1.9 5.8L20 10.7l-5.1 3.7 1.9 5.8L12 16.5l-4.8 3.7 1.9-5.8L4 10.7l6.1-1.9z"/></svg>',
-  pesquisador: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
+  estudos: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
   google: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><polyline points="3 7 12 13 21 7"/></svg>',
-  sistema: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
+  pesquisador: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>',
   analista: '<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>',
 };
 const SUGESTOES_POR_AGENTE = {
   athena: [
     ["Carteira Real vs CDI", "Analise minha carteira real do Mercado Pago comparando com a Selic/CDI atual"],
     ["Notas e prazos Ulife", "Quais são minhas notas, provas e avisos recentes no Ulife?"],
-    ["Faxina em Downloads", "Escaneie minha pasta Downloads procurando arquivos grandes ou duplicados"],
+    ["Briefing do dia", "Cruze minha Google Agenda, e-mails recentes e prazos da faculdade para hoje"],
+  ],
+  investimentos: [
+    ["Carteira Real vs CDI", "Analise minha carteira real do Mercado Pago comparando com a Selic/CDI atual"],
+    ["Selic e CDI hoje", "Qual a taxa Selic e CDI atual segundo o Banco Central?"],
+    ["Notícias de mercado", "Quais as principais notícias de economia e mercado financeiro hoje?"],
   ],
   estudos: [
     ["Notas e provas Ulife", "Quais são minhas notas, faltas e próximas provas no Ulife?"],
     ["Buscar nos PDFs", "Busque nos meus PDFs da faculdade o resumo da última aula"],
     ["Plano de estudo", "Monte um plano de estudo objetivo para minha próxima prova"],
   ],
-  investimentos: [
-    ["Carteira Real vs CDI", "Analise minha carteira real do Mercado Pago comparando com a Selic/CDI atual"],
-    ["Selic e CDI hoje", "Qual a taxa Selic e CDI atual segundo o Banco Central?"],
-    ["Notícias de mercado", "Quais as principais notícias do mercado financeiro hoje?"],
-  ],
-  faxineiro: [
-    ["Escanear Downloads", "Escaneie minha pasta Downloads procurando arquivos grandes ou duplicados"],
-    ["Organizar Desktop", "Planeje a organização da minha Área de Trabalho mantendo os atalhos"],
-    ["Listar duplicados", "Procure arquivos duplicados na minha pasta Downloads"],
-  ],
-  pesquisador: [
-    ["Pesquisar na web", "Pesquise as novidades mais recentes sobre Pydantic AI"],
-    ["Resumir página", "Leia e resuma a documentação oficial do FastAPI"],
-    ["Comparar ferramentas", "Compare Qdrant local vs SQLite-vec para RAG pessoal"],
-  ],
   google: [
     ["Próximos eventos", "Quais são meus compromissos no Google Agenda nos próximos 7 dias?"],
     ["E-mails recentes", "Liste os 5 últimos e-mails da minha caixa de entrada no Gmail"],
     ["Minhas tarefas", "Liste minhas tarefas pendentes no Google Tasks"],
   ],
-  sistema: [
-    ["Status do PC", "Verifique o status atual de CPU, RAM e disco do PC"],
-    ["Listar workspace", "Liste os arquivos disponíveis em /workspace no sandbox"],
-    ["Rodar cálculo", "Use o MCP para calcular (14.25 - 0.10) / 12"],
+  pesquisador: [
+    ["Notícias econômicas", "Pesquise os principais indicadores econômicos e inflação do Brasil hoje"],
+    ["Artigo de estudo", "Pesquise explicações e referências confiáveis sobre o tema da minha aula"],
+    ["Comparar investimentos", "Pesquise comparativo atualizado entre Tesouro Selic, CDB e LCI/LCA"],
   ],
   analista: [
     ["Explorar Obsidian", "Mostre um resumo estruturado das notas recentes do meu Obsidian Vault"],
     ["Notas órfãs", "Quais notas órfãs existem no meu grafo do Obsidian?"],
-    ["Síntese executiva", "Ajude-me a estruturar um plano semanal de prioridades no Obsidian"],
+    ["Plano semanal", "Ajude-me a estruturar um plano semanal de estudos e metas financeiras no Obsidian"],
   ],
 };
 
@@ -4768,29 +4504,6 @@ function alternarSecaoSidebar(secId) {
 }
 
 /* ===== SUB-ABAS, MENU PAINEIS, CONFIGURACOES & SCROLL-BOTTOM ===== */
-let _pendenciasLab = 0;
-let _pendenciasFaxina = 0;
-
-function atualizarIndicadorPaineis() {
-  const dot = document.getElementById("paineis-dot");
-  const badgeFax = document.getElementById("nav-badge-faxina");
-  const temPend = (_pendenciasLab > 0) || (_pendenciasFaxina > 0);
-  if (dot) dot.classList.toggle("hidden", !temPend);
-  if (badgeFax) {
-    badgeFax.textContent = _pendenciasFaxina > 99 ? "99+" : String(_pendenciasFaxina);
-    badgeFax.classList.toggle("hidden", _pendenciasFaxina <= 0);
-  }
-}
-
-async function atualizarBadgeFaxina() {
-  try {
-    const r = await fetch("/api/painel/faxina").then(x => x.json());
-    const pend = Number((r && r.resumo && r.resumo.pendentes) ?? (Array.isArray(r && r.pendentes) ? r.pendentes.length : 0));
-    _pendenciasFaxina = Math.max(0, pend);
-    atualizarIndicadorPaineis();
-  } catch (_) {}
-}
-
 function alternarMenuPaineis(ev) {
   if (ev) ev.stopPropagation();
   const pop = document.getElementById("paineis-popover");
@@ -4798,7 +4511,6 @@ function alternarMenuPaineis(ev) {
   if (!pop || !btn) return;
   const abrindo = !pop.classList.contains("open");
   fecharPopoverModelo();
-  fecharPopoverMais();
   pop.classList.toggle("open", abrindo);
   btn.setAttribute("aria-expanded", abrindo ? "true" : "false");
 }
@@ -4830,13 +4542,6 @@ function selecionarSubAba(grupo, abaId, btn) {
     setTimeout(() => redimensionarGraficosCarteira(), 100);
   } else if (abaId === "estudos-grafo") {
     setTimeout(() => redimensionarGrafoVisual(), 90);
-  } else if (abaId === "rotinas-skills") {
-    carregarSkills();
-    atualizarStatusTeachBot();
-  } else if (abaId === "rotinas-board") {
-    carregarBoard();
-  } else if (abaId === "rotinas-recibo") {
-    carregarRecibosSemanais();
   } else if (abaId === "config-sistema") {
     carregarConfigSistema();
   } else if (abaId === "config-seguranca") {
@@ -4845,13 +4550,11 @@ function selecionarSubAba(grupo, abaId, btn) {
 }
 
 async function carregarConfigSistema() {
-  const elPasta = document.getElementById("config-pasta-caminho");
-  if (elPasta) elPasta.textContent = _pastaRaizAtual || "Pasta padrão da Athena";
   const elCache = document.getElementById("config-cache-stats");
   if (elCache) {
     try {
       const r = await fetch("/api/cache/semantico/stats").then(x => x.json());
-      const entradas = Number(r.entradas ?? r.tamanho ?? 0);
+      const entradas = Number(r.itens_ativos ?? r.entradas ?? r.tamanho ?? 0);
       const hits = Number(r.hits ?? 0);
       const misses = Number(r.misses ?? 0);
       elCache.textContent = `${entradas} entrada(s) em RAM · ${hits} acerto(s) · ${misses} miss(es)`;
@@ -4859,12 +4562,6 @@ async function carregarConfigSistema() {
       elCache.textContent = "Cache semântico indisponível no momento.";
     }
   }
-  try {
-    const rLab = await fetch("/api/lab/propostas").then(x => x.json());
-    if (rLab && (rLab.cli_antigravity || (rLab.status && rLab.status.cli_antigravity))) {
-      atualizarBadgeCliLab(rLab.cli_antigravity || rLab.status.cli_antigravity);
-    }
-  } catch (_) {}
 }
 
 async function limparCacheSemanticoUI(btn) {
@@ -4949,10 +4646,8 @@ function abrirAba(nome, btn) {
     carregarEstudos();
     setTimeout(() => redimensionarGrafoVisual(), 120);
   }
-  if (_abaAtiva === "faxina") carregarFaxina();
   if (_abaAtiva === "rotinas") carregarRotinas();
   if (_abaAtiva === "atividade") carregarAuditoriaEPermissoes();
-  if (_abaAtiva === "lab") carregarAthenaLab();
 }
 
 /* ===== MODELO CHIP POPOVER + POPOVER "+" DO COMPOSER ===== */
@@ -4985,32 +4680,12 @@ function atualizarUIModelo(modeloId) {
   });
 }
 
-function alternarPopoverMais(ev) {
-  if (ev) ev.stopPropagation();
-  const pop = document.getElementById("composer-plus-popover");
-  const btn = document.getElementById("btn-composer-mais");
-  if (!pop || !btn) return;
-  const abrindo = !pop.classList.contains("open");
-  fecharPopoverModelo();
-  fecharMenuPaineis();
-  pop.classList.toggle("open", abrindo);
-  btn.setAttribute("aria-expanded", abrindo ? "true" : "false");
-}
-
-function fecharPopoverMais() {
-  const pop = document.getElementById("composer-plus-popover");
-  const btn = document.getElementById("btn-composer-mais");
-  if (pop) pop.classList.remove("open");
-  if (btn) btn.setAttribute("aria-expanded", "false");
-}
-
 function alternarPopoverModelo(ev) {
   if (ev) ev.stopPropagation();
   const pop = document.getElementById("model-popover");
   const btn = document.getElementById("btn-modelo-chip");
   if (!pop || !btn) return;
   const abrindo = !pop.classList.contains("open");
-  fecharPopoverMais();
   fecharMenuPaineis();
   pop.classList.toggle("open", abrindo);
   btn.setAttribute("aria-expanded", abrindo ? "true" : "false");
@@ -5065,18 +4740,6 @@ function _montarItensPaletaComandos() {
   });
   itens.push({
     grupo: "Ações rápidas",
-    titulo: "Capturar tela e anexar ao chat",
-    meta: "Visão",
-    run: () => { abrirAba("chat"); capturarTelaParaChat(); },
-  });
-  itens.push({
-    grupo: "Ações rápidas",
-    titulo: "Ensinar Tarefa (Teach a Bot)",
-    meta: "Skills",
-    run: () => iniciarTeachBotUI(),
-  });
-  itens.push({
-    grupo: "Ações rápidas",
     titulo: "Limpar Cache Semântico",
     meta: "Sistema",
     run: () => limparCacheSemanticoUI(),
@@ -5092,13 +4755,11 @@ function _montarItensPaletaComandos() {
 
   // Paineis
   const paineisCmd = [
+    ["Economia & Carteira", "Pessoal", () => abrirAba("carteira")],
     ["Estudos & Grafo", "Pessoal", () => abrirAba("estudos")],
     ["Grafo do Segundo Cérebro", "Estudos", () => { abrirAba("estudos"); selecionarSubAba("estudos", "estudos-grafo"); }],
-    ["Carteira", "Pessoal", () => abrirAba("carteira")],
-    ["Faxina & Aprovações", "Automação", () => abrirAba("faxina")],
-    ["Rotinas & Skills", "Automação", () => abrirAba("rotinas")],
-    ["Atividade & Permissões", "Automação", () => abrirAba("atividade")],
-    ["Athena Lab (R&D)", "Engenharia", () => abrirAba("lab")],
+    ["Rotinas & Telemetria", "Organização", () => abrirAba("rotinas")],
+    ["Atividade & Auditoria", "Organização", () => abrirAba("atividade")],
     ["Configurações (Memórias, Segurança e Sistema)", "Config", () => abrirModalMemorias("memorias")],
   ];
   for (const [titulo, meta, run] of paineisCmd) {
@@ -5170,7 +4831,6 @@ function renderPaletaComandos(filtroRaw = "") {
 
 function abrirPaletaComandos() {
   fecharPopoverModelo();
-  fecharPopoverMais();
   fecharMenuPaineis();
   const overlay = document.getElementById("modal-cmd-palette");
   const inp = document.getElementById("cmd-palette-input");
@@ -5228,11 +4888,6 @@ document.addEventListener("click", (ev) => {
   if (pop && pop.classList.contains("open") && !pop.contains(ev.target) && (!btn || !btn.contains(ev.target))) {
     fecharPopoverModelo();
   }
-  const popMais = document.getElementById("composer-plus-popover");
-  const btnMais = document.getElementById("btn-composer-mais");
-  if (popMais && popMais.classList.contains("open") && !popMais.contains(ev.target) && (!btnMais || !btnMais.contains(ev.target))) {
-    fecharPopoverMais();
-  }
   const popPaineis = document.getElementById("paineis-popover");
   const btnPaineis = document.getElementById("btn-paineis-menu");
   if (popPaineis && popPaineis.classList.contains("open") && !popPaineis.contains(ev.target) && (!btnPaineis || !btnPaineis.contains(ev.target))) {
@@ -5277,59 +4932,20 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape") {
     fecharPaletaComandos();
     fecharPopoverModelo();
-    fecharPopoverMais();
     fecharMenuPaineis();
     fecharModalMemorias();
     fecharDrawersMobile();
   }
 });
 
-/* ===== CONFIG & PASTA ATIVA ===== */
-function atualizarLabelPasta(caminho) {
-  _pastaRaizAtual = caminho || "";
-  const btn = document.getElementById("btn-escolher-pasta");
-  const lbl = document.getElementById("pasta-label");
-  const elCam = document.getElementById("config-pasta-caminho");
-  const partes = _pastaRaizAtual.replace(/[\\/]+$/, "").split(/[\\/]/);
-  const nomeBase = partes[partes.length - 1] || "Alterar pasta";
-  if (lbl) lbl.textContent = nomeBase;
-  if (elCam) elCam.textContent = _pastaRaizAtual || "Nenhuma pasta selecionada";
-  if (btn) btn.title = _pastaRaizAtual ? `Pasta ativa: ${_pastaRaizAtual} (clique para alterar)` : "Escolher pasta autorizada";
-}
-
+/* ===== CONFIG ===== */
 async function carregarConfig() {
   try {
     const r = await fetch("/api/config").then(x => x.json());
-    if (r.pasta_raiz) atualizarLabelPasta(r.pasta_raiz);
     if (r.modelo) atualizarUIModelo(r.modelo);
     if (r.ollama) atualizarStatusOllamaUI(r.ollama);
   } catch (e) {
     mostrarToast("Não foi possível carregar as configurações.", true);
-  }
-}
-
-async function escolherPasta() {
-  const btn = document.getElementById("btn-escolher-pasta");
-  const lbl = document.getElementById("pasta-label");
-  const textoAnt = lbl ? lbl.textContent : "Pasta ativa";
-  if (btn) btn.disabled = true;
-  if (lbl) lbl.textContent = "Abrindo...";
-  try {
-    const r = await fetch("/api/escolher-pasta", { method: "POST" }).then(x => x.json());
-    if (r.ok) {
-      atualizarLabelPasta(r.pasta_raiz);
-      mostrarToast("Pasta selecionada: " + r.pasta_raiz);
-    } else if (!r.cancelado) {
-      mostrarToast("Erro: " + (r.erro || "Não foi possível selecionar a pasta."), true);
-      if (lbl) lbl.textContent = textoAnt;
-    } else if (lbl) {
-      lbl.textContent = textoAnt;
-    }
-  } catch (e) {
-    mostrarToast("Erro ao abrir o seletor de pastas.", true);
-    if (lbl) lbl.textContent = textoAnt;
-  } finally {
-    if (btn) btn.disabled = false;
   }
 }
 
@@ -5649,35 +5265,6 @@ function selecionarArquivo(ev) {
     adicionarAnexos(files, false);
   }
   if (ev.target) ev.target.value = "";
-}
-
-async function _baixarCapturaComoFile(url, nomeArquivo) {
-  const resp = await fetch(url);
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-  const blob = await resp.blob();
-  return new File([blob], nomeArquivo || "captura_tela.jpg", { type: "image/jpeg" });
-}
-
-async function capturarTelaParaChat() {
-  const btn = document.getElementById("btn-capturar-tela");
-  if (btn) btn.disabled = true;
-  try {
-    const r = await fetch("/api/windows/capturar-tela", { method: "POST" }).then(x => x.json());
-    if (!r || !r.ok || !r.url) {
-      throw new Error((r && r.erro) || "Falha ao capturar tela.");
-    }
-    const file = await _baixarCapturaComoFile(r.url, r.arquivo);
-    const qtd = adicionarAnexos([file], false);
-    if (qtd > 0) {
-      mostrarToast("Tela capturada e anexada à mensagem!");
-      const inp = document.getElementById("entrada");
-      if (inp) inp.focus();
-    }
-  } catch (err) {
-    mostrarToast("Não foi possível capturar a tela: " + (err && err.message ? err.message : "erro"), true);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
 }
 
 function colarArquivoChat(ev) {
@@ -6290,11 +5877,6 @@ function addMsg(cls, txt, isHtml = false, extraOpts = null, animar = true) {
     wrap.className = "msg-bot-wrap";
     bubble.innerHTML = isHtml ? txt : renderMD(txt);
     wrap.appendChild(bubble);
-    if (extraOpts && Array.isArray(extraOpts.acoes_windows)) {
-      for (const ac of extraOpts.acoes_windows) {
-        anexarCardPermissaoNaBolha(wrap, ac);
-      }
-    }
     if (!isHtml && txt) {
       enriquecerBolhaBot(bubble);
       anexarBotaoOuvir(wrap, txt, extraOpts);
@@ -6472,215 +6054,6 @@ async function cancelarGeracaoAtual() {
   }
 }
 
-/* ===== CARD INLINE DE PERMISSAO WINDOWS 11 ===== */
-function criarHtmlAcoesCardWindows(acao) {
-  const st = String(acao.status || "pendente").toLowerCase();
-  if (st === "executada") {
-    const rotulo = acao.auto_executada ? "Executado automaticamente ✓" : "Executado ✓";
-    return `<span class="win-perm-status is-exec">${rotulo}</span>`;
-  }
-  if (st === "recusada") {
-    return `<span class="win-perm-status is-rec">Recusado</span>`;
-  }
-  const podeSempre = acao.tipo === "abrir_app" && String(acao.risco || "baixo") === "baixo";
-  const btnSempre = podeSempre
-    ? `<button type="button" class="btn-win-sempre" onclick="responderPermissaoWindows(${Number(acao.id)}, true, true, this)">Sempre permitir</button>`
-    : "";
-  return `
-    <button type="button" class="btn-win-permitir" onclick="responderPermissaoWindows(${Number(acao.id)}, true, false, this)">Permitir</button>
-    ${btnSempre}
-    <button type="button" class="btn-win-recusar" onclick="responderPermissaoWindows(${Number(acao.id)}, false, false, this)">Recusar</button>
-  `;
-}
-
-function criarCardPermissaoWindows(acao) {
-  const card = document.createElement("div");
-  card.className = "win-perm-card";
-  card.dataset.winAcaoId = String(acao.id);
-
-  const risco = String(acao.risco || "baixo").toLowerCase();
-  const iconeSvg = acao.tipo === "abrir_url"
-    ? '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>'
-    : (acao.tipo === "abrir_caminho"
-      ? '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></svg>'
-      : '<svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="18" x2="12" y2="21"/></svg>');
-
-  card.innerHTML = `
-    <div class="win-perm-head">
-      <div class="win-perm-title">${iconeSvg}<span>${escHtml(acao.descricao || "Ação no Windows")}</span></div>
-      <span class="win-perm-risco ${escHtml(risco)}">risco ${escHtml(risco)}</span>
-    </div>
-    <div class="win-perm-target">${escHtml(acao.alvo || "")}</div>
-    <div class="win-perm-actions">${criarHtmlAcoesCardWindows(acao)}</div>
-  `;
-  return card;
-}
-
-function anexarCardPermissaoNaBolha(bubbleOuWrap, acao) {
-  if (!bubbleOuWrap || !acao || acao.id === undefined || acao.id === null) return;
-  const wrap = bubbleOuWrap.classList.contains("msg-bot-wrap")
-    ? bubbleOuWrap
-    : (bubbleOuWrap.parentElement && bubbleOuWrap.parentElement.classList.contains("msg-bot-wrap")
-      ? bubbleOuWrap.parentElement
-      : null);
-  if (!wrap) return;
-
-  const existente = wrap.querySelector(`.win-perm-card[data-win-acao-id="${acao.id}"]`);
-  if (existente) {
-    const boxAcoes = existente.querySelector(".win-perm-actions");
-    if (boxAcoes) boxAcoes.innerHTML = criarHtmlAcoesCardWindows(acao);
-    return;
-  }
-
-  const card = criarCardPermissaoWindows(acao);
-  const actionsBar = wrap.querySelector(".msg-actions");
-  if (actionsBar) wrap.insertBefore(card, actionsBar);
-  else wrap.appendChild(card);
-}
-
-async function responderPermissaoWindows(acaoId, aprovar, semprePermitir, btn) {
-  const card = btn ? btn.closest(".win-perm-card") : document.querySelector(`.win-perm-card[data-win-acao-id="${acaoId}"]`);
-  const boxAcoes = card ? card.querySelector(".win-perm-actions") : null;
-  if (card) {
-    card.querySelectorAll("button").forEach(b => { b.disabled = true; });
-    const errAnt = card.querySelector(".win-perm-erro");
-    if (errAnt) errAnt.remove();
-  }
-  try {
-    const url = aprovar
-      ? `/api/windows/aprovar/${encodeURIComponent(acaoId)}`
-      : `/api/windows/recusar/${encodeURIComponent(acaoId)}`;
-    const opts = aprovar
-      ? {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sempre_permitir: !!semprePermitir }),
-        }
-      : { method: "POST" };
-    const r = await fetch(url, opts).then(x => x.json());
-    if (r && r.ok) {
-      if (boxAcoes) {
-        const acaoAtual = r.acao || { id: acaoId, status: aprovar ? "executada" : "recusada" };
-        boxAcoes.innerHTML = criarHtmlAcoesCardWindows(acaoAtual);
-      }
-      if (aprovar && r.captura && r.captura.url) {
-        if (card && !card.querySelector(".win-perm-preview")) {
-          const prev = document.createElement("div");
-          prev.className = "win-perm-preview";
-          prev.style.marginTop = "8px";
-          prev.innerHTML = `<img src="${escHtml(r.captura.url)}" alt="Captura de tela autorizada" style="max-width:260px;max-height:150px;border-radius:8px;border:1px solid var(--border);display:block;" />`;
-          card.appendChild(prev);
-        }
-        mostrarToast("Tela capturada ✓ Enviando para a Athena analisar...");
-        try {
-          const file = await _baixarCapturaComoFile(r.captura.url, r.captura.arquivo);
-          adicionarAnexos([file], false);
-          const inp = document.getElementById("entrada");
-          if (inp && !inp.value.trim()) {
-            const perguntaOrig = (_ultimaPerguntaUsuario || "").trim();
-            inp.value = perguntaOrig
-              ? `Aqui está a captura de tela autorizada referente ao meu pedido: "${perguntaOrig}". Analise a imagem e me responda.`
-              : "Aqui está a captura de tela autorizada. Analise a imagem e me ajude com o que aparece na tela.";
-            ajustarTextarea(inp);
-          }
-          if (!_enviando) {
-            await enviar();
-          }
-        } catch (errCap) {
-          mostrarToast("Captura salva, mas falhou ao anexar automaticamente.", true);
-        }
-      } else {
-        mostrarToast(r.mensagem || (aprovar ? "Executado no Windows ✓" : "Solicitação recusada."));
-      }
-    } else {
-      const msgErro = (r && r.erro) ? r.erro : "Não foi possível concluir a ação.";
-      if (card) {
-        card.querySelectorAll("button").forEach(b => { b.disabled = false; });
-        const divErr = document.createElement("div");
-        divErr.className = "win-perm-erro";
-        divErr.textContent = msgErro;
-        card.appendChild(divErr);
-      }
-      mostrarToast("Erro: " + msgErro, true);
-    }
-  } catch (e) {
-    if (card) card.querySelectorAll("button").forEach(b => { b.disabled = false; });
-    mostrarToast("Falha na comunicação com o servidor.", true);
-  }
-}
-
-/* ===== TAKE THE WHEEL (PAUSA HUMANA CONTROLADA NO NAVEGADOR) ===== */
-function criarCardTakeTheWheel(dados) {
-  const card = document.createElement("div");
-  card.className = "take-wheel-card";
-  card.dataset.takeWheelId = String(dados.sessao_id || "");
-
-  const urlSegura = (dados.url && /^https?:\/\//i.test(String(dados.url))) ? String(dados.url) : "";
-  const linkHtml = urlSegura
-    ? `<div class="win-perm-target"><a href="${escHtml(urlSegura)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-hover);text-decoration:underline;">${escHtml(urlSegura)}</a></div>`
-    : "";
-
-  card.innerHTML = `
-    <div class="win-perm-head">
-      <div class="win-perm-title">
-        <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.5"/><path d="M12 3v6.5"/><path d="M5.6 15.8 9.8 13.3"/><path d="M18.4 15.8 14.2 13.3"/></svg>
-        <span>Assuma o Controle (Take the wheel)</span>
-      </div>
-      <span class="win-perm-risco medio">Aguardando você</span>
-    </div>
-    <div class="take-wheel-motivo">${escHtml(dados.motivo || "O agente precisa da sua intervenção manual (CAPTCHA ou login) para continuar.")}</div>
-    ${linkHtml}
-    <div class="win-perm-actions">
-      <button type="button" class="btn-win-permitir" onclick="responderTakeTheWheel('${escHtml(dados.sessao_id || "")}', true, this)">Devolver Controle ao Agente</button>
-      <button type="button" class="btn-win-recusar" onclick="responderTakeTheWheel('${escHtml(dados.sessao_id || "")}', false, this)">Cancelar</button>
-    </div>
-  `;
-  return card;
-}
-
-function anexarCardTakeTheWheelNaBolha(bubbleOuWrap, dados) {
-  if (!bubbleOuWrap || !dados || !dados.sessao_id) return;
-  const wrap = bubbleOuWrap.classList.contains("msg-bot-wrap")
-    ? bubbleOuWrap
-    : (bubbleOuWrap.parentElement && bubbleOuWrap.parentElement.classList.contains("msg-bot-wrap")
-      ? bubbleOuWrap.parentElement
-      : null);
-  if (!wrap) return;
-  if (wrap.querySelector(`.take-wheel-card[data-take-wheel-id="${dados.sessao_id}"]`)) return;
-
-  const card = criarCardTakeTheWheel(dados);
-  const actionsBar = wrap.querySelector(".msg-actions");
-  if (actionsBar) wrap.insertBefore(card, actionsBar);
-  else wrap.appendChild(card);
-}
-
-async function responderTakeTheWheel(sessaoId, retomar, btn) {
-  if (!sessaoId) return;
-  const card = btn ? btn.closest(".take-wheel-card") : document.querySelector(`.take-wheel-card[data-take-wheel-id="${sessaoId}"]`);
-  const boxAcoes = card ? card.querySelector(".win-perm-actions") : null;
-  if (card) card.querySelectorAll("button").forEach(b => { b.disabled = true; });
-  try {
-    const endpoint = retomar
-      ? `/api/navegador/retomar/${encodeURIComponent(sessaoId)}`
-      : `/api/navegador/cancelar/${encodeURIComponent(sessaoId)}`;
-    const r = await fetch(endpoint, { method: "POST" }).then(x => x.json());
-    if (r && r.ok) {
-      if (boxAcoes) {
-        boxAcoes.innerHTML = `<span class="take-wheel-status-done">${retomar ? "Controle devolvido ao agente ✓ Continuando..." : "Intervenção cancelada."}</span>`;
-      }
-      const badge = card ? card.querySelector(".win-perm-risco") : null;
-      if (badge) badge.textContent = retomar ? "Retomado" : "Cancelado";
-      mostrarToast(retomar ? "Controle devolvido ao agente ✓" : "Navegação cancelada.");
-    } else {
-      if (card) card.querySelectorAll("button").forEach(b => { b.disabled = false; });
-      mostrarToast((r && (r.erro || r.detail)) || "Sessão não encontrada ou já encerrada.", true);
-    }
-  } catch (_) {
-    if (card) card.querySelectorAll("button").forEach(b => { b.disabled = false; });
-    mostrarToast("Falha ao comunicar com o servidor.", true);
-  }
-}
-
 async function consumirFluxoSSEChat(resp, { bubbleInicial = null, modeloInicial = _modeloAtual, modoReattach = false } = {}) {
   const sc = document.getElementById("chat-scroll");
   let temp = bubbleInicial;
@@ -6784,16 +6157,6 @@ async function consumirFluxoSSEChat(resp, { bubbleInicial = null, modeloInicial 
         textoAcumulado += delta;
         agendarRenderLive();
       }
-    } else if (evTipo === "permissao_windows" || payload.tipo === "permissao_windows") {
-      if (payload.acao) {
-        const alvo = garantirBolhaBot("Athena solicitou permissão no Windows...");
-        anexarCardPermissaoNaBolha(alvo, payload.acao);
-        rolarSePertoDoFim();
-      }
-    } else if (evTipo === "take_the_wheel" || payload.tipo === "take_the_wheel") {
-      const alvo = garantirBolhaBot("Agente pausado aguardando sua intervenção...");
-      anexarCardTakeTheWheelNaBolha(alvo, payload);
-      rolarSePertoDoFim();
     } else if (evTipo === "done") {
       finalPayload = payload;
       if (payload.modelo_usado) modeloUsadoLive = payload.modelo_usado;
@@ -6846,11 +6209,6 @@ async function consumirFluxoSSEChat(resp, { bubbleInicial = null, modeloInicial 
     alvoFinal.innerHTML = renderMD(textoFinal || "*(Sem resposta)*");
     enriquecerBolhaBot(alvoFinal);
     if (textoFinal && alvoFinal.parentElement && alvoFinal.parentElement.classList.contains("msg-bot-wrap")) {
-      if (finalPayload && Array.isArray(finalPayload.acoes_windows)) {
-        for (const ac of finalPayload.acoes_windows) {
-          anexarCardPermissaoNaBolha(alvoFinal.parentElement, ac);
-        }
-      }
       const tele = (finalPayload && finalPayload.telemetria) ? finalPayload.telemetria : {};
       anexarBotaoOuvir(alvoFinal.parentElement, textoFinal, {
         modeloUsado: modeloUsadoLive || (finalPayload && finalPayload.modelo_usado) || modeloInicial,
@@ -7888,140 +7246,7 @@ async function carregarGrafoVisual() {
   }
 }
 
-/* ===== FAXINA ===== */
-async function carregarFaxina() {
-  try {
-    const r = await fetch("/api/painel/faxina").then(x => x.json());
-    const res = r.resumo || {};
-    const qtdPendFax = Number(res.pendentes ?? (r.pendentes || []).length);
-    _pendenciasFaxina = Math.max(0, qtdPendFax);
-    atualizarIndicadorPaineis();
-    document.getElementById("kpi-fax-pend").textContent = qtdPendFax;
-    document.getElementById("kpi-fax-exec").textContent = res.executadas ?? 0;
-    document.getElementById("kpi-fax-rec").textContent = res.recusadas ?? 0;
-
-    const bp = document.getElementById("box-fax-pendentes");
-    const btnTodas = document.getElementById("btn-aprovar-todas");
-    const pendLista = r.pendentes || [];
-    if (btnTodas) {
-      btnTodas.style.display = pendLista.length ? "inline-flex" : "none";
-      const lbl = btnTodas.querySelector(".btn-label");
-      if (lbl) lbl.textContent = pendLista.length > 1 ? `Aprovar Tudo (${pendLista.length})` : "Aprovar Tudo";
-    }
-
-    if (!pendLista.length) {
-      bp.innerHTML = '<span class="empty-note">Nenhuma ação pendente de aprovação. Peça ao Agente Faxineiro no chat para organizar sua Área de Trabalho ou escanear suas pastas autorizadas.</span>';
-    } else {
-      bp.innerHTML = pendLista.map(a => {
-        const ehLixeira = a.tipo === "lixeira";
-        const badgeTipo = ehLixeira
-          ? '<span class="badge-lixeira">LIXEIRA</span>'
-          : '<span class="badge-mover">MOVER</span>';
-        const fluxoHtml = !ehLixeira && a.destino
-          ? `<div class="acao-fluxo">${escHtml(a.origem)}<span class="seta">-&gt;</span>${escHtml(a.destino)}</div>`
-          : `<div class="acao-path" style="margin-top:5px;"><strong>Origem:</strong> ${escHtml(a.origem)}</div>`;
-        return `
-          <div class="acao-card">
-            <div class="acao-info">
-              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${badgeTipo} <strong>#${a.id}</strong> <span style="color:var(--muted);font-size:12px;">· ${escHtml(a.criado_em)}</span></div>
-              ${fluxoHtml}
-              <div style="color:var(--muted);margin-top:4px;"><strong>Motivo:</strong> ${escHtml(a.motivo)}</div>
-            </div>
-            <div class="acao-btns">
-              <button type="button" class="btn-aprovar" onclick="aprovarAcao(${a.id}, this)">
-                <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
-                <span>Aprovar</span>
-              </button>
-              <button type="button" class="btn-recusar" onclick="recusarAcao(${a.id}, this)">
-                <svg class="ico ico-sm" viewBox="0 0 24 24" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                <span>Recusar</span>
-              </button>
-            </div>
-          </div>
-        `;
-      }).join("");
-    }
-
-    const bh = document.getElementById("box-fax-historico");
-    if (!r.historico || !r.historico.length) {
-      bh.innerHTML = '<span class="empty-note">Nenhuma ação executada, recusada ou desfeita ainda.</span>';
-    } else {
-      let h = '<table class="grid"><thead><tr><th>ID</th><th>Data</th><th>Tipo</th><th>Origem</th><th>Destino</th><th>Motivo</th><th>Status</th><th>Ação</th></tr></thead><tbody>';
-      for (const a of r.historico) {
-        const badgeTipo = a.tipo === "lixeira"
-          ? '<span class="badge-lixeira">LIXEIRA</span>'
-          : '<span class="badge-mover">MOVER</span>';
-        const badgeStatus = a.status === "executada"
-          ? '<span class="badge-exec">executada</span>'
-          : (a.status === "desfeita" ? '<span class="badge-desfeita">desfeita</span>' : '<span class="badge-rec">' + escHtml(a.status) + '</span>');
-        const btnDesfazer = (a.tipo === "mover" && a.status === "executada")
-          ? `<button type="button" class="ghost mini" onclick="desfazerAcao(${a.id}, this)" title="Devolver arquivo para o local original">Desfazer</button>`
-          : '<span style="color:var(--muted-2);font-size:12px;">-</span>';
-        h += `<tr><td>#${a.id}</td><td style="white-space:nowrap;">${escHtml(a.criado_em)}</td><td>${badgeTipo}</td><td class="acao-path">${escHtml(a.origem)}</td><td class="acao-path">${escHtml(a.destino || "-")}</td><td>${escHtml(a.motivo)}</td><td>${badgeStatus}</td><td>${btnDesfazer}</td></tr>`;
-      }
-      bh.innerHTML = h + "</tbody></table>";
-    }
-  } catch (e) {
-    mostrarToast("Erro ao carregar fila de faxina.", true);
-  }
-}
-
-async function aprovarTodasAcoes(btn) {
-  if (btn) btn.disabled = true;
-  const lbl = btn ? btn.querySelector(".btn-label") : null;
-  if (lbl) lbl.textContent = "Executando...";
-  try {
-    const r = await fetch("/api/painel/faxina/aprovar-todas", { method: "POST" }).then(x => x.json());
-    if (r.ok) mostrarToast(r.mensagem || "Todas as ações pendentes foram executadas.");
-    else mostrarToast("Erro ao aprovar tudo: " + (r.erro || r.mensagem || "falha desconhecida"), true);
-    await carregarFaxina();
-  } catch (e) {
-    mostrarToast("Falha na comunicação ao aprovar todas as ações.", true);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
-async function desfazerAcao(id, btn) {
-  if (btn) btn.disabled = true;
-  try {
-    const r = await fetch(`/api/painel/faxina/${id}/desfazer`, { method: "POST" }).then(x => x.json());
-    if (r.ok) mostrarToast(r.mensagem || `Movimentação #${id} desfeita.`);
-    else mostrarToast(`Erro ao desfazer #${id}: ${r.erro}`, true);
-    await carregarFaxina();
-  } catch (e) {
-    mostrarToast(`Falha ao desfazer movimentação #${id}.`, true);
-    if (btn) btn.disabled = false;
-  }
-}
-
-async function aprovarAcao(id, btn) {
-  if (btn) btn.disabled = true;
-  try {
-    const r = await fetch(`/api/painel/faxina/${id}/aprovar`, { method: "POST" }).then(x => x.json());
-    if (r.ok) mostrarToast(r.mensagem || `Ação #${id} executada com sucesso.`);
-    else mostrarToast(`Erro ao aprovar #${id}: ${r.erro}`, true);
-    carregarFaxina();
-  } catch (e) {
-    mostrarToast(`Erro ao aprovar ação #${id}.`, true);
-    if (btn) btn.disabled = false;
-  }
-}
-
-async function recusarAcao(id, btn) {
-  if (btn) btn.disabled = true;
-  try {
-    const r = await fetch(`/api/painel/faxina/${id}/recusar`, { method: "POST" }).then(x => x.json());
-    if (r.ok) mostrarToast(r.mensagem || `Ação #${id} recusada.`);
-    else mostrarToast(`Erro ao recusar #${id}: ${r.erro}`, true);
-    carregarFaxina();
-  } catch (e) {
-    mostrarToast(`Erro ao recusar ação #${id}.`, true);
-    if (btn) btn.disabled = false;
-  }
-}
-
-/* ===== ROTINAS & SERVIDORES MCP ===== */
+/* ===== ROTINAS & TELEMETRIA ===== */
 function renderRotinas(lista) {
   const box = document.getElementById("box-rotinas");
   if (!lista || !lista.length) {
@@ -8100,10 +7325,8 @@ function renderRotinas(lista) {
 }
 
 async function carregarRotinas() {
-  carregarServidoresMcp();
   carregarTelemetria();
   carregarRotinasDinamicas();
-  carregarAuditoriaEPermissoes();
   try {
     const r = await fetch("/api/rotinas").then(x => x.json());
     renderRotinas(r.rotinas || []);
@@ -8114,7 +7337,6 @@ async function carregarRotinas() {
 }
 
 async function carregarRotinasDinamicas() {
-  atualizarStatusTeachBot();
   const box = document.getElementById("box-rotinas-dinamicas");
   if (!box) return;
   try {
@@ -8213,175 +7435,6 @@ async function excluirRotinaDinamicaUI(id, btn) {
   }
 }
 
-/* ===== THE BOARD (QUADRO + CHECKER) & FRIDAY RECEIPT ===== */
-const BOARD_COLUNAS = [
-  { status: "Todo", titulo: "Todo" },
-  { status: "Working", titulo: "Working" },
-  { status: "Blocked", titulo: "Blocked" },
-  { status: "Ready for Review", titulo: "Review" },
-  { status: "Done", titulo: "Done" },
-];
-
-async function carregarBoard() {
-  const box = document.getElementById("box-board-colunas");
-  if (!box) return;
-  try {
-    const r = await fetch("/api/board").then(x => x.json());
-    const cards = Array.isArray(r && r.cards) ? r.cards : [];
-    box.innerHTML = BOARD_COLUNAS.map(col => {
-      const lista = cards.filter(c => c.status === col.status);
-      const cardsHtml = lista.length
-        ? lista.map(c => {
-            const clsExtra = c.status === "Blocked" ? " is-blocked" : (c.status === "Ready for Review" ? " is-review" : (c.status === "Done" ? " is-done" : ""));
-            const provasCount = Array.isArray(c.provas) ? c.provas.length : 0;
-            const btnChecar = c.status === "Ready for Review"
-              ? `<button type="button" class="accent mini" onclick="checarCardBoardUI('${escHtml(c.id)}', this)">Checar</button>`
-              : "";
-            const btnReview = (c.status === "Todo" || c.status === "Working")
-              ? `<button type="button" class="ghost mini" onclick="moverCardParaReviewUI('${escHtml(c.id)}', this)">Enviar p/ Review</button>`
-              : "";
-            return `
-              <div class="board-card${clsExtra}" data-card-id="${escHtml(c.id)}">
-                <div class="board-card-title">${escHtml(c.titulo)}</div>
-                <div class="board-card-meta">
-                  <span class="lab-badge">${escHtml(c.dono)}</span>
-                  <span>${provasCount} prova(s)</span>
-                  <span>checker: ${Number(c.tentativas_checker || 0)}/2</span>
-                </div>
-                ${c.criterio_done ? `<div class="board-card-crit"><strong>Done:</strong> ${escHtml(c.criterio_done)}</div>` : ""}
-                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;">
-                  ${btnChecar}${btnReview}
-                </div>
-              </div>
-            `;
-          }).join("")
-        : '<div class="empty-note" style="font-size:11.5px;padding:8px 4px;">Sem cards</div>';
-      return `
-        <div class="board-col" data-board-col="${escHtml(col.status)}">
-          <div class="board-col-head">
-            <span>${escHtml(col.titulo)}</span>
-            <span class="skill-count">${lista.length}</span>
-          </div>
-          ${cardsHtml}
-        </div>
-      `;
-    }).join("");
-  } catch (_) {
-    box.innerHTML = '<div class="empty-note">Não foi possível carregar o Quadro (Board).</div>';
-  }
-}
-
-async function criarCardBoardUI() {
-  const titulo = window.prompt("Título da tarefa para o Board:");
-  if (!titulo || !titulo.trim()) return;
-  const dono = window.prompt("Agente dono (athena, estudos, sistema, pesquisador, analista...):", "athena") || "athena";
-  const criterio = window.prompt("Critério objetivo de Done (No proof, no done):", "") || "";
-  try {
-    const resp = await fetch("/api/board", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ titulo: titulo.trim(), dono: dono.trim(), criterio_done: criterio.trim() }),
-    });
-    const r = await resp.json();
-    if (resp.ok && r && r.ok) {
-      mostrarToast("Card criado no Board ✓");
-      await carregarBoard();
-    } else {
-      mostrarToast((r && (r.detail || r.erro)) || "Erro ao criar card.", true);
-    }
-  } catch (_) {
-    mostrarToast("Erro de rede ao criar card no Board.", true);
-  }
-}
-
-async function moverCardParaReviewUI(cardId, btn) {
-  const prova = window.prompt("Informe a prova concreta de conclusão (comando, arquivo, link — ou deixe vazio para testar bloqueio do Checker):", "") || "";
-  if (btn) btn.disabled = true;
-  try {
-    const provas = prova.trim() ? [prova.trim()] : [];
-    const resp = await fetch(`/api/board/${encodeURIComponent(cardId)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "Ready for Review", provas }),
-    });
-    const r = await resp.json();
-    if (resp.ok && r && r.ok) {
-      mostrarToast("Card movido para Review ✓");
-      await carregarBoard();
-    } else {
-      mostrarToast((r && (r.detail || r.erro)) || "Erro ao mover card.", true);
-    }
-  } catch (_) {
-    mostrarToast("Erro ao mover card para Review.", true);
-  }
-}
-
-async function checarCardBoardUI(cardId, btn) {
-  if (btn) btn.disabled = true;
-  try {
-    const resp = await fetch(`/api/board/${encodeURIComponent(cardId)}/checar`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ usar_llm: false }),
-    });
-    const r = await resp.json();
-    if (resp.ok && r && r.ok) {
-      if (r.aprovado) mostrarToast("Aprovado pelo Checker → Done ✓");
-      else if (r.bloqueado) mostrarToast("Reprovado 2x → Blocked (ação humana necessária).", true);
-      else mostrarToast(`Reprovado pelo Checker → Working (${r.feedback?.criterio_falho || "sem provas"}).`, true);
-      await carregarBoard();
-    } else {
-      mostrarToast((r && (r.detail || r.erro)) || "Falha ao executar Checker.", true);
-    }
-  } catch (_) {
-    mostrarToast("Erro de rede ao executar Checker.", true);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
-async function carregarRecibosSemanais() {
-  const box = document.getElementById("box-recibos-semanais");
-  if (!box) return;
-  try {
-    const r = await fetch("/api/rotinas/recibos").then(x => x.json());
-    const lista = Array.isArray(r && r.recibos) ? r.recibos : [];
-    if (!lista.length) {
-      box.innerHTML = '<span class="empty-note">Nenhum Friday Receipt gerado ainda. Clique em "Gerar Recibo Agora" ou aguarde sexta-feira às 18:00.</span>';
-      return;
-    }
-    box.innerHTML = lista.map(rec => `
-      <div class="recibo-md-box" style="margin-bottom:12px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
-          <span class="lab-badge accent">${escHtml(rec.periodo)}</span>
-          <span style="font-size:11.5px;color:var(--muted);">Gerado em ${escHtml(rec.criado_em)}</span>
-        </div>
-        <div class="msg bot">${renderMD(rec.resumo_md || "")}</div>
-      </div>
-    `).join("");
-  } catch (_) {
-    box.innerHTML = '<span class="empty-note">Não foi possível carregar os recibos semanais.</span>';
-  }
-}
-
-async function gerarReciboSemanalUI(btn) {
-  if (btn) btn.disabled = true;
-  try {
-    const resp = await fetch("/api/rotinas/recibo-semanal", { method: "POST" });
-    const r = await resp.json();
-    if (resp.ok && r && r.ok) {
-      mostrarToast("Friday Receipt gerado ✓");
-      await carregarRecibosSemanais();
-    } else {
-      mostrarToast((r && (r.detail || r.erro)) || "Falha ao gerar recibo semanal.", true);
-    }
-  } catch (_) {
-    mostrarToast("Erro de rede ao gerar recibo semanal.", true);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
 async function carregarAuditoriaAtividades() {
   const box = document.getElementById("box-auditoria-atividades");
   if (!box) return;
@@ -8446,17 +7499,14 @@ async function carregarPastasAprovadas() {
 }
 
 async function adicionarPastaAprovadaUI(btn) {
+  const caminho = window.prompt("Informe o caminho completo da pasta para aprovar (somente leitura):", "");
+  if (!caminho || !caminho.trim()) return;
   if (btn) btn.disabled = true;
   try {
-    const sel = await fetch("/api/escolher-pasta", { method: "POST" }).then(x => x.json());
-    if (!sel || !sel.ok || !sel.pasta_raiz) {
-      if (sel && !sel.cancelado) mostrarToast((sel && sel.erro) || "Nenhuma pasta selecionada.", true);
-      return;
-    }
     const r = await fetch("/api/permissoes/pastas", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ caminho: sel.pasta_raiz, somente_leitura: true }),
+      body: JSON.stringify({ caminho: caminho.trim(), somente_leitura: true }),
     }).then(x => x.json());
     if (r && r.ok) {
       mostrarToast("Pasta aprovada com sucesso!");
@@ -8465,7 +7515,7 @@ async function adicionarPastaAprovadaUI(btn) {
       mostrarToast((r && r.detail) || "Não foi possível aprovar a pasta.", true);
     }
   } catch (_) {
-    mostrarToast("Erro ao selecionar/aprovar pasta.", true);
+    mostrarToast("Erro ao aprovar pasta.", true);
   } finally {
     if (btn) btn.disabled = false;
   }
@@ -8549,41 +7599,6 @@ async function carregarTelemetria() {
     box.innerHTML = h + "</tbody></table>";
   } catch (e) {
     box.innerHTML = '<span class="empty-note">Erro ao carregar telemetria local.</span>';
-  }
-}
-
-async function carregarServidoresMcp() {
-  const box = document.getElementById("box-mcp-servidores");
-  if (!box) return;
-  try {
-    const r = await fetch("/api/mcp/servidores").then(x => x.json());
-    const lista = r.servidores || [];
-    if (!lista.length) {
-      box.innerHTML = '<span class="empty-note">Nenhum servidor configurado em <code>mcp_servers.json</code>.</span>';
-      return;
-    }
-    box.innerHTML = lista.map(s => {
-      const badge = s.status === "ativo"
-        ? '<span class="badge-exec">ativo</span>'
-        : (s.status === "erro" ? '<span class="badge-rec">erro</span>' : '<span class="badge-tipo">inativo</span>');
-      const erroHtml = s.erro ? `<div style="color:var(--neg);font-size:12px;margin-top:4px;">${escHtml(s.erro)}</div>` : "";
-      return `
-        <div class="acao-card" style="margin-bottom:8px;">
-          <div class="acao-info">
-            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-              <strong style="color:var(--text-strong);">${escHtml(s.nome)}</strong>
-              <span class="badge-tipo">${escHtml(s.transporte || "stdio")}</span>
-              ${badge}
-            </div>
-            ${s.descricao ? `<div style="color:var(--muted);font-size:12.5px;margin-top:3px;">${escHtml(s.descricao)}</div>` : ""}
-            ${s.alvo ? `<div class="acao-path" style="margin-top:3px;color:var(--muted);">${escHtml(s.alvo)}</div>` : ""}
-            ${erroHtml}
-          </div>
-        </div>
-      `;
-    }).join("");
-  } catch (e) {
-    box.innerHTML = '<span class="empty-note">Erro ao consultar servidores MCP.</span>';
   }
 }
 
@@ -8906,449 +7921,6 @@ async function bloquearPainel() {
   mostrarTelaBloqueio(true);
 }
 
-function renderSkills(skills) {
-  const lista = Array.isArray(skills) ? skills : [];
-  const htmlPills = lista.length
-    ? lista.map(s => `<span class="skill-pill" title="${escHtml(s.description || s.name || "")}">${escHtml(s.name || "")}</span>`).join("")
-    : '<span class="empty-note" style="font-size:11px;">Nenhuma skill ativa.</span>';
-
-  const pares = [
-    ["skills-lista", "skills-count"],
-    ["skills-lista-rotinas", "skills-count-rotinas"],
-  ];
-  for (const [idBox, idBadge] of pares) {
-    const box = document.getElementById(idBox);
-    const badge = document.getElementById(idBadge);
-    if (badge) badge.textContent = String(lista.length);
-    if (box) box.innerHTML = htmlPills;
-  }
-}
-
-async function carregarSkills() {
-  try {
-    const r = await fetch("/api/skills").then(x => x.json());
-    renderSkills(r.skills || []);
-  } catch (_) {
-    renderSkills([]);
-  }
-}
-
-/* ===== TEACH A BOT (GRAVAR PASSOS NO NAVEGADOR -> SKILL.md) ===== */
-let _teachBotSessaoId = null;
-let _teachBotPollTimer = null;
-
-function _pararPollTeachBot() {
-  if (_teachBotPollTimer) {
-    clearInterval(_teachBotPollTimer);
-    _teachBotPollTimer = null;
-  }
-}
-
-function renderStatusTeachBot(dados) {
-  const box = document.getElementById("teach-bot-status");
-  const btnIni = document.getElementById("btn-teach-bot-iniciar");
-  const btnFin = document.getElementById("btn-teach-bot-finalizar");
-  if (!box) return;
-
-  const gravando = Boolean(dados && (dados.ativa || dados.gravando));
-  _teachBotSessaoId = gravando ? (dados.sessao_id || _teachBotSessaoId) : null;
-  if (btnIni) btnIni.classList.toggle("hidden", gravando);
-  if (btnFin) btnFin.classList.toggle("hidden", !gravando);
-  box.classList.toggle("gravando", gravando);
-
-  if (!gravando) {
-    _pararPollTeachBot();
-    box.innerHTML = '<span class="empty-note">Clique em <strong>Ensinar Tarefa (Teach a Bot)</strong> para abrir o navegador visível, executar os passos e salvar automaticamente em <code>skills/&lt;nome&gt;/SKILL.md</code>. Bancos são bloqueados e campos de senha nunca são gravados.</span>';
-    return;
-  }
-
-  const passos = Number(dados.total_passos ?? dados.passos_gravados ?? 0);
-  const nome = escHtml(dados.nome_skill || dados.slug || "Skill");
-  const url = escHtml(dados.url_inicial || "");
-  const erroTxt = dados.erro ? `<div style="color:#fca5a5;font-size:12px;margin-top:4px;">Aviso: ${escHtml(dados.erro)}</div>` : "";
-  box.innerHTML = `
-    <div>
-      <div style="display:flex;align-items:center;gap:8px;font-weight:700;color:var(--text-strong);font-size:13px;">
-        <span class="teach-bot-dot" aria-hidden="true"></span>
-        <span>Gravando skill: ${nome}</span>
-        <span class="lab-badge accent">${passos} passo(s)</span>
-      </div>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px;">URL inicial: <code>${url}</code> · Execute a tarefa no navegador e clique em <strong>Finalizar e Salvar Skill</strong>.</div>
-      ${erroTxt}
-    </div>
-  `;
-}
-
-async function atualizarStatusTeachBot() {
-  try {
-    const r = await fetch("/api/skills/gravar/status").then(x => x.json());
-    renderStatusTeachBot(r);
-  } catch (_) {}
-}
-
-async function iniciarTeachBotUI() {
-  const nome = window.prompt("Nome da nova skill (ex.: Checar Notas no Portal):");
-  if (!nome || !nome.trim()) return;
-  const url = window.prompt("URL inicial (https://... — bancos/corretoras são bloqueados):", "https://");
-  if (!url || !url.trim() || url.trim() === "https://") return;
-  const descricao = window.prompt("Descrição curta da tarefa (opcional):", "") || "";
-
-  abrirAba("rotinas");
-  selecionarSubAba("rotinas", "rotinas-skills");
-  mostrarToast("Iniciando gravação do Teach a Bot...");
-  try {
-    const resp = await fetch("/api/skills/gravar/iniciar", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ nome_skill: nome.trim(), url_inicial: url.trim(), descricao: descricao.trim() }),
-    });
-    const r = await resp.json();
-    if (!resp.ok || !r || !r.ok) {
-      mostrarToast((r && (r.detail || r.erro)) || "Não foi possível iniciar a gravação.", true);
-      return;
-    }
-    renderStatusTeachBot({ ...r, ativa: true, total_passos: 1 });
-    _pararPollTeachBot();
-    _teachBotPollTimer = setInterval(atualizarStatusTeachBot, 2000);
-    mostrarToast("Navegador aberto! Execute os passos e clique em Finalizar e Salvar Skill.");
-  } catch (_) {
-    mostrarToast("Erro de rede ao iniciar o Teach a Bot.", true);
-  }
-}
-
-async function finalizarTeachBotUI(btn) {
-  if (!_teachBotSessaoId) {
-    await atualizarStatusTeachBot();
-    if (!_teachBotSessaoId) {
-      mostrarToast("Nenhuma gravação ativa para finalizar.", true);
-      return;
-    }
-  }
-  if (btn) btn.disabled = true;
-  mostrarToast("Finalizando gravação e gerando SKILL.md...");
-  try {
-    const resp = await fetch(`/api/skills/gravar/finalizar/${encodeURIComponent(_teachBotSessaoId)}`, { method: "POST" });
-    const r = await resp.json();
-    if (!resp.ok || !r || !r.ok) {
-      mostrarToast((r && (r.detail || r.erro)) || "Erro ao finalizar gravação.", true);
-      return;
-    }
-    _pararPollTeachBot();
-    renderStatusTeachBot({ ativa: false });
-    mostrarToast(`Skill "${r.slug}" salva com ${Number(r.total_passos || 0)} passo(s) ✓`);
-    await carregarSkills();
-    if (typeof carregarAuditoriaAtividades === "function") await carregarAuditoriaAtividades();
-  } catch (_) {
-    mostrarToast("Falha de rede ao finalizar o Teach a Bot.", true);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
-/* ===== ATHENA LAB (R&D) ===== */
-let _labPollTimer = null;
-let _labBadgeInterval = null;
-let _labBriefingsPorId = {};
-
-function atualizarBadgeNavLab(qtdPendentes) {
-  const el = document.getElementById("nav-badge-lab");
-  const n = Math.max(0, Number(qtdPendentes || 0));
-  _pendenciasLab = n;
-  if (el) {
-    el.textContent = n > 99 ? "99+" : String(n);
-    el.classList.toggle("hidden", n <= 0);
-  }
-  atualizarIndicadorPaineis();
-}
-
-function atualizarBadgeCliLab(infoCli) {
-  const el = document.getElementById("lab-cli-badge");
-  const cfgSub = document.getElementById("config-cli-status");
-  const cfgBadge = document.getElementById("config-cli-badge");
-  const cliAtivo = Boolean(infoCli && infoCli.disponivel && infoCli.habilitado);
-  if (el) {
-    el.className = "lab-badge " + (cliAtivo ? "ok" : "accent");
-    el.textContent = cliAtivo ? "CLI Ativo" : "Modo Briefing VS Code";
-    el.title = cliAtivo
-      ? `Google Antigravity CLI detectado (${infoCli.caminho || "PATH"})`
-      : "Antigravity CLI não detectado localmente — propostas são salvas com briefing cirúrgico para o VS Code";
-  }
-  if (cfgSub) {
-    cfgSub.textContent = cliAtivo
-      ? `Detectado em ${infoCli.caminho || "PATH"} (execução headless ativa)`
-      : "Não detectado localmente — operando em Modo Briefing VS Code";
-  }
-  if (cfgBadge) {
-    cfgBadge.className = "lab-badge " + (cliAtivo ? "ok" : "accent");
-    cfgBadge.textContent = cliAtivo ? "CLI Ativo" : "Briefing VS Code";
-  }
-}
-
-async function copiarPromptAntigravity(propostaId, btn) {
-  const promptTxt = _labBriefingsPorId[propostaId] || "";
-  if (!promptTxt.trim()) {
-    mostrarToast("Nenhum briefing disponível para esta proposta.", true);
-    return;
-  }
-  try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      await navigator.clipboard.writeText(promptTxt);
-    } else {
-      const ta = document.createElement("textarea");
-      ta.value = promptTxt;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-    }
-    if (btn) {
-      const orig = btn.textContent;
-      btn.textContent = "Prompt copiado ✓";
-      setTimeout(() => { btn.textContent = orig; }, 1800);
-    }
-    mostrarToast("Prompt copiado! Cole no Google Antigravity (VS Code).");
-  } catch (_) {
-    mostrarToast("Não foi possível copiar para a área de transferência.", true);
-  }
-}
-
-async function atualizarBadgeAthenaLab() {
-  try {
-    const r = await fetch("/api/lab/propostas").then(x => x.json());
-    if (r && r.cli_antigravity) atualizarBadgeCliLab(r.cli_antigravity);
-    if (r && typeof r.pendentes === "number") {
-      atualizarBadgeNavLab(r.pendentes);
-    } else if (r && Array.isArray(r.propostas)) {
-      atualizarBadgeNavLab(r.propostas.filter(p => p.status === "pendente" || p.status === "pronta_antigravity").length);
-    }
-  } catch (_) {}
-}
-
-async function checarLogfireSentinelAgora(btn) {
-  if (btn) btn.disabled = true;
-  try {
-    const r = await fetch("/api/lab/sentinel/verificar-agora", { method: "POST" }).then(x => x.json());
-    if (r && r.ok) {
-      mostrarToast(r.motivo || (r.acionou_lab ? "Bug detectado no Logfire — Auto-Fix iniciado!" : "Logfire verificado: nenhum bug novo."));
-      await carregarAthenaLab();
-    } else {
-      mostrarToast((r && r.erro) || "Falha ao verificar Logfire Sentinel.", true);
-    }
-  } catch (_) {
-    mostrarToast("Erro de comunicação ao acionar Logfire Sentinel.", true);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
-}
-
-function _renderCheckBadge(nome, info) {
-  const ok = Boolean(info && info.ok);
-  const cls = ok ? "ok" : "fail";
-  const sym = ok ? "✓" : "✗";
-  return `<span class="lab-badge ${cls}">${escHtml(nome)} ${sym}</span>`;
-}
-
-function _renderCardPropostaLab(p, ehPendente) {
-  const debate = p.debate || {};
-  const scout = debate.scout || {};
-  const arq = debate.arquiteto || {};
-  const crit = debate.critico || {};
-  const checks = p.checks || {};
-
-  const badgesChecks = ["ruff", "pyright", "pytest"]
-    .filter(k => checks[k] !== undefined)
-    .map(k => _renderCheckBadge(k, checks[k]))
-    .join("");
-
-  const notaCrit = crit.nota !== undefined ? `<span class="lab-badge accent">Crítico: ${escHtml(crit.nota)}/10</span>` : "";
-  const ehProntaAgy = p.status === "pronta_antigravity";
-  const statusTexto = p.status_label || (ehProntaAgy ? "Pronta para Antigravity (VS Code)" : p.status);
-  const statusCls = p.status === "aprovada" ? "ok" : ((p.status === "pendente" || ehProntaAgy) ? "accent" : "fail");
-  const badgeStatus = `<span class="lab-badge ${statusCls}">${escHtml(statusTexto)}</span>`;
-  const ehAutoFix = String(p.categoria || "").toLowerCase() === "auto-fix-logfire";
-  const badgeCategoria = ehAutoFix
-    ? '<span class="lab-badge autofix">Auto-Fix · Logfire</span>'
-    : (p.categoria ? `<span class="lab-badge">${escHtml(p.categoria)}</span>` : "");
-
-  const blocoDiff = p.diff_texto
-    ? `<details class="lab-diff-details"><summary>Ver git diff (${escHtml(p.branch || "patch")})</summary><pre class="lab-diff-pre">${escHtml(p.diff_texto)}</pre></details>`
-    : "";
-
-  const btnCopiarAgy = `<button type="button" class="ghost mini" onclick="copiarPromptAntigravity('${escHtml(p.id)}', this)" title="Copiar briefing técnico cirúrgico para colar no Antigravity (VS Code)">Copiar Prompt pro Antigravity</button>`;
-  const btnAprovar = (ehPendente && p.status === "pendente" && p.branch)
-    ? `<button type="button" class="mini" onclick="aprovarPropostaLab('${escHtml(p.id)}', this)">Aprovar e Aplicar</button>`
-    : "";
-  const btnRejeitar = ehPendente
-    ? `<button type="button" class="btn-recusar mini" onclick="rejeitarPropostaLab('${escHtml(p.id)}', this)">Rejeitar</button>`
-    : "";
-  const botoes = `<div class="lab-actions">${btnCopiarAgy}${btnAprovar}${btnRejeitar}</div>`;
-
-  return `
-    <div class="lab-card">
-      <div class="lab-card-head">
-        <div>
-          <div class="lab-card-title">${escHtml(p.titulo || "Proposta sem título")}</div>
-          <div style="font-size:12px;color:var(--muted);margin-top:3px;">${escHtml(p.ganho_estimado || p.resumo || "")}</div>
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          ${badgeCategoria}
-          ${notaCrit}
-          ${badgeStatus}
-        </div>
-      </div>
-      <div class="lab-meta-row">
-        ${badgesChecks}
-        ${p.criado_em ? `<span class="lab-badge">${escHtml(p.criado_em)}</span>` : ""}
-      </div>
-      <div class="lab-debate">
-        <div class="lab-debate-step">
-          <strong>1. Scout</strong>
-          ${escHtml(scout.problema || p.resumo || "-")}
-        </div>
-        <div class="lab-debate-step">
-          <strong>2. Arquiteto</strong>
-          ${escHtml(arq.resumo_tecnico || scout.solucao || "-")}
-        </div>
-        <div class="lab-debate-step">
-          <strong>3. Crítico</strong>
-          ${escHtml(crit.justificativa || "-")}
-        </div>
-      </div>
-      ${blocoDiff}
-      ${botoes}
-    </div>
-  `;
-}
-
-async function carregarAthenaLab() {
-  const boxPend = document.getElementById("box-lab-pendentes");
-  const boxHist = document.getElementById("box-lab-historico");
-  const badgeCount = document.getElementById("lab-pendentes-count");
-  const banner = document.getElementById("lab-status-banner");
-  const bannerTxt = document.getElementById("lab-status-texto");
-  const btnRun = document.getElementById("btn-lab-executar");
-
-  try {
-    const resp = await fetch("/api/lab/propostas");
-    if (!resp.ok) {
-      throw new Error(`HTTP ${resp.status} ao consultar /api/lab/propostas`);
-    }
-    const r = await resp.json();
-    if (r && r.ok === false) {
-      throw new Error(r.erro || "Erro retornado pelo Athena Lab.");
-    }
-    const st = (r && r.status) || {};
-    const lista = Array.isArray(r && r.propostas) ? r.propostas : [];
-    atualizarBadgeCliLab((r && r.cli_antigravity) || st.cli_antigravity || null);
-
-    _labBriefingsPorId = {};
-    for (const item of lista) {
-      if (item && item.id) {
-        _labBriefingsPorId[item.id] = item.briefing_prompt || "";
-      }
-    }
-
-    if (banner && bannerTxt) {
-      if (st.ativo) {
-        banner.classList.remove("hidden");
-        bannerTxt.textContent = `${st.etapa || "Executando..."} (foco: ${st.foco || "geral"})`;
-        if (btnRun) btnRun.disabled = true;
-        clearTimeout(_labPollTimer);
-        _labPollTimer = setTimeout(() => {
-          const viewLab = document.getElementById("view-lab");
-          if (viewLab && viewLab.classList.contains("active")) carregarAthenaLab();
-        }, 3500);
-      } else {
-        banner.classList.add("hidden");
-        if (btnRun) btnRun.disabled = false;
-        clearTimeout(_labPollTimer);
-      }
-    }
-
-    const pendentes = lista.filter(p => p.status === "pendente" || p.status === "pronta_antigravity");
-    const historico = lista.filter(p => p.status !== "pendente" && p.status !== "pronta_antigravity");
-    atualizarBadgeNavLab(Number((r && r.pendentes) ?? pendentes.length));
-    if (badgeCount) badgeCount.textContent = `${pendentes.length} pendente(s)`;
-
-    if (boxPend) {
-      boxPend.innerHTML = pendentes.length
-        ? pendentes.map(p => _renderCardPropostaLab(p, true)).join("")
-        : '<div class="empty-note">Nenhuma proposta no momento. Clique em "Rodar Ciclo R&amp;D" ou "Checar Logfire agora".</div>';
-    }
-    if (boxHist) {
-      boxHist.innerHTML = historico.length
-        ? historico.map(p => _renderCardPropostaLab(p, false)).join("")
-        : '<div class="empty-note">Nenhuma proposta no histórico ainda.</div>';
-    }
-  } catch (e) {
-    const msgErro = (e && e.message) ? e.message : "Falha ao carregar propostas do Athena Lab.";
-    if (boxPend) {
-      boxPend.innerHTML = `<div class="empty-note">Não foi possível carregar propostas: ${escHtml(msgErro)}</div>`;
-    }
-    if (boxHist) {
-      boxHist.innerHTML = '<div class="empty-note">Histórico indisponível no momento.</div>';
-    }
-  }
-}
-
-async function dispararCicloLab() {
-  const inp = document.getElementById("lab-foco-input");
-  const btn = document.getElementById("btn-lab-executar");
-  const foco = (inp ? inp.value.trim() : "") || "eficiencia e tokens";
-  if (btn) btn.disabled = true;
-  try {
-    const r = await fetch("/api/lab/executar", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ foco }),
-    }).then(x => x.json());
-    if (r.ok) {
-      mostrarToast("Ciclo R&D do Athena Lab iniciado em segundo plano!");
-      await carregarAthenaLab();
-    } else {
-      mostrarToast(r.erro || "Não foi possível iniciar o ciclo R&D.", true);
-      if (btn) btn.disabled = false;
-    }
-  } catch (_) {
-    mostrarToast("Erro de comunicação ao disparar Athena Lab.", true);
-    if (btn) btn.disabled = false;
-  }
-}
-
-async function aprovarPropostaLab(propostaId, btn) {
-  if (btn) btn.disabled = true;
-  try {
-    const r = await fetch(`/api/lab/aprovar/${encodeURIComponent(propostaId)}`, { method: "POST" }).then(x => x.json());
-    if (r.ok) {
-      mostrarToast(r.mensagem || "Proposta aplicada localmente com sucesso!");
-    } else {
-      mostrarToast(r.erro || "Falha ao aprovar proposta.", true);
-    }
-    await carregarAthenaLab();
-  } catch (_) {
-    mostrarToast("Erro de rede ao aprovar proposta.", true);
-    if (btn) btn.disabled = false;
-  }
-}
-
-async function rejeitarPropostaLab(propostaId, btn) {
-  if (btn) btn.disabled = true;
-  try {
-    const r = await fetch(`/api/lab/rejeitar/${encodeURIComponent(propostaId)}`, { method: "POST" }).then(x => x.json());
-    if (r.ok) {
-      mostrarToast(r.mensagem || "Proposta rejeitada.");
-    } else {
-      mostrarToast(r.erro || "Falha ao rejeitar proposta.", true);
-    }
-    await carregarAthenaLab();
-  } catch (_) {
-    mostrarToast("Erro de rede ao rejeitar proposta.", true);
-    if (btn) btn.disabled = false;
-  }
-}
-
 async function carregarDadosIniciaisApp() {
   if (_appInicializada) return;
   _appInicializada = true;
@@ -9362,9 +7934,6 @@ async function carregarDadosIniciaisApp() {
     carregarAgentes(),
     carregarConversas(),
     carregarMemoriasModal(),
-    carregarSkills(),
-    atualizarBadgeAthenaLab(),
-    atualizarBadgeFaxina(),
   ]);
 
   const existeSalva = _conversasLista.some(c => c.id === _conversaId);
@@ -9375,12 +7944,6 @@ async function carregarDadosIniciaisApp() {
   } else {
     renderEstadoVazioChat();
     reconectarConversaAtiva();
-  }
-
-  if (!_labBadgeInterval) {
-    _labBadgeInterval = setInterval(() => {
-      if (_appInicializada) atualizarBadgeAthenaLab();
-    }, 60000);
   }
 }
 

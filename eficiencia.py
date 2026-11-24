@@ -33,7 +33,6 @@ DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
         {
             "buscar_pdfs_faculdade_direto",
             "buscar_semantico",
-            "carregar_skill",
             "consultar_resumo_ulife_direto",
             "delegar_para_estudos",
             "escrever_nota_vault",
@@ -41,24 +40,9 @@ DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
             "search_tools",
         }
     ),
-    "windows": frozenset(
-        {
-            "solicitar_abrir_app",
-            "solicitar_abrir_url",
-            "solicitar_abrir_arquivo_ou_pasta",
-            "solicitar_captura_tela",
-        }
-    ),
-    "faxina": frozenset(
-        {
-            "delegar_para_faxineiro",
-            "carregar_skill",
-        }
-    ),
     "investimentos": frozenset(
         {
             "delegar_para_investimentos",
-            "carregar_skill",
             "escrever_nota_vault",
         }
     ),
@@ -74,13 +58,6 @@ DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
             "delegar_para_pesquisador",
         }
     ),
-    "logfire": frozenset(
-        {
-            "buscar_erros_logfire",
-            "consultar_trace_logfire",
-            "carregar_skill",
-        }
-    ),
     "obsidian": frozenset(
         {
             "buscar_no_vault",
@@ -91,11 +68,6 @@ DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
             "ler_nota_vault",
             "listar_notas_vault",
             "search_tools",
-        }
-    ),
-    "sistema": frozenset(
-        {
-            "delegar_para_sistema",
         }
     ),
     "paralelo": frozenset(
@@ -110,22 +82,11 @@ DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
             "guardar_na_memoria",
         }
     ),
-    "imagem": frozenset(
-        {
-            "gerar_imagem",
-        }
-    ),
     "rotinas": frozenset(
         {
             "criar_rotina_agendada_tool",
             "listar_rotinas_tool",
             "pausar_rotina_tool",
-        }
-    ),
-    "board": frozenset(
-        {
-            "criar_tarefa_board_tool",
-            "listar_board_tool",
         }
     ),
 }
@@ -140,27 +101,12 @@ _PADROES_DOMINIO: dict[str, tuple[re.Pattern[str], ...]] = {
         ),
         re.compile(r"\bplano\s+de\s+estudos?\b|youtu\.be"),
     ),
-    "windows": (
-        re.compile(
-            r"\b(?:abrir|abre|abra|brave|chrome|edge|firefox|apps?|aplicativos?|"
-            r"programas?|tela|print|prints|captura|capturar|screenshot|pastas?|"
-            r"explorer|vscode|spotify|discord|aba|abas)\b"
-        ),
-        re.compile(r"\b(?:vs\s+code|bloco\s+de\s+notas|olhar\s+minha\s+tela)\b"),
-    ),
-    "faxina": (
-        re.compile(
-            r"\b(?:organizar|organize|organiza|limpar|limpe|limpa|faxina|desktop|"
-            r"atalhos?|lixeira|duplicados?|arrumar|arrume|arruma|bagunca)\b"
-        ),
-        re.compile(r"\barea\s+de\s+trabalho\b"),
-    ),
     "investimentos": (
         re.compile(
             r"\b(?:carteira|acao|acoes|fiis?|selic|cdi|extratos?|investir|"
             r"investimentos?|dolar|cotacao|cotacoes|aportes?|bolsa|ibovespa|"
             r"dividendos?|tesouro|cdb|cripto|bitcoin|btc|patrimonio|financas|"
-            r"financeir[ao]s?)\b"
+            r"financeir[ao]s?|economia|economico|orcamento|gastos?|juros)\b"
         ),
         re.compile(r"\b(?:mercado\s+pago|renda\s+fixa|paper\s+trading)\b"),
     ),
@@ -175,15 +121,9 @@ _PADROES_DOMINIO: dict[str, tuple[re.Pattern[str], ...]] = {
     "pesquisa": (
         re.compile(
             r"\b(?:pesquisar|pesquise|pesquisa|noticias?|sites?|links?|internet|"
-            r"duckduckgo|wikipedia|navegar)\b"
+            r"duckduckgo|wikipedia)\b"
         ),
         re.compile(r"\b(?:buscar|busca|procurar|procure)\s+na\s+web\b"),
-    ),
-    "logfire": (
-        re.compile(
-            r"\b(?:logfire|traces?|spans?|erros?|bugs?|evals?|latencia|"
-            r"telemetria|traceback|excecao|excecoes)\b"
-        ),
     ),
     "obsidian": (
         re.compile(
@@ -192,33 +132,14 @@ _PADROES_DOMINIO: dict[str, tuple[re.Pattern[str], ...]] = {
         ),
         re.compile(r"\bsegundo\s+cerebro\b"),
     ),
-    "sistema": (
-        re.compile(
-            r"\b(?:container|podman|docker|codigo|scripts?|python|terminal|"
-            r"bash|shell|mcp|sandbox)\b"
-        ),
-        re.compile(r"\b(?:status\s+do\s+pc|uso\s+de\s+(?:cpu|ram))\b"),
-    ),
     "memoria": (
-        re.compile(r"\b(?:memorizar|memorize|memoriza)\b"),
+        re.compile(r"\b(?:memorizar|memorize|memoriza|lembra|lembre|lembrar)\b"),
         re.compile(r"\b(?:guard(?:a|ar|e)|salv(?:a|ar|e)|anot(?:a|ar|e))\s+na\s+memoria\b"),
         re.compile(r"\b(?:memoria\s+temporal|linha\s+do\s+tempo|o\s+que\s+mudou|minhas?\s+metas?|preferencias?)\b"),
-    ),
-    "imagem": (
-        re.compile(
-            r"\b(?:desenhar|desenhe|desenha|ilustrar|ilustre|ilustra|"
-            r"ilustracao|ilustracoes|icones?|logos?|logotipos?|arte|artes|"
-            r"banner|poster|wallpaper)\b"
-        ),
-        re.compile(r"\b(?:gerar|gere|gera|criar|crie|cria|fazer|faca|faz)\s+(?:uma\s+)?imagem\b"),
     ),
     "rotinas": (
         re.compile(r"\b(?:rotinas?|agendar|agendad[ao]s?|cron)\b"),
         re.compile(r"\b(?:todo\s+dia|todos\s+os\s+dias|toda\s+semana|lembrete\s+recorrente|pausar\s+rotina)\b"),
-    ),
-    "board": (
-        re.compile(r"\b(?:board|quadro|kanban|checker)\b"),
-        re.compile(r"\b(?:tarefas?\s+em\s+andamento|ready\s+for\s+review|criar\s+card)\b"),
     ),
 }
 

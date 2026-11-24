@@ -1,7 +1,7 @@
 [project]
 name = "ecossistema-agentes"
 version = "0.1.0"
-description = "Athena — Ecossistema multi-agente local com Pydantic AI, FastAPI, Qdrant RAG hibrido, MCP e Logfire"
+description = "Athena Pessoal — Assistente de Economia, Estudos, Google Workspace e Segundo Cerebro Obsidian"
 readme = "README.md"
 authors = [
     { name = "williamdunbar1", email = "williamjmd16@gmail.com" }
@@ -11,7 +11,6 @@ dependencies = [
     "alembic>=1.14.0",
     "apscheduler>=3.11.3",
     "fastapi>=0.165.0",
-    "fastmcp>=4.2.4",
     "google-api-python-client>=2.202.0",
     "google-auth-httplib2>=0.4.4",
     "google-auth-oauthlib>=1.5.0",
@@ -20,12 +19,11 @@ dependencies = [
     "networkx>=3.4.0",
     "pillow>=13.0.0",
     "playwright>=1.65.2",
-    "pydantic-ai-slim[duckduckgo,google,mcp,openai,web-fetch]>=2.66.0",
+    "pydantic-ai-slim[duckduckgo,google,openai,web-fetch]>=2.66.0",
     "pypdf>=7.1.1",
     "python-dotenv>=1.0.0",
     "python-multipart>=0.0.34",
     "qdrant-client[fastembed]>=1.20.0",
-    "send2trash>=2.2.0",
     "sqlalchemy>=2.0.36",
     "structlog>=25.1.0",
     "uvicorn>=0.54.0",
@@ -34,9 +32,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-vision = [
-    "mss>=10.0.0",
-]
 voice = [
     "edge-tts>=7.0.0",
     "faster-whisper>=1.1.0",
@@ -46,11 +41,6 @@ voice = [
 docs = [
     "markitdown[all]",
     "docling",
-]
-web = [
-    "crawl4ai",
-    "browser-use",
-    "youtube-transcript-api",
 ]
 estudos = [
     "youtube-transcript-api",

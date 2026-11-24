@@ -7,8 +7,6 @@ import os
 import re
 import secrets
 import sqlite3
-import subprocess
-import sys
 import time
 from contextlib import asynccontextmanager, contextmanager, suppress
 from datetime import date, datetime
@@ -61,28 +59,11 @@ from agentes import (
     sanitizar_resposta_ollama_offline,
     verificar_ollama_disponivel,
 )
-from athena_lab import (
-    STATUS_ACIONAVEIS_LAB,
-    aprovar_proposta_lab,
-    listar_propostas_lab,
-    obter_status_cli_antigravity,
-    obter_status_lab,
-    rejeitar_proposta_lab,
-    rodar_ciclo_rd,
-    sentinel_ativo,
-    verificar_erros_logfire_sentinel,
-)
 from auditoria import (
     aprovar_pasta,
     listar_atividades,
     listar_pastas_aprovadas,
     revogar_pasta,
-)
-from board import (
-    atualizar_card_board,
-    avaliar_card_checker,
-    criar_card_board,
-    listar_board,
 )
 from compactador import (
     agendar_extracao_memorias,
@@ -92,14 +73,6 @@ from compactador import (
 from fast_path import MODELO_FAST_PATH, tentar_fast_path
 from ferramentas_estudos import PASTA_PDFS, formatar_nome_materia
 from ferramentas_estudos import _conn as conn_estudos
-from ferramentas_faxina import (
-    aprovar_todas_pendentes,
-    definir_pasta_extra_autorizada,
-    desfazer_movimentacao,
-    executar_acao_aprovada,
-    listar_acoes_faxina,
-    recusar_acao,
-)
 from ferramentas_investimentos import (
     _conn as conn_invest,
 )
@@ -110,30 +83,8 @@ from ferramentas_investimentos import (
     responder_proposta,
     salvar_ativo_real_estruturado,
 )
-from ferramentas_navegador import (
-    cancelar_controle_agente,
-    retomar_controle_agente,
-)
-from ferramentas_windows import (
-    PASTA_PRINTS,
-    aprovar_acao_windows,
-    capturar_tela_atual,
-    obter_status_acoes_windows,
-    recusar_acao_windows,
-)
-from ferramentas_windows import (
-    listar_whitelist as listar_whitelist_windows,
-)
-from ferramentas_windows import (
-    remover_whitelist as remover_whitelist_windows,
-)
 from grafo_obsidian import estatisticas_grafo, exportar_grafo_visual
 from logging_config import configurar_logging, obter_logger
-from mcp_manager import (
-    encerrar_conexoes_mcp,
-    iniciar_conexoes_mcp,
-    listar_servidores_mcp,
-)
 from memoria import (
     apagar_fato,
     atualizar_titulo_conversa,
@@ -166,9 +117,7 @@ from rotinas import (
     excluir_rotina_dinamica,
     executar_rotina_agora,
     executar_rotina_dinamica,
-    gerar_recibo_semanal,
     iniciar_agendador,
-    listar_recibos_semanais,
     listar_rotinas,
     listar_rotinas_dinamicas,
 )
@@ -178,12 +127,6 @@ from semantic_cache import (
     estatisticas_cache_semantico,
     limpar_cache_semantico,
     salvar_cache_semantico,
-)
-from skills_manager import listar_skills
-from teach_bot import (
-    finalizar_gravacao_skill,
-    iniciar_gravacao_skill,
-    obter_status_gravacao,
 )
 from ulife_v2 import obter_dados_ulife_estruturados, sincronizar_ulife
 from voz import (
@@ -222,11 +165,9 @@ def _silenciar_log_status_atual() -> None:
 async def lifespan(_app: FastAPI):
     _silenciar_log_status_atual()
     iniciar_agendador()
-    servidores_mcp = await iniciar_conexoes_mcp()
     logger.info(
         "athena_iniciada",
-        mcp_ativos=sum(1 for s in servidores_mcp if s.get("status") == "ativo"),
-        skills_ativas=len(listar_skills()),
+        modo="pessoal_economia_estudos",
         pin_ativo=_pin_ativo(),
     )
     try:
@@ -237,7 +178,6 @@ async def lifespan(_app: FastAPI):
             t = reg.get("task")
             if t is not None and not t.done():
                 t.cancel()
-        await encerrar_conexoes_mcp()
         encerrar_agendador()
 
 
@@ -443,8 +383,6 @@ def _aplicar_pasta_raiz(caminho: Path) -> dict:
     if _eh_pasta_critica_sistema(p):
         return {"ok": False, "erro": f"Pasta critica do sistema bloqueada por seguranca: {p}"}
     CONFIG["pasta_raiz"] = str(p)
-    with suppress(ValueError):
-        definir_pasta_extra_autorizada(p)
     return {"ok": True, "pasta_raiz": CONFIG["pasta_raiz"]}
 
 
@@ -793,73 +731,6 @@ def salvar_config(cfg: ConfigApp):
     }
 
 
-@app.post("/api/escolher-pasta")
-def escolher_pasta():
-    script_tk = (
-        "import tkinter as tk\n"
-        "from tkinter import filedialog\n"
-        "root = tk.Tk()\n"
-        "root.withdraw()\n"
-        "root.attributes('-topmost', True)\n"
-        "root.update()\n"
-        "pasta = filedialog.askdirectory(title='Escolha a pasta para os agentes', parent=root)\n"
-        "root.destroy()\n"
-        "print(pasta or '')\n"
-    )
-    env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
-    try:
-        proc = subprocess.run(
-            [sys.executable, "-c", script_tk],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            env=env,
-            timeout=300,
-        )
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "cancelado": True, "erro": "Tempo limite esgotado na selecao de pasta."}
-    except Exception as e:
-        return {"ok": False, "erro": f"Nao foi possivel abrir o seletor de pastas: {e}"}
-
-    if proc.returncode != 0:
-        err = (proc.stderr or "").strip() or f"Codigo de saida {proc.returncode}"
-        return {"ok": False, "erro": f"Erro ao abrir o Explorador de Pastas: {err}"}
-
-    escolhida = (proc.stdout or "").strip()
-    if not escolhida:
-        return {"ok": False, "cancelado": True}
-
-    return _aplicar_pasta_raiz(Path(escolhida))
-
-
-def _enriquecer_mensagens_acoes_windows(mensagens: list[dict]) -> list[dict]:
-    ids_win: list[int] = []
-    for m in mensagens:
-        meta = m.get("meta")
-        if isinstance(meta, dict) and isinstance(meta.get("acoes_windows"), list):
-            for ac in meta["acoes_windows"]:
-                if isinstance(ac, dict) and ac.get("id") is not None:
-                    with suppress(TypeError, ValueError):
-                        ids_win.append(int(ac["id"]))
-    if ids_win:
-        status_map = obter_status_acoes_windows(ids_win)
-        for m in mensagens:
-            meta = m.get("meta")
-            if isinstance(meta, dict) and isinstance(meta.get("acoes_windows"), list):
-                atualizadas = []
-                for ac in meta["acoes_windows"]:
-                    if isinstance(ac, dict) and ac.get("id") in status_map:
-                        novo = dict(status_map[int(ac["id"])])
-                        if ac.get("auto_executada"):
-                            novo["auto_executada"] = True
-                        atualizadas.append(novo)
-                    else:
-                        atualizadas.append(ac)
-                meta["acoes_windows"] = atualizadas
-    return mensagens
-
-
 class CriarConversaPayload(BaseModel):
     titulo: str = "Nova conversa"
     agente_alvo: str = "athena"
@@ -872,7 +743,7 @@ class RenomearConversaPayload(BaseModel):
 
 @app.get("/api/agentes")
 def api_listar_agentes():
-    """Retorna todos os agentes disponiveis para chat direto (Athena + 7 especialistas)."""
+    """Retorna todos os agentes disponiveis para chat direto (Athena + 5 especialistas pessoais)."""
     return {"ok": True, "agentes": listar_agentes_diretos_publico()}
 
 
@@ -900,7 +771,7 @@ def api_obter_conversa(conversa_id: str, limite: int = 80):
     conv = obter_conversa(cid)
     if conv is None:
         raise HTTPException(status_code=404, detail=f"Conversa '{cid}' nao encontrada.")
-    mensagens = _enriquecer_mensagens_acoes_windows(listar_mensagens(limite=limite, conversa_id=cid))
+    mensagens = listar_mensagens(limite=limite, conversa_id=cid)
     return {"ok": True, "conversa": conv, "mensagens": mensagens, "fatos": listar_fatos()}
 
 
@@ -934,7 +805,7 @@ def api_deletar_conversa(conversa_id: str):
 @app.get("/api/historico")
 def ver_historico(conversa_id: str | None = None):
     cid = _normalizar_conversa_id(conversa_id) if conversa_id else None
-    mensagens = _enriquecer_mensagens_acoes_windows(listar_mensagens(limite=40, conversa_id=cid))
+    mensagens = listar_mensagens(limite=40, conversa_id=cid)
     return {"mensagens": mensagens, "fatos": listar_fatos()}
 
 
@@ -1091,16 +962,6 @@ async def sincronizar_rag():
     return await asyncio.to_thread(sincronizar_indice_vetorial)
 
 
-@app.get("/api/mcp/servidores")
-def ver_servidores_mcp():
-    return {"servidores": listar_servidores_mcp()}
-
-
-@app.get("/api/skills")
-def ver_skills():
-    return {"skills": listar_skills()}
-
-
 @app.get("/api/obsidian/grafo")
 async def ver_grafo_obsidian():
     """Retorna metricas do GraphRAG do Obsidian Vault (nos, arestas, top 5 hubs e notas orfas)."""
@@ -1124,66 +985,6 @@ def resetar_cache_semantico():
     """Limpa todas as entradas e contadores do Cache Semantico local."""
     removidos = limpar_cache_semantico()
     return {"ok": True, "removidos": removidos, "stats": estatisticas_cache_semantico()}
-
-
-class PedidoLabExecutar(BaseModel):
-    foco: str = "eficiencia e tokens"
-
-
-_TAREFA_LAB_ATUAL: asyncio.Task | None = None
-
-
-@app.get("/api/lab/propostas")
-def api_lab_propostas():
-    """Lista todas as propostas do Athena Lab, contagem de pendentes, status do ciclo/Sentinel e Antigravity CLI."""
-    propostas = listar_propostas_lab()
-    pendentes = sum(1 for p in propostas if p.get("status") in STATUS_ACIONAVEIS_LAB)
-    return {
-        "ok": True,
-        "status": obter_status_lab(),
-        "propostas": propostas,
-        "pendentes": pendentes,
-        "sentinel_ativo": sentinel_ativo(),
-        "cli_antigravity": obter_status_cli_antigravity(),
-    }
-
-
-@app.post("/api/lab/sentinel/verificar-agora")
-async def api_lab_sentinel_verificar_agora():
-    """Aciona manualmente o Logfire Sentinel (0 tokens na consulta; dispara Lab em 2o plano se achar bug novo)."""
-    return await verificar_erros_logfire_sentinel(forcar=True, background_lab=True)
-
-
-@app.post("/api/lab/executar")
-async def api_lab_executar(pedido: PedidoLabExecutar | None = Body(default=None)):
-    """Dispara um ciclo R&D do Athena Lab em segundo plano sem travar a interface."""
-    global _TAREFA_LAB_ATUAL
-    if _TAREFA_LAB_ATUAL is not None and not _TAREFA_LAB_ATUAL.done():
-        return {
-            "ok": False,
-            "erro": "Ja existe um ciclo do Athena Lab em andamento.",
-            "status": obter_status_lab(),
-        }
-    foco = (pedido.foco if pedido is not None else "eficiencia e tokens").strip() or "eficiencia e tokens"
-    _TAREFA_LAB_ATUAL = asyncio.create_task(rodar_ciclo_rd(foco))
-    return {
-        "ok": True,
-        "iniciado": True,
-        "foco": foco,
-        "status": obter_status_lab(),
-    }
-
-
-@app.post("/api/lab/aprovar/{proposta_id}")
-async def api_lab_aprovar(proposta_id: str):
-    """Aprova e aplica localmente (merge limpo, sem git push) uma proposta validada do Athena Lab."""
-    return await asyncio.to_thread(aprovar_proposta_lab, proposta_id)
-
-
-@app.post("/api/lab/rejeitar/{proposta_id}")
-async def api_lab_rejeitar(proposta_id: str):
-    """Rejeita uma proposta do Athena Lab e remove sua branch/worktree temporario."""
-    return await asyncio.to_thread(rejeitar_proposta_lab, proposta_id)
 
 
 class PedidoVozFalar(BaseModel):
@@ -1258,31 +1059,6 @@ async def painel_estudos_ulife_sincronizar():
     return await sincronizar_ulife()
 
 
-@app.get("/api/painel/faxina")
-def painel_faxina():
-    return listar_acoes_faxina()
-
-
-@app.post("/api/painel/faxina/aprovar-todas")
-async def aprovar_todas_faxina():
-    return await asyncio.to_thread(aprovar_todas_pendentes)
-
-
-@app.post("/api/painel/faxina/{acao_id}/aprovar")
-def aprovar_acao_faxina(acao_id: int):
-    return executar_acao_aprovada(acao_id)
-
-
-@app.post("/api/painel/faxina/{acao_id}/recusar")
-def recusar_acao_faxina(acao_id: int):
-    return recusar_acao(acao_id)
-
-
-@app.post("/api/painel/faxina/{acao_id}/desfazer")
-def desfazer_acao_faxina(acao_id: int):
-    return desfazer_movimentacao(acao_id)
-
-
 class CriarRotinaDinamicaPayload(BaseModel):
     nome: str
     instrucao: str
@@ -1351,95 +1127,6 @@ async def api_executar_rotina_dinamica(rotina_id: str):
         pasta_raiz=Path(CONFIG["pasta_raiz"]),
         modelo=CONFIG["modelo"],
     )
-
-
-@app.get("/api/rotinas/recibos")
-def api_listar_recibos_semanais(limite: int = 12):
-    """Lista os Friday Receipts (recibos semanais) salvos no banco."""
-    return {"ok": True, "recibos": listar_recibos_semanais(limite=limite)}
-
-
-@app.post("/api/rotinas/recibo-semanal")
-def api_gerar_recibo_semanal():
-    """Gera e persiste um novo Friday Receipt (recibo semanal) com metricas reais locais."""
-    recibo = gerar_recibo_semanal()
-    return {"ok": True, "recibo": recibo}
-
-
-class CriarCardBoardPayload(BaseModel):
-    titulo: str
-    dono: str = "athena"
-    criterio_done: str = ""
-    status: str = "Todo"
-    handoff: dict | None = None
-    provas: list[str] | None = None
-
-
-class AtualizarCardBoardPayload(BaseModel):
-    titulo: str | None = None
-    dono: str | None = None
-    status: str | None = None
-    criterio_done: str | None = None
-    handoff: dict | None = None
-    provas: list[str] | None = None
-
-
-class ChecarCardPayload(BaseModel):
-    usar_llm: bool = False
-
-
-@app.get("/api/board")
-def api_listar_board(status: str | None = None):
-    """Lista os cards do Quadro (Board) da Athena."""
-    try:
-        return {"ok": True, "cards": listar_board(status=status)}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.post("/api/board")
-def api_criar_card_board(payload: CriarCardBoardPayload):
-    """Cria um novo card no Quadro (Board) com handoff estruturado enxuto."""
-    try:
-        card = criar_card_board(
-            payload.titulo,
-            dono=payload.dono,
-            criterio_done=payload.criterio_done,
-            handoff=payload.handoff,
-            status=payload.status,
-            provas=payload.provas,
-        )
-        return {"ok": True, "card": card}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.patch("/api/board/{card_id}")
-def api_atualizar_card_board(card_id: str, payload: AtualizarCardBoardPayload):
-    """Atualiza status, handoff ou provas de um card no Quadro (Board)."""
-    try:
-        card = atualizar_card_board(
-            card_id,
-            status=payload.status,
-            handoff=payload.handoff,
-            provas=payload.provas,
-            titulo=payload.titulo,
-            dono=payload.dono,
-            criterio_done=payload.criterio_done,
-        )
-        return {"ok": True, "card": card}
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-
-@app.post("/api/board/{card_id}/checar")
-def api_checar_card_board(card_id: str, payload: ChecarCardPayload | None = Body(default=None)):
-    """Executa o Agente Checker independente ('No proof, no done') sobre um card do Board."""
-    usar_llm = bool(payload.usar_llm) if payload is not None else False
-    res = avaliar_card_checker(card_id, usar_llm=usar_llm)
-    if not res.get("ok"):
-        raise HTTPException(status_code=404, detail=str(res.get("erro") or "Card nao encontrado."))
-    return res
 
 
 @app.post("/api/rotinas/{rotina_id}")
@@ -1781,9 +1468,6 @@ async def conversar(pedido: PedidoChat):
             rota_fp = str(res_fp.get("rota") or "local")
             modelo_fp = str(res_fp.get("modelo") or MODELO_FAST_PATH)
             ESTADO_EXECUCAO["modelo"] = modelo_fp
-            acao_win_fp = res_fp.get("acao_windows")
-            if isinstance(acao_win_fp, dict):
-                ctx.emitir_permissao_windows(acao_win_fp)
             ctx.registrar("Athena", modelo_fp, "ferramenta", f"{rota_fp} ({duracao_ms} ms · 0 tokens)")
             resposta_final = str(res_fp.get("resposta") or "").strip()
             registrar_telemetria(
@@ -1803,8 +1487,6 @@ async def conversar(pedido: PedidoChat):
                 "tokens_out": 0,
                 "fast_path": True,
                 "rota_fast_path": rota_fp,
-                "imagens": [],
-                "acoes_windows": list(ctx.acoes_windows),
             }
             salvar_mensagem("bot", resposta_final, ctx.trilha, meta=meta_msg)
             logger.info(
@@ -1826,8 +1508,6 @@ async def conversar(pedido: PedidoChat):
                 "duracao_ms": duracao_ms,
                 "tokens_in": 0,
                 "tokens_out": 0,
-                "imagens": [],
-                "acoes_windows": list(ctx.acoes_windows),
                 "trilha": ctx.trilha,
                 "fatos": listar_fatos(),
                 "telemetria": {"duracao_ms": duracao_ms, "tokens_in": 0, "tokens_out": 0},
@@ -1858,8 +1538,6 @@ async def conversar(pedido: PedidoChat):
                 "tokens_out": 0,
                 "semantic_cache": True,
                 "similaridade": similaridade,
-                "imagens": [],
-                "acoes_windows": [],
             }
             salvar_mensagem("bot", resposta_final, ctx.trilha, meta=meta_msg)
             logger.info(
@@ -1881,8 +1559,6 @@ async def conversar(pedido: PedidoChat):
                 "duracao_ms": duracao_ms,
                 "tokens_in": 0,
                 "tokens_out": 0,
-                "imagens": [],
-                "acoes_windows": [],
                 "trilha": ctx.trilha,
                 "fatos": listar_fatos(),
                 "telemetria": {"duracao_ms": duracao_ms, "tokens_in": 0, "tokens_out": 0},
@@ -1895,9 +1571,7 @@ async def conversar(pedido: PedidoChat):
         tokens_in, tokens_out = _extrair_usage_tokens(res)
         cache_read_tokens, cache_write_tokens = _extrair_cache_tokens(res)
         cache_hit_pct = round((cache_read_tokens / tokens_in) * 100.0, 1) if tokens_in > 0 else 0.0
-        imagens_geradas = _extrair_e_salvar_imagens_geradas(res)
-        resposta_limpa = sanitizar_resposta_ollama_offline(res.output or "", modelo_executado)
-        resposta_final = _anexar_imagens_no_markdown(resposta_limpa, imagens_geradas)
+        resposta_final = sanitizar_resposta_ollama_offline(res.output or "", modelo_executado)
         logger.info(
             "chat_concluido",
             conversa_id=CONVERSA_ID_PADRAO,
@@ -1925,14 +1599,10 @@ async def conversar(pedido: PedidoChat):
             "duracao_ms": duracao_ms,
             "tokens_in": tokens_in,
             "tokens_out": tokens_out,
-            "imagens": imagens_geradas,
-            "acoes_windows": list(ctx.acoes_windows),
         }
         salvar_mensagem("bot", resposta_final, ctx.trilha, meta=meta_msg)
-        agentes_turno = _extrair_agentes_trilha(ctx.trilha)
-        if not ctx.acoes_windows and "Agente Faxineiro" not in agentes_turno and not imagens_geradas:
-            with suppress(Exception):
-                await asyncio.to_thread(salvar_cache_semantico, pedido.mensagem, resposta_final)
+        with suppress(Exception):
+            await asyncio.to_thread(salvar_cache_semantico, pedido.mensagem, resposta_final)
         agendar_extracao_memorias(pedido.mensagem, resposta_final)
         return {
             "ok": True,
@@ -1944,8 +1614,6 @@ async def conversar(pedido: PedidoChat):
             "duracao_ms": duracao_ms,
             "tokens_in": tokens_in,
             "tokens_out": tokens_out,
-            "imagens": imagens_geradas,
-            "acoes_windows": list(ctx.acoes_windows),
             "trilha": ctx.trilha,
             "fatos": listar_fatos(),
             "telemetria": {"duracao_ms": duracao_ms, "tokens_in": tokens_in, "tokens_out": tokens_out},
@@ -1997,156 +1665,12 @@ EXT_PARA_MIME = {
     ".md": "text/markdown",
 }
 PASTA_UPLOADS = BASE_DIR / "sandbox_files" / "uploads"
-PASTA_IMAGENS_GERADAS = BASE_DIR / "sandbox_files" / "imagens"
-MIME_PARA_EXT_IMAGEM = {
-    "image/png": ".png",
-    "image/jpeg": ".jpg",
-    "image/jpg": ".jpg",
-    "image/webp": ".webp",
-    "image/gif": ".gif",
-}
-EXT_PARA_MIME_IMAGEM = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp",
-    ".gif": "image/gif",
-}
 
 
 def _sanitizar_nome_upload(nome: str) -> str:
     base = Path(nome or "anexo").name
     limpo = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", base).strip(" .")
     return (limpo or "anexo")[:120]
-
-
-def _extrair_e_salvar_imagens_geradas(resultado) -> list[dict]:
-    """Extrai imagens geradas (`BinaryImage`/`BinaryContent` em ToolReturnPart, BuiltinToolReturnPart ou FilePart)
-    das mensagens da execucao e salva em `sandbox_files/imagens/`, retornando metadados + URL `/api/arquivos/imagens/...`.
-    """
-    if resultado is None:
-        return []
-    try:
-        all_msgs_fn = getattr(resultado, "all_messages", None)
-        msgs = all_msgs_fn() if callable(all_msgs_fn) else None
-    except Exception:
-        msgs = None
-    if not isinstance(msgs, (list, tuple)):
-        return []
-
-    itens_binarios: list[tuple[bytes, str]] = []
-
-    def _coletar_obj(obj) -> None:
-        if obj is None:
-            return
-        if isinstance(obj, BinaryContent):
-            mime = (getattr(obj, "media_type", "") or "").split(";")[0].strip().lower()
-            data = getattr(obj, "data", None)
-            if mime.startswith("image/") and isinstance(data, (bytes, bytearray)) and len(data) > 0:
-                itens_binarios.append((bytes(data), mime))
-            return
-        if isinstance(obj, (list, tuple)):
-            for sub in obj:
-                _coletar_obj(sub)
-            return
-        if isinstance(obj, dict):
-            for sub in obj.values():
-                _coletar_obj(sub)
-            return
-        # ToolReturn / FilePart / wrappers com .content ou .return_value
-        for attr in ("content", "return_value"):
-            sub = getattr(obj, attr, None)
-            if sub is not None and sub is not obj:
-                _coletar_obj(sub)
-
-    for msg in msgs:
-        partes = getattr(msg, "parts", None) or []
-        for parte in partes:
-            part_kind = str(getattr(parte, "part_kind", "") or "").lower()
-            # Nunca confundir anexos enviados pelo usuario com imagens geradas pela Athena
-            if part_kind == "user-prompt":
-                continue
-            if part_kind in ("tool-return", "builtin-tool-return", "file") or (
-                hasattr(parte, "content") and isinstance(getattr(parte, "content", None), BinaryContent)
-            ):
-                _coletar_obj(getattr(parte, "content", None))
-
-    if not itens_binarios:
-        return []
-
-    PASTA_IMAGENS_GERADAS.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    vistos: set[str] = set()
-    salvas: list[dict] = []
-
-    for idx, (dados, mime) in enumerate(itens_binarios, start=1):
-        digest = hashlib.sha256(dados).hexdigest()
-        if digest in vistos:
-            continue
-        vistos.add(digest)
-        ext = MIME_PARA_EXT_IMAGEM.get(mime, ".png")
-        nome_arq = f"img_{ts}_{idx}_{digest[:8]}{ext}"
-        destino = PASTA_IMAGENS_GERADAS / nome_arq
-        destino.write_bytes(dados)
-        salvas.append({
-            "arquivo": nome_arq,
-            "url": f"/api/arquivos/imagens/{nome_arq}",
-            "caminho": f"sandbox_files/imagens/{nome_arq}",
-            "media_type": mime,
-        })
-
-    return salvas
-
-
-def _anexar_imagens_no_markdown(texto: str, imagens: list[dict]) -> str:
-    """Garante que toda imagem gerada apareca inline em Markdown na bolha do chat (e persista no historico)."""
-    if not imagens:
-        return texto
-    base = (texto or "").strip()
-    blocos: list[str] = []
-    for idx, img in enumerate(imagens, start=1):
-        url = str(img.get("url") or "").strip()
-        if not url or url in base:
-            continue
-        alt = f"Imagem gerada {idx}" if len(imagens) > 1 else "Imagem gerada"
-        blocos.append(f"![{alt}]({url})")
-    if not blocos:
-        return base
-    return (base + "\n\n" + "\n\n".join(blocos)).strip() if base else "\n\n".join(blocos)
-
-
-@app.get("/api/arquivos/imagens/{nome_arquivo}")
-def servir_imagem_gerada(nome_arquivo: str):
-    """Serve imagens geradas pela capability `ImageGeneration` salvas em `sandbox_files/imagens/`."""
-    nome_seguro = Path(nome_arquivo or "").name
-    if not nome_seguro or nome_seguro != nome_arquivo or "/" in nome_arquivo or "\\" in nome_arquivo:
-        raise HTTPException(status_code=400, detail="Nome de arquivo invalido.")
-    base_res = PASTA_IMAGENS_GERADAS.resolve()
-    alvo = (base_res / nome_seguro).resolve()
-    if base_res not in alvo.parents or not alvo.is_file():
-        raise HTTPException(status_code=404, detail="Imagem nao encontrada.")
-    ext = alvo.suffix.lower()
-    mime = EXT_PARA_MIME_IMAGEM.get(ext)
-    if not mime:
-        raise HTTPException(status_code=403, detail="Formato de arquivo nao permitido.")
-    return FileResponse(alvo, media_type=mime, headers={"Cache-Control": "private, max-age=3600"})
-
-
-@app.get("/api/arquivos/prints/{nome_arquivo}")
-def servir_print_tela(nome_arquivo: str):
-    """Serve capturas de tela autorizadas salvas em `sandbox_files/prints/`."""
-    nome_seguro = Path(nome_arquivo or "").name
-    if not nome_seguro or nome_seguro != nome_arquivo or "/" in nome_arquivo or "\\" in nome_arquivo:
-        raise HTTPException(status_code=400, detail="Nome de arquivo invalido.")
-    base_res = PASTA_PRINTS.resolve()
-    alvo = (base_res / nome_seguro).resolve()
-    if base_res not in alvo.parents or not alvo.is_file():
-        raise HTTPException(status_code=404, detail="Captura de tela nao encontrada.")
-    ext = alvo.suffix.lower()
-    mime = EXT_PARA_MIME_IMAGEM.get(ext)
-    if not mime:
-        raise HTTPException(status_code=403, detail="Formato de arquivo nao permitido.")
-    return FileResponse(alvo, media_type=mime, headers={"Cache-Control": "private, max-age=300"})
 
 
 @app.post("/api/chat-multimodal")
@@ -2607,30 +2131,12 @@ def _iniciar_tarefa_chat_background(
         }
         loop.call_soon_threadsafe(_publicar_evento_tarefa, registro, "status", payload)
 
-    def _enfileirar_permissao_windows(acao: dict) -> None:
-        payload = {
-            "tipo": "permissao_windows",
-            "conversa_id": cid,
-            "acao": acao,
-        }
-        loop.call_soon_threadsafe(_publicar_evento_tarefa, registro, "permissao_windows", payload)
-
-    def _enfileirar_take_the_wheel(dados: dict) -> None:
-        payload = {
-            "tipo": "take_the_wheel",
-            "conversa_id": cid,
-            **dados,
-        }
-        loop.call_soon_threadsafe(_publicar_evento_tarefa, registro, "take_the_wheel", payload)
-
     ctx = ContextoMissao(
         pasta_raiz=Path(CONFIG["pasta_raiz"]),
         modelo=modelo_real,
         usar_fallback=eh_auto,
         mensagem_atual=(mensagem_atual or msg_historico),
         on_evento=_enfileirar_status,
-        on_permissao_windows=_enfileirar_permissao_windows,
-        on_take_the_wheel=_enfileirar_take_the_wheel,
     )
     ESTADO_EXECUCAO["ativo"] = True
     ESTADO_EXECUCAO["modelo"] = modelo_real
@@ -2710,9 +2216,6 @@ def _iniciar_tarefa_chat_background(
                     modelo_executado = str(res_fp.get("modelo") or MODELO_FAST_PATH)
                     modelo_atual_ref[0] = modelo_executado
                     ESTADO_EXECUCAO["modelo"] = modelo_executado
-                    acao_win_fp = res_fp.get("acao_windows")
-                    if isinstance(acao_win_fp, dict):
-                        ctx.emitir_permissao_windows(acao_win_fp)
                     duracao_ms = max(1, int((time.perf_counter() - t0) * 1000))
                     ctx.registrar("Athena", modelo_executado, "ferramenta", f"{rota_fp} ({duracao_ms} ms · 0 tokens)")
                     texto_final = str(res_fp.get("resposta") or "").strip()
@@ -2736,8 +2239,6 @@ def _iniciar_tarefa_chat_background(
                         "tokens_out": 0,
                         "fast_path": True,
                         "rota_fast_path": rota_fp,
-                        "imagens": [],
-                        "acoes_windows": list(ctx.acoes_windows),
                     }
                     salvar_mensagem("bot", texto_final, ctx.trilha, meta=meta_fp, conversa_id=cid, agente_alvo=agente_id)
                     conv_atual_fp = obter_conversa(cid)
@@ -2757,8 +2258,6 @@ def _iniciar_tarefa_chat_background(
                         "duracao_ms": duracao_ms,
                         "tokens_in": 0,
                         "tokens_out": 0,
-                        "imagens": [],
-                        "acoes_windows": list(ctx.acoes_windows),
                         "anexo": "",
                         "anexos": [],
                         "caminho_upload": "",
@@ -2813,8 +2312,6 @@ def _iniciar_tarefa_chat_background(
                         "tokens_out": 0,
                         "semantic_cache": True,
                         "similaridade": similaridade,
-                        "imagens": [],
-                        "acoes_windows": [],
                     }
                     salvar_mensagem("bot", texto_final, ctx.trilha, meta=meta_sc, conversa_id=cid, agente_alvo=agente_id)
                     conv_atual_sc = obter_conversa(cid)
@@ -2834,8 +2331,6 @@ def _iniciar_tarefa_chat_background(
                         "duracao_ms": duracao_ms,
                         "tokens_in": 0,
                         "tokens_out": 0,
-                        "imagens": [],
-                        "acoes_windows": [],
                         "anexo": "",
                         "anexos": [],
                         "caminho_upload": "",
@@ -3041,10 +2536,6 @@ def _iniciar_tarefa_chat_background(
                         f"Todos os modelos disponiveis no modo Auto falharam ({'; '.join(erros_tentativas)})."
                     ) from ultimo_erro
 
-            imagens_geradas = _extrair_e_salvar_imagens_geradas(resultado_final_obj)
-            if imagens_geradas:
-                texto_final = _anexar_imagens_no_markdown(texto_final, imagens_geradas)
-
             duracao_ms = max(1, int((time.perf_counter() - t0) * 1000))
             agentes_usados_tele = (
                 f"Agente {agente_nome} (Direto)" if eh_agente_direto else _extrair_agentes_trilha(ctx.trilha)
@@ -3068,8 +2559,6 @@ def _iniciar_tarefa_chat_background(
                 "duracao_ms": duracao_ms,
                 "tokens_in": tokens_in,
                 "tokens_out": tokens_out,
-                "imagens": imagens_geradas,
-                "acoes_windows": list(ctx.acoes_windows),
             }
             salvar_mensagem("bot", texto_final, ctx.trilha, meta=meta_msg, conversa_id=cid, agente_alvo=agente_id)
             conv_atual_done = obter_conversa(cid)
@@ -3088,8 +2577,6 @@ def _iniciar_tarefa_chat_background(
                 "duracao_ms": duracao_ms,
                 "tokens_in": tokens_in,
                 "tokens_out": tokens_out,
-                "imagens": imagens_geradas,
-                "acoes_windows": list(ctx.acoes_windows),
                 "anexo": nomes_exibicao[0] if nomes_exibicao else "",
                 "anexos": nomes_exibicao,
                 "caminho_upload": caminhos_salvos_rel[0] if caminhos_salvos_rel else "",
@@ -3121,14 +2608,7 @@ def _iniciar_tarefa_chat_background(
                 cache_hit_pct=cache_hit_pct,
             )
             _publicar_evento_tarefa(registro, "done", payload_done)
-            agentes_turno = _extrair_agentes_trilha(ctx.trilha)
-            if (
-                not eh_agente_direto
-                and not nomes_exibicao
-                and not ctx.acoes_windows
-                and "Agente Faxineiro" not in agentes_turno
-                and not imagens_geradas
-            ):
+            if not eh_agente_direto and not nomes_exibicao:
                 with suppress(Exception):
                     await asyncio.to_thread(salvar_cache_semantico, ctx.mensagem_atual, texto_final)
             agendar_extracao_memorias(msg_historico, texto_final)
@@ -3213,9 +2693,6 @@ async def _assinar_tarefa_sse(registro: dict, *, replay_compacto: bool = False):
     if replay_compacto:
         if registro.get("ultimo_status") is not None:
             eventos_iniciais.append(("status", registro["ultimo_status"]))
-        for tipo_ev, payload_ev in registro.get("eventos") or []:
-            if tipo_ev in ("permissao_windows", "take_the_wheel"):
-                eventos_iniciais.append((tipo_ev, payload_ev))
         texto_acum = str(registro.get("texto_parcial") or "") or "".join(registro.get("partes_texto") or [])
         if texto_acum:
             eventos_iniciais.append(("snapshot", {"tipo": "snapshot", "texto": texto_acum}))
@@ -3432,95 +2909,3 @@ async def cancelar_chat_em_andamento(conversa_id: str):
         "mensagem": "Tarefa ja finalizada.",
     }
 
-
-class AprovarWindowsPayload(BaseModel):
-    sempre_permitir: bool = False
-
-
-@app.post("/api/windows/capturar-tela")
-async def api_windows_capturar_tela():
-    """Captura o monitor principal mediante clique explicito do usuario no botao de tela do chat."""
-    try:
-        dados = await asyncio.to_thread(capturar_tela_atual)
-        return {"ok": True, **dados}
-    except Exception as exc:
-        _logar_erro_execucao("windows/capturar-tela", "mss", exc)
-        return {"ok": False, "erro": f"Nao foi possivel capturar a tela: {exc}"}
-
-
-@app.post("/api/windows/aprovar/{acao_id}")
-async def api_windows_aprovar(
-    acao_id: int,
-    payload: AprovarWindowsPayload | None = Body(default=None),
-):
-    """Executa no Windows 11 uma acao previamente solicitada pela Athena (com opcao 'Sempre permitir' apenas para apps)."""
-    sempre = bool(payload.sempre_permitir) if payload is not None else False
-    return await asyncio.to_thread(aprovar_acao_windows, acao_id, sempre_permitir=sempre)
-
-
-@app.post("/api/windows/recusar/{acao_id}")
-def api_windows_recusar(acao_id: int):
-    """Recusa uma solicitacao de abertura de app/URL/arquivo no Windows."""
-    return recusar_acao_windows(acao_id)
-
-
-@app.get("/api/windows/whitelist")
-def api_windows_whitelist():
-    """Lista os aplicativos liberados com 'Sempre permitir' no Windows."""
-    return {"ok": True, "itens": listar_whitelist_windows()}
-
-
-@app.delete("/api/windows/whitelist/{item}")
-def api_windows_whitelist_remover(item: str):
-    """Remove um aplicativo da whitelist 'Sempre permitir'."""
-    return remover_whitelist_windows(item)
-
-
-class IniciarGravacaoSkillPayload(BaseModel):
-    nome_skill: str
-    url_inicial: str
-    descricao: str = ""
-
-
-@app.post("/api/skills/gravar/iniciar")
-async def api_teach_bot_iniciar(payload: IniciarGravacaoSkillPayload):
-    """Inicia uma sessao controlada do 'Teach a Bot' para gravar passos e gerar SKILL.md."""
-    try:
-        return await iniciar_gravacao_skill(
-            payload.nome_skill,
-            payload.url_inicial,
-            descricao=payload.descricao,
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
-@app.post("/api/skills/gravar/finalizar/{sessao_id}")
-async def api_teach_bot_finalizar(sessao_id: str):
-    """Finaliza a gravacao do 'Teach a Bot', gera skills/<slug>/SKILL.md e recarrega o catalogo."""
-    try:
-        return await finalizar_gravacao_skill(sessao_id)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except RuntimeError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
-@app.get("/api/skills/gravar/status")
-def api_teach_bot_status():
-    """Retorna o status da gravacao ativa do 'Teach a Bot' (se houver)."""
-    return obter_status_gravacao()
-
-
-@app.post("/api/navegador/retomar/{sessao_id}")
-def api_navegador_retomar(sessao_id: str):
-    """Devolve o controle ao agente apos intervencao humana ('Take the wheel')."""
-    return retomar_controle_agente(sessao_id)
-
-
-@app.post("/api/navegador/cancelar/{sessao_id}")
-def api_navegador_cancelar(sessao_id: str):
-    """Cancela a espera de intervencao humana ('Take the wheel') e aborta a navegacao."""
-    return cancelar_controle_agente(sessao_id)

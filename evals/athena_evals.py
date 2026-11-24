@@ -54,7 +54,6 @@ class ResultadoAthenaEval:
     resposta: str
     tools_chamadas: list[str] = field(default_factory=list)
     delegacoes: list[str] = field(default_factory=list)
-    acoes_windows: list[dict[str, Any]] = field(default_factory=list)
     trilha: list[dict[str, Any]] = field(default_factory=list)
     modelo_usado: str = ""
 
@@ -86,7 +85,6 @@ class ValidarToolsEsperadas(Evaluator[str, ResultadoAthenaEval, dict[str, Any]])
         meta = ctx.metadata or {}
         esperadas_qualquer: list[str] = list(meta.get("expected_any_tools") or [])
         proibidas: list[str] = list(meta.get("forbidden_tools") or [])
-        exigir_acao_windows: bool = bool(meta.get("require_windows_request", False))
 
         tools_detectadas = set(ctx.output.tools_chamadas)
         tools_detectadas.update(_coletar_tools_do_span_tree(ctx))
@@ -118,12 +116,6 @@ class ValidarToolsEsperadas(Evaluator[str, ResultadoAthenaEval, dict[str, Any]])
                         f"Detectadas: {sorted(tools_detectadas)}"
                     ),
                 )
-
-        if exigir_acao_windows and not ctx.output.acoes_windows:
-            return EvaluationReason(
-                value=False,
-                reason="Nenhuma solicitacao real de permissao Windows foi registrada em acoes_windows.",
-            )
 
         return EvaluationReason(
             value=True,
@@ -168,59 +160,33 @@ def criar_dataset_athena(
     usar_llm_judge: bool = False,
     modelo_judge: str = "google:gemini-3.5-flash-lite",
 ) -> Dataset[str, ResultadoAthenaEval, dict[str, Any]]:
-    """Constroi o Dataset `pydantic-evals` cobrindo os cenarios criticos da Athena."""
+    """Constroi o Dataset `pydantic-evals` cobrindo os cenarios criticos da Athena Pessoal (Economia & Estudos)."""
     casos: list[Case[str, ResultadoAthenaEval, dict[str, Any]]] = [
         Case(
-            name="organizar_area_de_trabalho",
-            inputs="Organize minha Área de Trabalho e gere as propostas de organização para os arquivos e atalhos soltos.",
+            name="consultar_notas_ulife",
+            inputs="Quais são minhas notas e próximas provas no Ulife?",
             metadata={
                 "expected_any_tools": [
-                    "delegar_para_faxineiro",
-                    "planejar_organizacao_pasta",
-                    "listar_itens_pasta",
-                    "propor_acoes_em_lote",
+                    "consultar_resumo_ulife_direto",
+                    "delegar_para_estudos",
+                    "consultar_dados_ulife",
                 ],
-                "forbidden_phrases": [
-                    "estou na nuvem",
-                    "rodo na nuvem",
-                    "container isolado",
-                    "bloco de notas",
-                    "salve como .py",
-                    "não tenho acesso ao windows",
-                ],
-                "expected_any_phrases": [
-                    "faxina",
-                    "aprova",
-                    "proposta",
-                    "pendente",
-                    "desktop",
-                    "área de trabalho",
-                ],
+                "forbidden_phrases": ["traceback", "error"],
+                "expected_any_phrases": ["ulife", "nota", "prova", "disciplina", "estudo"],
             },
-            evaluators=(MaxDuration(seconds=90.0),),
+            evaluators=(MaxDuration(seconds=60.0),),
         ),
         Case(
-            name="abrir_aba_brave",
-            inputs="Abra https://github.com em uma nova aba do Brave.",
+            name="consultar_selic_carteira",
+            inputs="Analise minha carteira real comparando com a Selic/CDI atual.",
             metadata={
-                "expected_any_tools": ["solicitar_abrir_url"],
-                "require_windows_request": True,
-                "forbidden_phrases": [
-                    "container linux",
-                    "preso em um container",
-                    "presa em um container",
-                    "estou na nuvem",
-                    "não consigo abrir aplicativos",
-                    "não tenho acesso ao windows",
+                "expected_any_tools": [
+                    "delegar_para_investimentos",
+                    "ver_carteira_real",
+                    "obter_selic_cdi_bcb",
                 ],
-                "expected_any_phrases": [
-                    "permitir",
-                    "permissão",
-                    "confirma",
-                    "pendente",
-                    "brave",
-                    "github",
-                ],
+                "forbidden_phrases": ["traceback", "error"],
+                "expected_any_phrases": ["selic", "cdi", "carteira", "patrimônio", "investimento"],
             },
             evaluators=(MaxDuration(seconds=60.0),),
         ),
@@ -229,14 +195,10 @@ def criar_dataset_athena(
             inputs="oi, teste",
             metadata={
                 "forbidden_tools": [
-                    "delegar_para_sistema",
                     "delegar_para_pesquisador",
-                    "delegar_para_faxineiro",
                     "delegar_para_estudos",
                     "delegar_para_investimentos",
                     "delegar_para_google",
-                    "solicitar_abrir_app",
-                    "solicitar_abrir_url",
                 ],
                 "forbidden_phrases": [
                     "traceback",
@@ -368,7 +330,6 @@ async def executar_tarefa_athena(
     try:
         set_eval_attribute("athena.modelo", modelo_usado)
         set_eval_attribute("athena.tools_chamadas", tools)
-        set_eval_attribute("athena.acoes_windows_qtd", len(ctx.acoes_windows))
     except Exception:
         pass
 
@@ -376,7 +337,6 @@ async def executar_tarefa_athena(
         resposta=(res.output or "").strip(),
         tools_chamadas=tools,
         delegacoes=delegacoes,
-        acoes_windows=list(ctx.acoes_windows),
         trilha=list(ctx.trilha),
         modelo_usado=modelo_usado,
     )
