@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -238,10 +238,8 @@ def revogar_pasta(caminho: str, db_path: str | Path | None = None) -> bool:
     if not bruto:
         return False
     candidatos = {bruto}
-    try:
+    with suppress(OSError):
         candidatos.add(str(Path(bruto).expanduser().resolve()))
-    except OSError:
-        pass
 
     removidos = 0
     with _conn_auditoria(db_path) as c:
