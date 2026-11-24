@@ -1127,7 +1127,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
         ver = c.execute("SELECT version_num FROM alembic_version").fetchone()
     assert fato == ("Engenharia",)
     assert msg == ("mensagem preservada",)
-    assert ver == ("006_rotinas_dinamicas_e_auditoria",)
+    assert ver == ("007_board_e_recibos",)
 
 
 # ==============================================================================
