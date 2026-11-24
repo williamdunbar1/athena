@@ -54,9 +54,13 @@ flowchart TB
 - **RAG Híbrido Local + GraphRAG sobre o Obsidian Vault**:
   - **RAG Híbrido (`rag_qdrant.py`)**: indexação incremental em disco (`QdrantClient` + `FastEmbed`) dos PDFs da faculdade e notas do Obsidian combinando embeddings densos multilíngues (`paraphrase-multilingual-MiniLM-L12-v2`) com vetores esparsos (`Qdrant/bm25`) via `FusionQuery(Fusion.RRF)` e reranking local (`TextCrossEncoder`).
   - **GraphRAG leve (`grafo_obsidian.py` com `networkx`)**: constrói um `DiGraph` a partir de `[[wikilinks]]` (`[[Nota]]`, `[[Nota|Alias]]`, `[[Pasta/Nota]]`) e `#tags`, realiza travessia multi-hop (`explorar_grafo_obsidian`) para descobrir conexões indiretas entre notas e expõe métricas estruturais (top hubs e notas órfãs) em `GET /api/obsidian/grafo`.
-- **Compactação Inteligente de Contexto + Extração Automática de Memória**:
+- **Compactação Inteligente de Contexto + Memória Temporal em Grafo (SQLite + NetworkX)**:
   - Em conversas longas, `compactador.py` resume automaticamente mensagens antigas na tabela `resumos_conversa` (migration Alembic `002`), mantendo intactas as interações mais recentes e reduzindo o consumo de tokens.
-  - Em 2º plano (`asyncio.create_task`), extrai preferências, fatos e decisões duráveis para `memoria_longo_prazo` sem atrasar o tempo de resposta do chat.
+  - Em 2º plano (`asyncio.create_task`), extrai preferências, fatos e decisões duráveis para `memoria_longo_prazo` e para a **Memória Temporal em Grafo** (`memoria_temporal.py`, tabela `fatos_temporais`, migration Alembic `005`): mudanças de preferências/metas encerram automaticamente o fato anterior (`valido_ate`), preservam a linha do tempo cronológica, permitem expansão de 1 salto via `NetworkX` (`consultar_memoria_temporal_tool`) e ficam visíveis no modal de Memórias (`GET /api/memoria/temporal`).
+- **Plugins Opcionais com Lazy Import & Fallback Automático (`docs`, `web`, `voice`)**:
+  - **Documentos (`uv sync --extra docs`)**: `markitdown[all]` e `docling` (opt-in via `ATHENA_USE_DOCLING=true`) em `otimizador_midia.py` e `rag_qdrant.py` convertem `.pdf`, `.docx`, `.pptx`, `.xlsx`, `.csv`, `.html`, `.txt` e `.md` em Markdown enxuto para LLM/RAG, com fallback automático para `pypdf`/stdlib.
+  - **Web (`uv sync --extra web`)**: `crawl4ai` (`ler_pagina_markdown_crawl4ai`, fallback automático para Playwright) e `browser-use` (`executar_tarefa_browser_use`, exclusivo do Agente Pesquisador, headless, máx. 8 passos, 90s e denylist rígida bloqueando bancos/corretoras/`gov.br`) em `ferramentas_navegador.py`.
+  - **Voz Neural Offline (`uv sync --extra voice`)**: `edge-tts` (`audio/mpeg`) com fallback automático para **`kokoro-onnx`** + `soundfile` 100% local (`audio/wav`, `ATHENA_TTS_ENGINE=auto|kokoro`) e STT local via `faster-whisper` em `voz.py`.
 - **Agent Skills Nativas (*Progressive Disclosure*)**:
   - `skills_manager.py` escaneia `skills/*/SKILL.md`, injeta apenas um catálogo ultra enxuto no prompt da Orquestradora e carrega instruções detalhadas sob demanda via `carregar_skill` (com proteção contra *path traversal*).
 - **Guardrails de Segurança (OWASP LLM Top 10) & Human-in-the-Loop**:
@@ -217,7 +221,8 @@ ecossistema-agentes/
 ├── mcp_utilidades.py          # Servidor MCP local (calculadora AST segura + diagnostico do PC)
 ├── mcp_athena_lab.py          # Servidor MCP somente leitura do Athena Lab para o Google Antigravity (VS Code)
 ├── rotinas.py                 # Agendador APScheduler (sync Ulife + briefing diario no Obsidian)
-├── memoria.py                 # Persistencia SQLite WAL (historico, fatos, resumos e telemetria)
+├── memoria.py                 # Persistencia SQLite WAL (conversas, historico, fatos, resumos e telemetria)
+├── memoria_temporal.py        # Memoria Temporal em Grafo (fatos_temporais + NetworkX 1-hop + linha do tempo)
 ├── alembic/                   # Migrations versionadas do SQLite (memoria.db)
 ├── ferramentas_*.py           # Modulos especializados (pc, faxina, windows, google, estudos, investimentos, obsidian, navegador)
 ├── tests/                     # Suite deterministica offline (pytest)

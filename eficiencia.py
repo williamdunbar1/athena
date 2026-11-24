@@ -105,6 +105,7 @@ DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
     ),
     "memoria": frozenset(
         {
+            "consultar_memoria_temporal_tool",
             "guardar_na_memoria",
         }
     ),
@@ -187,6 +188,7 @@ _PADROES_DOMINIO: dict[str, tuple[re.Pattern[str], ...]] = {
     "memoria": (
         re.compile(r"\b(?:memorizar|memorize|memoriza)\b"),
         re.compile(r"\b(?:guard(?:a|ar|e)|salv(?:a|ar|e)|anot(?:a|ar|e))\s+na\s+memoria\b"),
+        re.compile(r"\b(?:memoria\s+temporal|linha\s+do\s+tempo|o\s+que\s+mudou|minhas?\s+metas?|preferencias?)\b"),
     ),
     "imagem": (
         re.compile(

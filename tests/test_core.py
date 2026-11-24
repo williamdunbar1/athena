@@ -1088,7 +1088,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
 
     # 1) Primeira execucao em banco novo: cria schema completo (ate a migration 004) e registra revisao
     revisao_1 = memoria.executar_migrations(db_teste)
-    assert revisao_1 == "004_conversas_metadados"
+    assert revisao_1 == "005_memoria_temporal"
     assert db_teste.is_file()
 
     with sqlite3.connect(db_teste) as c:
@@ -1119,7 +1119,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
 
     # 2) Segunda execucao (idempotencia): mantem revisao e 100% dos dados intactos
     revisao_2 = memoria.executar_migrations(db_teste)
-    assert revisao_2 == "004_conversas_metadados"
+    assert revisao_2 == "005_memoria_temporal"
 
     with sqlite3.connect(db_teste) as c:
         fato = c.execute("SELECT valor FROM fatos WHERE chave = 'curso'").fetchone()
@@ -1127,7 +1127,7 @@ def test_alembic_migrations_cria_schema_e_preserva_dados_idempotente(tmp_path):
         ver = c.execute("SELECT version_num FROM alembic_version").fetchone()
     assert fato == ("Engenharia",)
     assert msg == ("mensagem preservada",)
-    assert ver == ("004_conversas_metadados",)
+    assert ver == ("005_memoria_temporal",)
 
 
 # ==============================================================================
@@ -2475,7 +2475,7 @@ def test_athena_lab_migration_003_e_bloqueio_arquivos_sensiveis(tmp_path):
 
     # 1) Migration 003_lab_propostas cria tabela `lab_propostas` com todas as colunas esperadas
     db_teste = tmp_path / "lab_migration.db"
-    assert memoria.executar_migrations(db_teste) == "004_conversas_metadados"
+    assert memoria.executar_migrations(db_teste) == "005_memoria_temporal"
     with sqlite3.connect(db_teste) as c:
         cols = {r[1] for r in c.execute("PRAGMA table_info(lab_propostas)").fetchall()}
     assert {
@@ -2834,7 +2834,7 @@ def test_migration_004_e_crud_conversas_com_auto_titulo_e_legadas(tmp_path):
     import memoria
 
     db_teste = tmp_path / "conversas_004.db"
-    assert memoria.executar_migrations(db_teste) == "004_conversas_metadados"
+    assert memoria.executar_migrations(db_teste) == "005_memoria_temporal"
 
     with sqlite3.connect(db_teste) as c:
         cols_conv = {r[1] for r in c.execute("PRAGMA table_info(conversas)").fetchall()}
@@ -3588,3 +3588,135 @@ def test_browser_use_denylist_bancaria_e_fallback_seguro(monkeypatch):
     )
     assert "ler_pagina_markdown_crawl4ai" in res_indisp
     assert "uv sync --extra web" in res_indisp
+
+
+# ==============================================================================
+# 27. MEMORIA TEMPORAL EM GRAFO (MIGRATION 005 + SQLITE + NETWORKX)
+# ==============================================================================
+
+
+def test_memoria_temporal_migration_005_atualizacao_linha_do_tempo_e_grafo(monkeypatch, tmp_path):
+    from pathlib import Path
+
+    import compactador
+    import eficiencia as ef
+    import memoria
+    import memoria_temporal as mt
+    import servidor
+
+    # 1) Migration 005 cria tabela `fatos_temporais` e indice composto de forma idempotente
+    db_temp = tmp_path / "temporal_005.db"
+    assert memoria.executar_migrations(db_temp) == "005_memoria_temporal"
+
+    with sqlite3.connect(db_temp) as c:
+        cols = {r[1] for r in c.execute("PRAGMA table_info(fatos_temporais)").fetchall()}
+        idxs = {r[1] for r in c.execute("PRAGMA index_list(fatos_temporais)").fetchall()}
+    assert {
+        "id",
+        "sujeito",
+        "relacao",
+        "objeto",
+        "categoria",
+        "origem",
+        "valido_de",
+        "valido_ate",
+        "criado_em",
+    }.issubset(cols)
+    assert "idx_fatos_temporais_sujeito_relacao_valido" in idxs
+
+    # 2) Atualizacao temporal: Flash-Lite -> Hydrogen encerra o 1o e mantem apenas o 2o vigente
+    f1 = mt.registrar_fato_temporal(
+        "William",
+        "modelo_preferido",
+        "Flash-Lite",
+        categoria="preferencia",
+        origem="chat",
+        db_path=db_temp,
+    )
+    assert f1["acao"] == "criado"
+    assert f1["valido_ate"] is None
+
+    # Repetir o mesmo valor vigente nao duplica
+    f1_dup = mt.registrar_fato_temporal(
+        "William",
+        "modelo_preferido",
+        "Flash-Lite",
+        categoria="preferencia",
+        db_path=db_temp,
+    )
+    assert f1_dup["acao"] == "mantido"
+    assert f1_dup["id"] == f1["id"]
+
+    # Novo valor substitui o anterior preservando historico
+    f2 = mt.registrar_fato_temporal(
+        "William",
+        "modelo_preferido",
+        "Hydrogen",
+        categoria="preferencia",
+        origem="chat",
+        db_path=db_temp,
+    )
+    assert f2["acao"] == "atualizado"
+    assert f2["valido_ate"] is None
+    assert f2["substituiu_id"] == f1["id"]
+
+    # 3) Linha do tempo cronologica + consulta vigente vs historico
+    timeline = mt.linha_do_tempo_entidade("William", "modelo_preferido", db_path=db_temp)
+    assert len(timeline) == 2
+    assert timeline[0]["objeto"] == "Flash-Lite"
+    assert timeline[0]["valido_ate"] is not None
+    assert timeline[0]["vigente"] is False
+    assert timeline[1]["objeto"] == "Hydrogen"
+    assert timeline[1]["valido_ate"] is None
+    assert timeline[1]["vigente"] is True
+
+    apenas_vigente = mt.consultar_memoria_temporal("modelo_preferido", incluir_historico=False, db_path=db_temp)
+    assert [f["objeto"] for f in apenas_vigente if f["relacao"] == "modelo_preferido"] == ["Hydrogen"]
+
+    com_historico = mt.consultar_memoria_temporal("modelo_preferido", incluir_historico=True, db_path=db_temp)
+    objs_hist = {f["objeto"] for f in com_historico if f["relacao"] == "modelo_preferido"}
+    assert objs_hist == {"Flash-Lite", "Hydrogen"}
+
+    # 4) Expansao de 1 salto no grafo NetworkX + mascaramento PII/segredos
+    mt.registrar_fato_temporal("William", "estuda_em", "UNISUL", categoria="estudos", db_path=db_temp)
+    mt.registrar_fato_temporal("UNISUL", "disciplina_ativa", "Calculo", categoria="estudos", db_path=db_temp)
+    res_grafo = mt.consultar_memoria_temporal("UNISUL", incluir_historico=False, limite=8, db_path=db_temp)
+    objetos_grafo = {f["objeto"] for f in res_grafo}
+    assert "UNISUL" in objetos_grafo
+    assert "Calculo" in objetos_grafo
+
+    fake_cpf = "123." + "456." + "789-" + "00"
+    f_pii = mt.registrar_fato_temporal("William", "documento_nota", f"Ref {fake_cpf}", db_path=db_temp)
+    assert fake_cpf not in f_pii["objeto"]
+    assert "[MASCARADO:cpf]" in f_pii["objeto"]
+
+    # 5) Integracao com compactador, agentes, eficiencia, endpoint REST e modal UI
+    async def _fake_extrair(_msg, _resp):
+        return [{"chave": "meta_mensal", "valor": "Aportar 1000 reais em renda fixa"}]
+
+    monkeypatch.setattr(compactador, "_extrair_fatos_com_llm", _fake_extrair)
+    salvos_bg = _executar_coro_sync(
+        compactador.extrair_memorias_em_background(
+            "Minha nova meta mensal agora e aportar mil reais em renda fixa",
+            "Anotado!",
+            db_path=db_temp,
+            forcar=True,
+        )
+    )
+    assert salvos_bg == [("meta_mensal", "Aportar 1000 reais em renda fixa")]
+    tl_meta = mt.linha_do_tempo_entidade("William", "meta_mensal", db_path=db_temp)
+    assert len(tl_meta) == 1 and tl_meta[0]["vigente"] is True
+
+    tools_orq = set((getattr(getattr(agentes.orquestrador, "_function_toolset", None), "tools", None) or {}).keys())
+    assert "consultar_memoria_temporal_tool" in tools_orq
+    assert "consultar_memoria_temporal_tool" in ef.DOMINIO_PARA_TOOLS["memoria"]
+
+    monkeypatch.setenv("ATHENA_DB_PATH", str(db_temp))
+    res_api = servidor.api_memoria_temporal()
+    assert res_api["ok"] is True
+    assert res_api["total_historicos"] == 1
+    assert res_api["total_vigentes"] >= 4
+
+    html = (Path(__file__).resolve().parent.parent / "index.html").read_text(encoding="utf-8")
+    assert 'id="fatos-temporais"' in html
+    assert "/api/memoria/temporal" in html

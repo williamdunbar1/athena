@@ -3169,6 +3169,13 @@
         </div>
         <div>
           <div class="modal-sub-title">
+            <span>Memória Temporal (Grafo)</span>
+            <span id="mem-temporal-count" class="skill-count">0 vigentes · 0 históricos</span>
+          </div>
+          <div id="fatos-temporais" class="mem-bar"></div>
+        </div>
+        <div>
+          <div class="modal-sub-title">
             <span>Agent Skills Ativas</span>
             <span id="skills-count" class="skill-count">0</span>
           </div>
@@ -3449,6 +3456,7 @@ function alternarSecaoSidebar(secId) {
 function abrirModalMemorias() {
   const modal = document.getElementById("modal-memorias");
   if (modal) modal.classList.remove("hidden");
+  carregarMemoriasModal();
 }
 
 function fecharModalMemorias() {
@@ -4654,10 +4662,42 @@ function renderFatos(fatos) {
   }
 }
 
+function renderFatosTemporais(dados) {
+  const bar = document.getElementById("fatos-temporais");
+  const count = document.getElementById("mem-temporal-count");
+  const vig = Array.isArray(dados && dados.vigentes) ? dados.vigentes : [];
+  const totalVig = Number((dados && dados.total_vigentes) ?? vig.length);
+  const totalHist = Number((dados && dados.total_historicos) ?? 0);
+  if (count) {
+    count.textContent = `${totalVig} vigente(s) · ${totalHist} histórico(s)`;
+  }
+  if (!bar) return;
+  bar.innerHTML = "";
+  if (!vig.length) {
+    bar.innerHTML = '<span class="empty-note" style="font-size:12.5px;">Nenhum fato temporal registrado ainda.</span>';
+    return;
+  }
+  for (const f of vig) {
+    const p = document.createElement("span");
+    p.className = "pill";
+    const desde = String(f.valido_de || "").slice(0, 10);
+    p.title = `${f.sujeito} · ${f.relacao} → ${f.objeto} (desde ${desde}, origem: ${f.origem || "chat"})`;
+    const t = document.createElement("span");
+    t.className = "lbl";
+    t.textContent = `${f.sujeito} · ${f.relacao}: ${f.objeto}`;
+    p.appendChild(t);
+    bar.appendChild(p);
+  }
+}
+
 async function carregarMemoriasModal() {
   try {
-    const r = await fetch("/api/historico").then(x => x.json());
-    renderFatos(r.fatos || []);
+    const [rHist, rTemp] = await Promise.all([
+      fetch("/api/historico").then(x => x.json()),
+      fetch("/api/memoria/temporal").then(x => x.json()).catch(() => null),
+    ]);
+    renderFatos((rHist && rHist.fatos) || []);
+    if (rTemp && rTemp.ok) renderFatosTemporais(rTemp);
   } catch (_) {}
 }
 

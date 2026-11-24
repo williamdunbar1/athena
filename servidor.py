@@ -134,6 +134,7 @@ from memoria import (
     registrar_telemetria,
     salvar_mensagem,
 )
+from memoria_temporal import resumo_memoria_temporal
 from observabilidade import configurar_observabilidade
 from otimizador_midia import (
     EXTENSOES_DOCUMENTO_SUPORTADAS,
@@ -921,6 +922,12 @@ def resetar_chat(conversa_id: str | None = None):
 def remover_fato(chave: str):
     apagar_fato(chave)
     return {"ok": True}
+
+
+@app.get("/api/memoria/temporal")
+def api_memoria_temporal(limite: int = 50):
+    """Retorna fatos vigentes na Memoria Temporal em Grafo e contagem de fatos historicos."""
+    return resumo_memoria_temporal(limite_vigentes=limite)
 
 
 @app.get("/api/painel/carteira")

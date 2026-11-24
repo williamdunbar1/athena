@@ -15,6 +15,7 @@ import json
 import os
 import re
 import time
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,7 @@ from guardrails import mascarar_segredos_e_pii
 from logging_config import obter_logger
 from memoria import _conn as _conn_memoria
 from memoria import guardar_fato, listar_fatos
+from memoria_temporal import registrar_fato_temporal
 
 MODELO_COMPACTACAO = "google:gemini-3.5-flash-lite"
 TIMEOUT_COMPACTACAO_SEGUNDOS = 12.0
@@ -441,6 +443,15 @@ async def extrair_memorias_em_background(
             continue
 
         guardar_fato(chave_limpa, valor_seguro, db_path=db_path)
+        with suppress(Exception):
+            registrar_fato_temporal(
+                sujeito="William",
+                relacao=chave_limpa,
+                objeto=valor_seguro,
+                categoria="preferencia",
+                origem="auto_memory",
+                db_path=db_path,
+            )
         existentes.append({"chave": chave_limpa, "valor": valor_seguro})
         salvos.append((chave_limpa, valor_seguro))
 

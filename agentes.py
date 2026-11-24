@@ -213,6 +213,11 @@ from guardrails import sanitizar_conteudo_externo as _sanitizar_conteudo_externo
 from logging_config import obter_logger
 from mcp_manager import obter_toolsets_mcp
 from memoria import guardar_fato
+from memoria_temporal import (
+    consultar_memoria_temporal,
+    formatar_fatos_temporais_markdown,
+    registrar_fato_temporal,
+)
 from rag_qdrant import buscar_semantico as _buscar_semantico
 from skills_manager import carregar_skill as _carregar_skill
 from skills_manager import gerar_catalogo_skills
@@ -2032,10 +2037,35 @@ async def gerar_imagem(ctx: RunContext[ContextoMissao], prompt: str) -> str:
 
 @orquestrador.tool
 def guardar_na_memoria(ctx: RunContext[ContextoMissao], chave: str, valor: str) -> str:
-    """Salva ou atualiza um fato persistente na memoria de longo prazo (SQLite)."""
+    """Salva ou atualiza um fato persistente na memoria de longo prazo (SQLite) e no grafo temporal."""
     guardar_fato(chave, valor)
+    with contextlib.suppress(Exception):
+        registrar_fato_temporal(
+            sujeito="William",
+            relacao=chave,
+            objeto=valor,
+            categoria="memoria",
+            origem="chat",
+        )
     ctx.deps.registrar("Athena", "Memoria SQLite", "ferramenta", f"guardar_fato({chave} = {valor})")
     return f"Memoria salva: {chave} = {valor}"
+
+
+@orquestrador.tool
+def consultar_memoria_temporal_tool(
+    ctx: RunContext[ContextoMissao],
+    consulta: str,
+    incluir_historico: bool = False,
+) -> str:
+    """Consulta a Memoria Temporal em Grafo para fatos vigentes ou evolucao historica de preferencias, metas e entidades (use incluir_historico=True para ver o que mudou ao longo do tempo)."""
+    ctx.deps.registrar(
+        "Athena",
+        "Memoria Temporal (Grafo)",
+        "ferramenta",
+        f"consultar_memoria_temporal({consulta[:80]}, historico={incluir_historico})",
+    )
+    fatos = consultar_memoria_temporal(consulta, incluir_historico=incluir_historico, limite=8)
+    return formatar_fatos_temporais_markdown(fatos, incluir_historico=incluir_historico)
 
 
 @orquestrador.tool
