@@ -78,6 +78,12 @@ from auditoria import (
     listar_pastas_aprovadas,
     revogar_pasta,
 )
+from board import (
+    atualizar_card_board,
+    avaliar_card_checker,
+    criar_card_board,
+    listar_board,
+)
 from compactador import (
     agendar_extracao_memorias,
     limpar_resumos_conversa,
@@ -160,7 +166,9 @@ from rotinas import (
     excluir_rotina_dinamica,
     executar_rotina_agora,
     executar_rotina_dinamica,
+    gerar_recibo_semanal,
     iniciar_agendador,
+    listar_recibos_semanais,
     listar_rotinas,
     listar_rotinas_dinamicas,
 )
@@ -1343,6 +1351,95 @@ async def api_executar_rotina_dinamica(rotina_id: str):
         pasta_raiz=Path(CONFIG["pasta_raiz"]),
         modelo=CONFIG["modelo"],
     )
+
+
+@app.get("/api/rotinas/recibos")
+def api_listar_recibos_semanais(limite: int = 12):
+    """Lista os Friday Receipts (recibos semanais) salvos no banco."""
+    return {"ok": True, "recibos": listar_recibos_semanais(limite=limite)}
+
+
+@app.post("/api/rotinas/recibo-semanal")
+def api_gerar_recibo_semanal():
+    """Gera e persiste um novo Friday Receipt (recibo semanal) com metricas reais locais."""
+    recibo = gerar_recibo_semanal()
+    return {"ok": True, "recibo": recibo}
+
+
+class CriarCardBoardPayload(BaseModel):
+    titulo: str
+    dono: str = "athena"
+    criterio_done: str = ""
+    status: str = "Todo"
+    handoff: dict | None = None
+    provas: list[str] | None = None
+
+
+class AtualizarCardBoardPayload(BaseModel):
+    titulo: str | None = None
+    dono: str | None = None
+    status: str | None = None
+    criterio_done: str | None = None
+    handoff: dict | None = None
+    provas: list[str] | None = None
+
+
+class ChecarCardPayload(BaseModel):
+    usar_llm: bool = False
+
+
+@app.get("/api/board")
+def api_listar_board(status: str | None = None):
+    """Lista os cards do Quadro (Board) da Athena."""
+    try:
+        return {"ok": True, "cards": listar_board(status=status)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/board")
+def api_criar_card_board(payload: CriarCardBoardPayload):
+    """Cria um novo card no Quadro (Board) com handoff estruturado enxuto."""
+    try:
+        card = criar_card_board(
+            payload.titulo,
+            dono=payload.dono,
+            criterio_done=payload.criterio_done,
+            handoff=payload.handoff,
+            status=payload.status,
+            provas=payload.provas,
+        )
+        return {"ok": True, "card": card}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.patch("/api/board/{card_id}")
+def api_atualizar_card_board(card_id: str, payload: AtualizarCardBoardPayload):
+    """Atualiza status, handoff ou provas de um card no Quadro (Board)."""
+    try:
+        card = atualizar_card_board(
+            card_id,
+            status=payload.status,
+            handoff=payload.handoff,
+            provas=payload.provas,
+            titulo=payload.titulo,
+            dono=payload.dono,
+            criterio_done=payload.criterio_done,
+        )
+        return {"ok": True, "card": card}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/api/board/{card_id}/checar")
+def api_checar_card_board(card_id: str, payload: ChecarCardPayload | None = Body(default=None)):
+    """Executa o Agente Checker independente ('No proof, no done') sobre um card do Board."""
+    usar_llm = bool(payload.usar_llm) if payload is not None else False
+    res = avaliar_card_checker(card_id, usar_llm=usar_llm)
+    if not res.get("ok"):
+        raise HTTPException(status_code=404, detail=str(res.get("erro") or "Card nao encontrado."))
+    return res
 
 
 @app.post("/api/rotinas/{rotina_id}")

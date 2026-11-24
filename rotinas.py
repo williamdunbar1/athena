@@ -8,6 +8,7 @@ e salva o Briefing Diario automaticamente no Obsidian em `04-Diario/YYYY-MM-DD.m
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import sqlite3
 import time
@@ -43,6 +44,8 @@ _log = obter_logger("rotinas")
 TIMEOUT_FONTE_BRIEFING_SEGUNDOS = 30.0
 MAX_FALHAS_AUTO_PAUSA = 3
 JOB_PREFIXO_DINAMICA = "dyn:"
+JOB_RECIBO_SEMANAL_ID = "recibo_semanal_sexta"
+MARCADOR_ROTINA_SILENCIOSA = "SEM_NOVIDADES"
 
 DB_PATH = Path(__file__).resolve().parent / "memoria.db"
 FUSO_NOME = "America/Sao_Paulo"
@@ -219,6 +222,17 @@ def iniciar_agendador() -> None:
     for rotina in listar_rotinas():
         _sincronizar_job_scheduler(rotina)
     carregar_rotinas_dinamicas_no_scheduler()
+
+    # Friday Receipt: agenda relatorio semanal toda sexta-feira as 18:00 (America/Sao_Paulo)
+    _SCHEDULER.add_job(
+        _disparar_recibo_semanal_agendado,
+        trigger=CronTrigger(day_of_week="fri", hour=18, minute=0, timezone=_obter_fuso()),
+        id=JOB_RECIBO_SEMANAL_ID,
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=3600,
+    )
 
     from athena_lab import sentinel_ativo, sentinel_intervalo_minutos
 
@@ -728,24 +742,50 @@ def carregar_rotinas_dinamicas_no_scheduler(*, db_path: str | Path | None = None
     return carregadas
 
 
+def eh_retorno_silencioso(texto: str) -> bool:
+    """Detecta se a rotina nao encontrou novidades e deve concluir em modo silencioso (sem ruido)."""
+    limpo = " ".join((texto or "").strip().split()).lower()
+    if not limpo:
+        return True
+    marcadores = (
+        "sem_novidades",
+        "[sem_novidades]",
+        "silencioso",
+        "[silencioso]",
+        "nada mudou",
+        "sem novidades",
+        "nenhuma novidade",
+    )
+    return limpo in marcadores or limpo.startswith(("[sem_novidades]", "sem_novidades:", "[silencioso]"))
+
+
 async def _executar_agente_rotina_dinamica(
     rotina: dict[str, Any],
     *,
     pasta_raiz: Path | None = None,
     modelo: str | None = None,
 ) -> str:
+    """Executa rotina em sessao 100% limpa (zero historico de chat acumulado) com suporte a retorno silencioso."""
     pasta_padrao = pasta_raiz or (Path(__file__).resolve().parent / "sandbox_files")
     modelo_uso = modelo or MODELO_PADRAO
     info_ag = obter_agente_direto(str(rotina.get("agente_alvo") or "athena"))
+    instrucao_limpa = (
+        f"[ROTINA AUTONOMA EM SESSAO LIMPA — {rotina.get('nome', 'Rotina')}]\n"
+        f"{rotina['instrucao']}\n\n"
+        f"REGRA DE SILENCIO: se nada mudou ou nao houver novidades acionaveis, responda EXATAMENTE `{MARCADOR_ROTINA_SILENCIOSA}`."
+    )
     ctx = ContextoMissao(
         pasta_raiz=pasta_padrao,
         modelo=modelo_uso,
         mensagem_atual=str(rotina.get("instrucao") or ""),
+        memorias_contexto="",
+        resumo_conversa="",
     )
     res = await info_ag["agente"].run(
-        str(rotina["instrucao"]),
+        instrucao_limpa,
         deps=ctx,
         model=obter_modelo(modelo_uso),
+        message_history=[],
     )
     return str(getattr(res, "output", res) or "").strip()
 
@@ -757,7 +797,7 @@ async def executar_rotina_dinamica(
     modelo: str | None = None,
     db_path: str | Path | None = None,
 ) -> dict[str, Any]:
-    """Executa uma rotina dinamica com auto-pausa segura apos 3 falhas consecutivas e auditoria."""
+    """Executa uma rotina dinamica em sessao limpa, com modo silencioso e auto-pausa apos 3 falhas consecutivas."""
     rotina = _obter_rotina_dinamica(rotina_id, db_path=db_path)
     if rotina is None:
         return {"ok": False, "erro": f"Rotina dinamica '{rotina_id}' nao encontrada."}
@@ -767,6 +807,8 @@ async def executar_rotina_dinamica(
 
     try:
         saida = await _executar_agente_rotina_dinamica(rotina, pasta_raiz=pasta_raiz, modelo=modelo)
+        silencioso = eh_retorno_silencioso(saida)
+        resultado_salvo = f"[Silencioso · {agora_str}] Sem novidades." if silencioso else saida[:4000]
         with _conn_dinamicas(db_path) as c:
             c.execute(
                 """
@@ -774,17 +816,21 @@ async def executar_rotina_dinamica(
                 SET falhas_consecutivas = 0, ultima_execucao = ?, ultimo_resultado = ?
                 WHERE id = ?
                 """,
-                (agora_str, saida[:4000], rotina_id),
+                (agora_str, resultado_salvo, rotina_id),
             )
         registrar_atividade(
             agente=agente_nome,
             acao="rotina_dinamica",
             alvo=rotina["nome"],
-            status="sucesso",
-            detalhes=saida[:300],
+            status="silencioso" if silencioso else "sucesso",
+            detalhes="Sem novidades (execucao silenciosa)." if silencioso else saida[:300],
             db_path=db_path,
         )
-        return {"ok": True, "rotina": _obter_rotina_dinamica(rotina_id, db_path=db_path)}
+        return {
+            "ok": True,
+            "silencioso": silencioso,
+            "rotina": _obter_rotina_dinamica(rotina_id, db_path=db_path),
+        }
     except Exception as exc:
         novas_falhas = int(rotina.get("falhas_consecutivas") or 0) + 1
         auto_pausada = novas_falhas >= MAX_FALHAS_AUTO_PAUSA
@@ -829,3 +875,283 @@ async def _disparar_rotina_dinamica_agendada(rotina_id: str) -> None:
         await executar_rotina_dinamica(rotina_id)
     except Exception as exc:
         _log.warning("rotina_dinamica_agendada_falhou", rotina_id=rotina_id, erro=str(exc))
+
+
+# ==============================================================================
+# FRIDAY RECEIPT (RECIBO SEMANAL DE OPERACOES, ECONOMIA E SUGESTOES — 0 LLM)
+# ==============================================================================
+
+
+def _garantir_tabela_recibos(c: sqlite3.Connection) -> None:
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS recibos_semanais (
+            id TEXT PRIMARY KEY,
+            periodo TEXT NOT NULL,
+            resumo_md TEXT NOT NULL,
+            metricas_json TEXT NOT NULL,
+            criado_em TEXT NOT NULL
+        )
+        """
+    )
+    c.execute(
+        """
+        CREATE INDEX IF NOT EXISTS idx_recibos_semanais_criado_em
+        ON recibos_semanais (criado_em DESC)
+        """
+    )
+
+
+def _tabela_existe(c: sqlite3.Connection, nome: str) -> bool:
+    row = c.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (nome,),
+    ).fetchone()
+    return row is not None
+
+
+def gerar_recibo_semanal(db_path: str | Path | None = None) -> dict[str, Any]:
+    """Gera o Friday Receipt semanal agregando metricas reais locais (0 chamadas de LLM) e salva em `recibos_semanais`."""
+    from semantic_cache import estatisticas_cache_semantico
+
+    agora = _agora_sp()
+    inicio_dt = agora - timedelta(days=7)
+    periodo = f"{inicio_dt.strftime('%Y-%m-%d')} a {agora.strftime('%Y-%m-%d')}"
+    inicio_iso = inicio_dt.strftime("%Y-%m-%dT00:00:00")
+    criado_em = agora.strftime("%Y-%m-%d %H:%M:%S")
+    rid = f"rec_{uuid.uuid4().hex[:10]}"
+
+    alvo = obter_db_path(db_path)
+    alvo.parent.mkdir(parents=True, exist_ok=True)
+    c = sqlite3.connect(alvo, timeout=5.0)
+    try:
+        c.execute("PRAGMA journal_mode=WAL;")
+        c.execute("PRAGMA busy_timeout=5000;")
+        _garantir_tabela_recibos(c)
+
+        # 1) Rotinas dinamicas
+        rot_total = 0
+        rot_ativas = 0
+        rot_pausadas_falha: list[str] = []
+        sugestoes_pausar: list[str] = []
+        sugestoes_script: list[str] = []
+        if _tabela_existe(c, "rotinas_dinamicas"):
+            rows_rot = c.execute(
+                "SELECT id, nome, cron_expr, ativa, falhas_consecutivas, ultima_execucao, ultimo_resultado FROM rotinas_dinamicas"
+            ).fetchall()
+            rot_total = len(rows_rot)
+            for _r_id, r_nome, r_cron, r_ativa, r_falhas, r_ult, r_res in rows_rot:
+                ativa_b = bool(r_ativa)
+                falhas_n = int(r_falhas or 0)
+                if ativa_b:
+                    rot_ativas += 1
+                if (not ativa_b) and falhas_n >= MAX_FALHAS_AUTO_PAUSA:
+                    rot_pausadas_falha.append(str(r_nome))
+                if falhas_n >= 2:
+                    sugestoes_pausar.append(f"**{r_nome}** (`{r_cron}` — {falhas_n} falha(s) consecutiva(s))")
+                elif ativa_b and not str(r_ult or "").strip():
+                    sugestoes_pausar.append(f"**{r_nome}** (`{r_cron}` — ainda sem execucao registrada)")
+                elif ativa_b and falhas_n == 0 and str(r_res or "").startswith("[Silencioso"):
+                    sugestoes_script.append(f"**{r_nome}** (`{r_cron}` — retornou silenciosa; candidata a script deterministico 0 tokens)")
+
+        # 2) Atividade / Auditoria (ultimos 7 dias)
+        atv_total = 0
+        atv_sucesso = 0
+        atv_silenciosas = 0
+        atv_erros = 0
+        agentes_top: list[tuple[str, int]] = []
+        if _tabela_existe(c, "atividade_agentes"):
+            rows_atv = c.execute(
+                "SELECT agente, status FROM atividade_agentes WHERE criado_em >= ?",
+                (inicio_iso,),
+            ).fetchall()
+            atv_total = len(rows_atv)
+            cont_ag: dict[str, int] = {}
+            for ag, st in rows_atv:
+                ag_s = str(ag or "sistema")
+                st_s = str(st or "").lower()
+                cont_ag[ag_s] = cont_ag.get(ag_s, 0) + 1
+                if st_s == "silencioso":
+                    atv_silenciosas += 1
+                elif st_s in ("erro", "alerta_auto_pausa", "alerta_bloqueio", "reprovado"):
+                    atv_erros += 1
+                else:
+                    atv_sucesso += 1
+            agentes_top = sorted(cont_ag.items(), key=lambda x: x[1], reverse=True)[:5]
+
+        # 3) Board (Done / Blocked / Review / Working / Todo)
+        board_counts: dict[str, int] = {"Todo": 0, "Working": 0, "Blocked": 0, "Ready for Review": 0, "Done": 0}
+        board_done: list[str] = []
+        board_blocked: list[str] = []
+        if _tabela_existe(c, "board_tarefas"):
+            rows_brd = c.execute(
+                "SELECT titulo, status FROM board_tarefas ORDER BY atualizado_em DESC"
+            ).fetchall()
+            for tit, st in rows_brd:
+                st_s = str(st or "Todo")
+                board_counts[st_s] = board_counts.get(st_s, 0) + 1
+                if st_s == "Done" and len(board_done) < 8:
+                    board_done.append(str(tit))
+                elif st_s == "Blocked" and len(board_blocked) < 8:
+                    board_blocked.append(str(tit))
+
+        # 4) Cache Semantico (economia de tokens)
+        cache_stats = estatisticas_cache_semantico()
+        cache_hits = int(cache_stats.get("hits") or 0)
+        cache_misses = int(cache_stats.get("misses") or 0)
+        cache_entradas = int(cache_stats.get("entradas") or cache_stats.get("tamanho") or 0)
+        total_cache_consultas = cache_hits + cache_misses
+        taxa_cache = round((cache_hits / total_cache_consultas) * 100, 1) if total_cache_consultas > 0 else 0.0
+
+        metricas: dict[str, Any] = {
+            "periodo": periodo,
+            "rotinas": {
+                "total": rot_total,
+                "ativas": rot_ativas,
+                "pausadas_por_falha": len(rot_pausadas_falha),
+            },
+            "atividade": {
+                "total_7d": atv_total,
+                "sucesso": atv_sucesso,
+                "silenciosas": atv_silenciosas,
+                "erros_alertas": atv_erros,
+                "top_agentes": [{"agente": a, "acoes": n} for a, n in agentes_top],
+            },
+            "board": {
+                "contagem": board_counts,
+                "done": board_done,
+                "blocked": board_blocked,
+            },
+            "cache_semantico": {
+                "hits": cache_hits,
+                "misses": cache_misses,
+                "taxa_acerto_pct": taxa_cache,
+                "entradas": cache_entradas,
+            },
+            "sugestoes": {
+                "pausar": sugestoes_pausar,
+                "virar_script": sugestoes_script,
+            },
+        }
+
+        linhas: list[str] = [
+            f"# Friday Receipt — {periodo}",
+            "",
+            "## 1. Resumo Operacional (7 dias)",
+            f"- **Atividades auditadas:** {atv_total} ({atv_sucesso} ok · {atv_silenciosas} silenciosas · {atv_erros} erros/alertas)",
+            f"- **Rotinas dinâmicas:** {rot_ativas}/{rot_total} ativas ({len(rot_pausadas_falha)} pausada(s) por falha)",
+            f"- **The Board:** {board_counts['Done']} Done · {board_counts['Blocked']} Blocked · {board_counts['Ready for Review']} Review · {board_counts['Working']} Working · {board_counts['Todo']} Todo",
+            f"- **Cache Semântico (0 tokens):** {cache_hits} acerto(s) / {total_cache_consultas} consulta(s) ({taxa_cache}% de economia · {cache_entradas} em RAM)",
+            "",
+        ]
+
+        if board_done or board_blocked:
+            linhas.append("## 2. Entregas & Bloqueios no Board")
+            for tit in board_done:
+                linhas.append(f"- [Done] {tit}")
+            for tit in board_blocked:
+                linhas.append(f"- [Blocked — requer ação humana] {tit}")
+            linhas.append("")
+
+        if agentes_top:
+            linhas.append("## 3. Agentes Mais Ativos")
+            for ag_n, qtd in agentes_top:
+                linhas.append(f"- **{ag_n}**: {qtd} ação(ões)")
+            linhas.append("")
+
+        linhas.append("## 4. Sugestões de Otimização")
+        if sugestoes_pausar:
+            linhas.append("**Candidatas a pausar / revisar:**")
+            for s in sugestoes_pausar:
+                linhas.append(f"- {s}")
+        if sugestoes_script:
+            linhas.append("**Candidatas a virar script determinístico (0 LLM):**")
+            for s in sugestoes_script:
+                linhas.append(f"- {s}")
+        if not sugestoes_pausar and not sugestoes_script:
+            linhas.append("- Nenhuma rotina com ruído ou falhas recorrentes detectada nesta semana.")
+
+        resumo_md = "\n".join(linhas).strip()
+        metricas_json = json.dumps(metricas, ensure_ascii=False)
+
+        c.execute(
+            """
+            INSERT INTO recibos_semanais (id, periodo, resumo_md, metricas_json, criado_em)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (rid, periodo, resumo_md, metricas_json, criado_em),
+        )
+        c.commit()
+    except Exception:
+        c.rollback()
+        raise
+    finally:
+        c.close()
+
+    with suppress(Exception):
+        registrar_atividade(
+            agente="Athena (Rotinas)",
+            acao="gerar_recibo_semanal",
+            alvo=periodo,
+            status="sucesso",
+            detalhes=f"Friday Receipt {rid} gerado (0 LLM).",
+            db_path=db_path,
+        )
+
+    return {
+        "id": rid,
+        "periodo": periodo,
+        "resumo_md": resumo_md,
+        "metricas": metricas,
+        "metricas_json": metricas_json,
+        "criado_em": criado_em,
+    }
+
+
+def listar_recibos_semanais(limite: int = 12, *, db_path: str | Path | None = None) -> list[dict[str, Any]]:
+    """Retorna os recibos semanais salvos em `recibos_semanais` do mais recente para o mais antigo."""
+    lim = max(1, min(int(limite), 50))
+    alvo = obter_db_path(db_path)
+    alvo.parent.mkdir(parents=True, exist_ok=True)
+    c = sqlite3.connect(alvo, timeout=5.0)
+    try:
+        c.execute("PRAGMA journal_mode=WAL;")
+        c.execute("PRAGMA busy_timeout=5000;")
+        _garantir_tabela_recibos(c)
+        rows = c.execute(
+            """
+            SELECT id, periodo, resumo_md, metricas_json, criado_em
+            FROM recibos_semanais
+            ORDER BY criado_em DESC, rowid DESC
+            LIMIT ?
+            """,
+            (lim,),
+        ).fetchall()
+    finally:
+        c.close()
+
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        metricas_obj: dict[str, Any] = {}
+        with suppress(Exception):
+            parsed = json.loads(str(r[3] or "{}"))
+            if isinstance(parsed, dict):
+                metricas_obj = parsed
+        out.append(
+            {
+                "id": str(r[0]),
+                "periodo": str(r[1]),
+                "resumo_md": str(r[2]),
+                "metricas": metricas_obj,
+                "metricas_json": str(r[3] or "{}"),
+                "criado_em": str(r[4]),
+            }
+        )
+    return out
+
+
+async def _disparar_recibo_semanal_agendado() -> None:
+    try:
+        await asyncio.to_thread(gerar_recibo_semanal)
+    except Exception as exc:
+        _log.warning("recibo_semanal_agendado_falhou", erro=str(exc))

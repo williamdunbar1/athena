@@ -3301,6 +3301,77 @@
     .btn-cmd-trigger .kbd-hint { display: none; }
     .scroll-bottom-btn { bottom: 122px; }
   }
+
+  /* Quadro (The Board) — 5 colunas enxutas dentro da sub-aba de Rotinas & Skills */
+  .board-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(195px, 1fr));
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 6px;
+  }
+  .board-col {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 220px;
+  }
+  .board-col-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 2px 4px 6px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-ui);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-strong);
+  }
+  .board-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px 11px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .board-card.is-blocked { border-left: 3px solid #ef4444; }
+  .board-card.is-review { border-left: 3px solid var(--accent); }
+  .board-card.is-done { border-left: 3px solid var(--pos); opacity: 0.9; }
+  .board-card-title {
+    font-family: var(--font-ui);
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-strong);
+    line-height: 1.35;
+  }
+  .board-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .board-card-crit {
+    font-size: 11.5px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .recibo-md-box {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+    font-size: 13.5px;
+    line-height: 1.6;
+  }
 </style>
 </head>
 <body>
@@ -3861,6 +3932,8 @@
               <div class="subtabs-bar" role="tablist" aria-label="Seções de Rotinas e Skills">
                 <button type="button" class="subtab-btn active" data-subtab-group="rotinas" data-subtab="rotinas-agendadas" onclick="selecionarSubAba('rotinas', 'rotinas-agendadas', this)" role="tab" aria-selected="true">Rotinas Agendadas</button>
                 <button type="button" class="subtab-btn" data-subtab-group="rotinas" data-subtab="rotinas-skills" onclick="selecionarSubAba('rotinas', 'rotinas-skills', this)" role="tab" aria-selected="false">Skills &amp; Teach a Bot</button>
+                <button type="button" class="subtab-btn" data-subtab-group="rotinas" data-subtab="rotinas-board" onclick="selecionarSubAba('rotinas', 'rotinas-board', this)" role="tab" aria-selected="false">Quadro (Board)</button>
+                <button type="button" class="subtab-btn" data-subtab-group="rotinas" data-subtab="rotinas-recibo" onclick="selecionarSubAba('rotinas', 'rotinas-recibo', this)" role="tab" aria-selected="false">Recibo Semanal</button>
               </div>
 
               <div id="subtab-rotinas-agendadas" class="subtab-pane active" data-subtab-pane="rotinas">
@@ -3964,6 +4037,42 @@
                     <span id="skills-count-rotinas" class="skill-count">0</span>
                   </h3>
                   <div id="skills-lista-rotinas" class="skills-bar"><span class="empty-note">Carregando skills...</span></div>
+                </div>
+              </div>
+
+              <!-- SUB-ABA 3: QUADRO (THE BOARD + CHECKER) -->
+              <div id="subtab-rotinas-board" class="subtab-pane" data-subtab-pane="rotinas">
+                <div class="panel">
+                  <h3>
+                    <span style="display:inline-flex;align-items:center;gap:8px;">
+                      <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
+                      <span>The Board (Handoff Enxuto + Agente Checker)</span>
+                    </span>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                      <button type="button" class="accent mini" onclick="criarCardBoardUI()">+ Novo Card</button>
+                      <button type="button" class="ghost mini" onclick="carregarBoard()">Atualizar</button>
+                    </div>
+                  </h3>
+                  <div id="box-board-colunas" class="board-grid">
+                    <div class="empty-note">Carregando quadro de tarefas...</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- SUB-ABA 4: RECIBO SEMANAL (FRIDAY RECEIPT) -->
+              <div id="subtab-rotinas-recibo" class="subtab-pane" data-subtab-pane="rotinas">
+                <div class="panel">
+                  <h3>
+                    <span style="display:inline-flex;align-items:center;gap:8px;">
+                      <svg class="ico ico-accent" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 2v20l3-2 3 2 3-2 3 2 4-2V2z"/><line x1="8" y1="7" x2="16" y2="7"/><line x1="8" y1="11" x2="16" y2="11"/><line x1="8" y1="15" x2="13" y2="15"/></svg>
+                      <span>Friday Receipt — Recibo Semanal (Sexta 18:00 · 0 LLM)</span>
+                    </span>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                      <button type="button" class="accent mini" onclick="gerarReciboSemanalUI(this)">Gerar Recibo Agora</button>
+                      <button type="button" class="ghost mini" onclick="carregarRecibosSemanais()">Atualizar</button>
+                    </div>
+                  </h3>
+                  <div id="box-recibos-semanais" class="empty-note">Carregando recibos semanais...</div>
                 </div>
               </div>
             </div>
@@ -4724,6 +4833,10 @@ function selecionarSubAba(grupo, abaId, btn) {
   } else if (abaId === "rotinas-skills") {
     carregarSkills();
     atualizarStatusTeachBot();
+  } else if (abaId === "rotinas-board") {
+    carregarBoard();
+  } else if (abaId === "rotinas-recibo") {
+    carregarRecibosSemanais();
   } else if (abaId === "config-sistema") {
     carregarConfigSistema();
   } else if (abaId === "config-seguranca") {
@@ -8097,6 +8210,175 @@ async function excluirRotinaDinamicaUI(id, btn) {
     }
   } catch (_) {
     mostrarToast("Erro de rede ao excluir rotina.", true);
+  }
+}
+
+/* ===== THE BOARD (QUADRO + CHECKER) & FRIDAY RECEIPT ===== */
+const BOARD_COLUNAS = [
+  { status: "Todo", titulo: "Todo" },
+  { status: "Working", titulo: "Working" },
+  { status: "Blocked", titulo: "Blocked" },
+  { status: "Ready for Review", titulo: "Review" },
+  { status: "Done", titulo: "Done" },
+];
+
+async function carregarBoard() {
+  const box = document.getElementById("box-board-colunas");
+  if (!box) return;
+  try {
+    const r = await fetch("/api/board").then(x => x.json());
+    const cards = Array.isArray(r && r.cards) ? r.cards : [];
+    box.innerHTML = BOARD_COLUNAS.map(col => {
+      const lista = cards.filter(c => c.status === col.status);
+      const cardsHtml = lista.length
+        ? lista.map(c => {
+            const clsExtra = c.status === "Blocked" ? " is-blocked" : (c.status === "Ready for Review" ? " is-review" : (c.status === "Done" ? " is-done" : ""));
+            const provasCount = Array.isArray(c.provas) ? c.provas.length : 0;
+            const btnChecar = c.status === "Ready for Review"
+              ? `<button type="button" class="accent mini" onclick="checarCardBoardUI('${escHtml(c.id)}', this)">Checar</button>`
+              : "";
+            const btnReview = (c.status === "Todo" || c.status === "Working")
+              ? `<button type="button" class="ghost mini" onclick="moverCardParaReviewUI('${escHtml(c.id)}', this)">Enviar p/ Review</button>`
+              : "";
+            return `
+              <div class="board-card${clsExtra}" data-card-id="${escHtml(c.id)}">
+                <div class="board-card-title">${escHtml(c.titulo)}</div>
+                <div class="board-card-meta">
+                  <span class="lab-badge">${escHtml(c.dono)}</span>
+                  <span>${provasCount} prova(s)</span>
+                  <span>checker: ${Number(c.tentativas_checker || 0)}/2</span>
+                </div>
+                ${c.criterio_done ? `<div class="board-card-crit"><strong>Done:</strong> ${escHtml(c.criterio_done)}</div>` : ""}
+                <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;">
+                  ${btnChecar}${btnReview}
+                </div>
+              </div>
+            `;
+          }).join("")
+        : '<div class="empty-note" style="font-size:11.5px;padding:8px 4px;">Sem cards</div>';
+      return `
+        <div class="board-col" data-board-col="${escHtml(col.status)}">
+          <div class="board-col-head">
+            <span>${escHtml(col.titulo)}</span>
+            <span class="skill-count">${lista.length}</span>
+          </div>
+          ${cardsHtml}
+        </div>
+      `;
+    }).join("");
+  } catch (_) {
+    box.innerHTML = '<div class="empty-note">Não foi possível carregar o Quadro (Board).</div>';
+  }
+}
+
+async function criarCardBoardUI() {
+  const titulo = window.prompt("Título da tarefa para o Board:");
+  if (!titulo || !titulo.trim()) return;
+  const dono = window.prompt("Agente dono (athena, estudos, sistema, pesquisador, analista...):", "athena") || "athena";
+  const criterio = window.prompt("Critério objetivo de Done (No proof, no done):", "") || "";
+  try {
+    const resp = await fetch("/api/board", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ titulo: titulo.trim(), dono: dono.trim(), criterio_done: criterio.trim() }),
+    });
+    const r = await resp.json();
+    if (resp.ok && r && r.ok) {
+      mostrarToast("Card criado no Board ✓");
+      await carregarBoard();
+    } else {
+      mostrarToast((r && (r.detail || r.erro)) || "Erro ao criar card.", true);
+    }
+  } catch (_) {
+    mostrarToast("Erro de rede ao criar card no Board.", true);
+  }
+}
+
+async function moverCardParaReviewUI(cardId, btn) {
+  const prova = window.prompt("Informe a prova concreta de conclusão (comando, arquivo, link — ou deixe vazio para testar bloqueio do Checker):", "") || "";
+  if (btn) btn.disabled = true;
+  try {
+    const provas = prova.trim() ? [prova.trim()] : [];
+    const resp = await fetch(`/api/board/${encodeURIComponent(cardId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "Ready for Review", provas }),
+    });
+    const r = await resp.json();
+    if (resp.ok && r && r.ok) {
+      mostrarToast("Card movido para Review ✓");
+      await carregarBoard();
+    } else {
+      mostrarToast((r && (r.detail || r.erro)) || "Erro ao mover card.", true);
+    }
+  } catch (_) {
+    mostrarToast("Erro ao mover card para Review.", true);
+  }
+}
+
+async function checarCardBoardUI(cardId, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const resp = await fetch(`/api/board/${encodeURIComponent(cardId)}/checar`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usar_llm: false }),
+    });
+    const r = await resp.json();
+    if (resp.ok && r && r.ok) {
+      if (r.aprovado) mostrarToast("Aprovado pelo Checker → Done ✓");
+      else if (r.bloqueado) mostrarToast("Reprovado 2x → Blocked (ação humana necessária).", true);
+      else mostrarToast(`Reprovado pelo Checker → Working (${r.feedback?.criterio_falho || "sem provas"}).`, true);
+      await carregarBoard();
+    } else {
+      mostrarToast((r && (r.detail || r.erro)) || "Falha ao executar Checker.", true);
+    }
+  } catch (_) {
+    mostrarToast("Erro de rede ao executar Checker.", true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function carregarRecibosSemanais() {
+  const box = document.getElementById("box-recibos-semanais");
+  if (!box) return;
+  try {
+    const r = await fetch("/api/rotinas/recibos").then(x => x.json());
+    const lista = Array.isArray(r && r.recibos) ? r.recibos : [];
+    if (!lista.length) {
+      box.innerHTML = '<span class="empty-note">Nenhum Friday Receipt gerado ainda. Clique em "Gerar Recibo Agora" ou aguarde sexta-feira às 18:00.</span>';
+      return;
+    }
+    box.innerHTML = lista.map(rec => `
+      <div class="recibo-md-box" style="margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+          <span class="lab-badge accent">${escHtml(rec.periodo)}</span>
+          <span style="font-size:11.5px;color:var(--muted);">Gerado em ${escHtml(rec.criado_em)}</span>
+        </div>
+        <div class="msg bot">${renderMD(rec.resumo_md || "")}</div>
+      </div>
+    `).join("");
+  } catch (_) {
+    box.innerHTML = '<span class="empty-note">Não foi possível carregar os recibos semanais.</span>';
+  }
+}
+
+async function gerarReciboSemanalUI(btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const resp = await fetch("/api/rotinas/recibo-semanal", { method: "POST" });
+    const r = await resp.json();
+    if (resp.ok && r && r.ok) {
+      mostrarToast("Friday Receipt gerado ✓");
+      await carregarRecibosSemanais();
+    } else {
+      mostrarToast((r && (r.detail || r.erro)) || "Falha ao gerar recibo semanal.", true);
+    }
+  } catch (_) {
+    mostrarToast("Erro de rede ao gerar recibo semanal.", true);
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

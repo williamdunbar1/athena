@@ -4207,3 +4207,179 @@ def test_take_the_wheel_pausa_retoma_e_cancela_asyncio_event(monkeypatch, tmp_pa
     assert "Assuma o Controle (Take the wheel)" in html
     assert "Devolver Controle ao Agente" in html
 
+
+# ==============================================================================
+# 30. THE BOARD + CHECKER + SLOW VS FAST FACTS + FRIDAY RECEIPT (MIGRATION 007)
+# ==============================================================================
+
+
+def test_migration_007_board_checker_slow_facts_e_friday_receipt(monkeypatch, tmp_path):
+    import json
+    import sqlite3
+    from pathlib import Path
+
+    from alembic import command
+    from alembic.config import Config
+
+    import agentes
+    import auditoria
+    import board
+    import compactador
+    import eficiencia as ef
+    import memoria_temporal as mt
+    import rotinas
+    import servidor
+
+    # 1) Migration 007_board_e_recibos em SQLite temporario
+    db_007 = tmp_path / "athena_007.db"
+    alembic_cfg = Config(str(Path(__file__).resolve().parent.parent / "alembic.ini"))
+    monkeypatch.setenv("ATHENA_DB_PATH", str(db_007))
+    command.upgrade(alembic_cfg, "head")
+
+    with sqlite3.connect(db_007) as conn:
+        tabelas = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+    assert {"board_tarefas", "recibos_semanais"}.issubset(tabelas)
+
+    # 2) The Board + Handoff enxuto (estritamente 7 campos, sem historico de chat)
+    card_ok = board.criar_card_board(
+        titulo="Adicionar testes do modulo board",
+        dono="sistema",
+        criterio_done="Executar pytest e validar saida passed",
+        handoff={
+            "from": "Athena",
+            "to": "sistema",
+            "objective": "Criar testes offline do board",
+            "artifacts": ["board.py", "tests/test_core.py"],
+            "decisions": ["Usar SQLite WAL temporario"],
+            "open_questions": [],
+            "next_gate": "pytest passed",
+            "historico_gigante_proibido": "NAO DEVE APARECER NO HANDOFF",
+        },
+        db_path=db_007,
+    )
+    hf_str = board.formatar_handoff_enxuto(card_ok)
+    hf_dict = json.loads(hf_str)
+    assert set(hf_dict.keys()) == set(board.CAMPOS_HANDOFF)
+    assert "NAO DEVE APARECER" not in hf_str
+
+    # Card com prova concreta -> Checker aprova para Done e audita
+    board.atualizar_card_board(
+        card_ok["id"],
+        status="Ready for Review",
+        provas=["pytest tests/test_core.py -> 84 passed in 15s (0 failed)"],
+        db_path=db_007,
+    )
+    res_aprov = board.avaliar_card_checker(card_ok["id"], usar_llm=False, db_path=db_007)
+    assert res_aprov["ok"] is True
+    assert res_aprov["aprovado"] is True
+    assert res_aprov["status_novo"] == "Done"
+    assert res_aprov["card"]["status"] == "Done"
+
+    # Card SEM prova -> 1a reprovacao volta para Working com feedback estruturado; 2a vai para Blocked + alerta
+    card_sem_prova = board.criar_card_board(
+        titulo="Validar migracao sem evidencia",
+        dono="pesquisador",
+        criterio_done="Anexar evidencia do endpoint funcionando",
+        status="Ready for Review",
+        db_path=db_007,
+    )
+    rep1 = board.avaliar_card_checker(card_sem_prova["id"], usar_llm=False, db_path=db_007)
+    assert rep1["ok"] is True
+    assert rep1["aprovado"] is False
+    assert rep1["status_novo"] == "Working"
+    assert rep1["tentativas_checker"] == 1
+    assert {"criterio_falho", "o_que_corrigir", "o_que_nao_mudar"}.issubset(rep1["feedback"].keys())
+
+    board.atualizar_card_board(card_sem_prova["id"], status="Ready for Review", provas=["ok"], db_path=db_007)
+    rep2 = board.avaliar_card_checker(card_sem_prova["id"], usar_llm=False, db_path=db_007)
+    assert rep2["ok"] is True
+    assert rep2["aprovado"] is False
+    assert rep2["bloqueado"] is True
+    assert rep2["status_novo"] == "Blocked"
+    assert rep2["tentativas_checker"] == 2
+
+    alertas_checker = [
+        a for a in auditoria.listar_atividades(agente="Agente Checker", db_path=db_007) if a["status"] == "alerta_bloqueio"
+    ]
+    assert len(alertas_checker) == 1
+
+    # 3) Regra Slow Facts vs Fast Facts (eh_dado_volatil)
+    for volatil in (
+        "Dolar hoje esta R$ 5,85 na abertura",
+        "Saldo atual no Mercado Pago e R$ 1.240,50",
+        "Erro HTTP 503 Service Unavailable na API do Gemini",
+        "Clima hoje em Sao Paulo: temperatura atual de 27 graus",
+        "Nota parcial de Calculo II esta em 6,5",
+        "Cotacao da PETR4 a R$ 38,40",
+    ):
+        assert compactador.eh_dado_volatil(volatil) is True, f"Deveria detectar dado volatil: {volatil}"
+        assert mt.eh_dado_volatil(volatil) is True
+
+    for lento in (
+        "Prefiro respostas diretas em portugues com exemplos em Python 3.12",
+        "Stack principal do projeto: FastAPI, Pydantic AI v2 e SQLite WAL",
+        "Objetivo semestral: dominar Calculo II e Estrutura de Dados",
+        "Regra pessoal: nunca executar git push sem aprovacao explicita",
+    ):
+        assert compactador.eh_dado_volatil(lento) is False, f"Fato lento nao deveria ser bloqueado: {lento}"
+
+    # validar_volatil=True em memoria_temporal ignora Fast Fact sem gravar no SQLite
+    ign = mt.registrar_fato_temporal(
+        "William",
+        "saldo_mercado_pago",
+        "Saldo atual no Mercado Pago e R$ 999,00 hoje",
+        db_path=db_007,
+        validar_volatil=True,
+    )
+    assert ign["acao"] == "ignorado_volatil"
+    assert ign["ignorado"] is True
+
+    # 4) Rotina silenciosa + Friday Receipt (gerar_recibo_semanal 0 LLM)
+    assert rotinas.eh_retorno_silencioso("SEM_NOVIDADES") is True
+    assert rotinas.eh_retorno_silencioso("Nenhuma novidade") is True
+    assert rotinas.eh_retorno_silencioso("Voce tem 2 provas amanha.") is False
+
+    monkeypatch.setattr(rotinas, "_SCHEDULER", None)
+    rot_sil = rotinas.criar_rotina_dinamica(
+        "Monitorar Avisos",
+        "Verifique se ha avisos novos",
+        "0 8 * * 1-5",
+        db_path=db_007,
+    )
+
+    async def _retornar_silencioso(_rot, **_kw):
+        return "SEM_NOVIDADES"
+
+    monkeypatch.setattr(rotinas, "_executar_agente_rotina_dinamica", _retornar_silencioso)
+    r_sil = _executar_coro_sync(rotinas.executar_rotina_dinamica(rot_sil["id"], db_path=db_007))
+    assert r_sil["ok"] is True
+    assert r_sil["silencioso"] is True
+
+    recibo = rotinas.gerar_recibo_semanal(db_path=db_007)
+    assert recibo["id"].startswith("rec_")
+    assert "Friday Receipt" in recibo["resumo_md"]
+    assert recibo["metricas"]["board"]["contagem"]["Done"] == 1
+    assert recibo["metricas"]["board"]["contagem"]["Blocked"] == 1
+    assert recibo["metricas"]["atividade"]["silenciosas"] >= 1
+    salvos = rotinas.listar_recibos_semanais(db_path=db_007)
+    assert len(salvos) == 1
+    assert salvos[0]["id"] == recibo["id"]
+
+    # 5) Tools na Orquestradora, eficiencia, endpoints REST e sub-abas no index.html (sem poluir sidebar)
+    tools_orq = set((getattr(getattr(agentes.orquestrador, "_function_toolset", None), "tools", None) or {}).keys())
+    assert {"criar_tarefa_board_tool", "listar_board_tool"}.issubset(tools_orq)
+    assert "criar_tarefa_board_tool" in ef.DOMINIO_PARA_TOOLS["board"]
+    dom_brd = ef.selecionar_dominios_para_mensagem("Mostre o quadro kanban de tarefas em andamento no board")
+    assert dom_brd is not None and "board" in dom_brd
+
+    assert servidor.api_listar_board()["ok"] is True
+    assert servidor.api_listar_recibos_semanais()["ok"] is True
+
+    html = (Path(__file__).resolve().parent.parent / "index.html").read_text(encoding="utf-8")
+    assert 'data-subtab="rotinas-board"' in html
+    assert 'data-subtab="rotinas-recibo"' in html
+    assert "/api/board" in html
+    assert "/api/rotinas/recibos" in html
+    assert "/api/rotinas/recibo-semanal" in html
+
+

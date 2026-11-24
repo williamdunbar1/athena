@@ -1838,7 +1838,8 @@ orquestrador = Agent(
         "- `solicitar_abrir_app`, `solicitar_abrir_url` e `solicitar_abrir_arquivo_ou_pasta`: execucao NATIVA no Windows 11 do William para abrir aplicativos (Brave, VS Code, Obsidian, Spotify, Discord, etc.), URLs/abas no Brave e arquivos/pastas locais (ex.: PDFs da faculdade ou pasta Downloads), sempre exibindo um card de confirmacao inline no chat (ou abrindo direto se o app estiver em 'Sempre permitir').\n"
         "- `solicitar_captura_tela(motivo)`: pede autorizacao explicita (card de permissao inline, nunca automatico e sem 'Sempre permitir') para capturar o monitor principal do William quando ele pedir para voce olhar a tela ou diagnosticar algo visivel no monitor.\n"
         "- `gerar_imagem(prompt)`: gera imagens sob demanda usando o modelo de imagem dedicado do Gemini, salva em `sandbox_files/imagens/` e devolve o Markdown inline `![...](/api/arquivos/imagens/...)` para exibir direto no chat.\n"
-        "- `guardar_na_memoria`: salvar fatos duradouros sobre o usuario.\n"
+        "- `guardar_na_memoria`: salvar APENAS fatos lentos e duradouros (Slow Facts: preferencias, regras, objetivos, stack, decisoes). NUNCA memorise nem confie em memoria antiga para dados volateis (Fast Facts: cotacoes, dolar hoje, saldo bancario pontual, erros HTTP 503/429, clima, notas parciais) — busque sempre dados volateis na fonte ao vivo!\n"
+        "- `criar_tarefa_board_tool` e `listar_board_tool`: gerenciam cards no Quadro (Board) de tarefas com handoff estruturado enxuto e validacao independente pelo Agente Checker ('No proof, no done').\n"
         "- Ferramentas sob demanda via `search_tools`: busca semantica `buscar_semantico` (Qdrant Vetorial) e Obsidian Vault (`listar_notas_vault`, `buscar_no_vault`, `ler_nota_vault`, `escrever_nota_vault`) — carregue-as via `search_tools` sempre que precisar de contexto pessoal, notas do Segundo Cerebro ou busca vetorial.\n\n"
         "REGRA OBRIGATORIA PARA ABRIR APPS, SITES, ARQUIVOS E PASTAS NO WINDOWS:\n"
         "Voce roda LOCALMENTE no Windows 11 do William e PODE abrir aplicativos, abas no Brave, arquivos e pastas usando `solicitar_abrir_app`, `solicitar_abrir_url` e `solicitar_abrir_arquivo_ou_pasta`. "
@@ -2168,6 +2169,61 @@ def pausar_rotina_tool(ctx: RunContext[ContextoMissao], rotina_id: str, ativa: b
     rot = res.get("rotina") or {}
     estado = "reativada" if ativa else "pausada"
     return f"Rotina **{rot.get('nome', rotina_id)}** (`{rotina_id}`) {estado} com sucesso."
+
+
+@orquestrador.tool
+def criar_tarefa_board_tool(
+    ctx: RunContext[ContextoMissao],
+    titulo: str,
+    dono: str = "athena",
+    criterio_done: str = "",
+    objetivo_handoff: str = "",
+    artefatos: str = "",
+) -> str:
+    """Cria uma tarefa (card) no Quadro (Board) com dono, criterio de conclusao ('No proof, no done') e handoff enxuto."""
+    from board import criar_card_board, formatar_handoff_enxuto
+
+    ctx.deps.registrar("Athena", "The Board", "ferramenta", f"criar_card_board({titulo[:60]}, dono={dono})")
+    handoff = {
+        "from": "Athena",
+        "to": dono,
+        "objective": objetivo_handoff or titulo,
+        "artifacts": [a.strip() for a in (artefatos or "").split(",") if a.strip()],
+        "decisions": [],
+        "open_questions": [],
+        "next_gate": criterio_done or "Apresentar provas objetivas ao Agente Checker",
+    }
+    try:
+        card = criar_card_board(titulo, dono=dono, criterio_done=criterio_done, handoff=handoff)
+    except ValueError as exc:
+        return f"Erro ao criar tarefa no Board: {exc}"
+    return (
+        f"Card criado no Board!\n"
+        f"- ID: `{card['id']}` | Status: **{card['status']}** | Dono: `{card['dono']}`\n"
+        f"- Titulo: **{card['titulo']}**\n"
+        f"- Criterio Done: {card['criterio_done'] or '(nao especificado)'}\n"
+        f"```json\n{formatar_handoff_enxuto(card)}\n```"
+    )
+
+
+@orquestrador.tool
+def listar_board_tool(ctx: RunContext[ContextoMissao], status: str = "") -> str:
+    """Lista os cards do Quadro (Board) da Athena (opcionalmente filtrando por Todo, Working, Blocked, Ready for Review ou Done)."""
+    from board import listar_board
+
+    ctx.deps.registrar("Athena", "The Board", "ferramenta", f"listar_board(status={status or 'todos'})")
+    try:
+        cards = listar_board(status=status or None)
+    except ValueError as exc:
+        return f"Erro ao consultar o Board: {exc}"
+    if not cards:
+        return "Nenhum card no Board no momento."
+    linhas = ["=== THE BOARD (TAREFAS) ==="]
+    for c in cards[:25]:
+        linhas.append(
+            f"- `{c['id']}` [{c['status']}] **{c['titulo']}** (dono: `{c['dono']}` | provas: {len(c['provas'])} | checker: {c['tentativas_checker']}/2)"
+        )
+    return compactar_saida_tool("\n".join(linhas))
 
 
 @orquestrador.tool

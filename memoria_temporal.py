@@ -69,6 +69,60 @@ _STOPWORDS_TEMPORAL: frozenset[str] = frozenset(
 )
 _RE_TOKEN = re.compile(r"[a-z0-9_]{2,}")
 
+# Regra "Slow Facts vs. Fast Facts": padroes de dados volateis que mudam rapido e NAO devem ser memorizados.
+_PADROES_DADO_VOLATIL: tuple[re.Pattern[str], ...] = (
+    # Cotacoes, cambio e precos momentaneos de mercado
+    re.compile(
+        r"\b(?:cotac(?:ao|oes)|preco\s+(?:atual|de\s+hoje|agora|do\s+dia)|"
+        r"dolar\s+(?:hoje|agora|esta|em|a\s+r?\$|fechou|cotado)|"
+        r"euro\s+(?:hoje|agora|esta|a\s+r?\$)|"
+        r"(?:bitcoin|btc|eth|ethereum|ibovespa|selic)\s+(?:hoje|agora|esta|em|a\s+r?\$|caiu|subiu)|"
+        r"(?:petr4|vale3|itub4|bbas3|mxrf11|hglg11|bova11|ivvb11)\s*(?:esta|a|em|:|=)?\s*r?\$?\s*\d)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:dolar|euro|bitcoin|btc|eth|ibovespa|acao|acoes|fii)\b.{0,30}(?:r\$|\$|usd|brl)\s*\d",
+        re.IGNORECASE,
+    ),
+    # Saldo bancario / conta pontual
+    re.compile(
+        r"\b(?:saldo\s+(?:atual|hoje|agora|em\s+conta|da\s+conta|bancario|disponivel|no\s+mercado\s+pago|no\s+nubank)|"
+        r"(?:estou\s+com|tenho)\s+r\$\s*\d[\d.,]*\s+(?:na\s+conta|no\s+banco|no\s+mercado\s+pago|hoje|agora))\b",
+        re.IGNORECASE,
+    ),
+    # Erros HTTP / API transitorios (503, 429, 502, 504, timeouts momentaneos)
+    re.compile(
+        r"\b(?:erro\s*(?:http\s*)?(?:429|500|502|503|504)|http\s*(?:429|500|502|503|504)|"
+        r"status\s*(?:429|500|502|503|504)|modelunavailableerror|rate\s*limit|"
+        r"service\s+unavailable|servidor\s+indisponivel\s+(?:hoje|agora))\b",
+        re.IGNORECASE,
+    ),
+    # Clima / temperatura / tempo momentaneo
+    re.compile(
+        r"\b(?:clima\s+(?:hoje|agora|atual|em)|previsao\s+do\s+tempo|"
+        r"temperatura\s+(?:atual|hoje|agora|esta|de\s+\d+)|esta\s+chovendo|fazendo\s+\d{1,2}\s*(?:graus|c))\b",
+        re.IGNORECASE,
+    ),
+    # Notas parciais ou frequencia transitoria do dia
+    re.compile(
+        r"\b(?:nota\s+parcial|media\s+parcial|pontuacao\s+parcial|faltas?\s+(?:hoje|atuais|agora))\b",
+        re.IGNORECASE,
+    ),
+)
+
+
+def eh_dado_volatil(texto: str) -> bool:
+    """Detecta Fast Facts (dados volateis: cotacoes, saldo pontual, erros 503/429, clima, notas parciais).
+
+    Fatos volateis mudam rapidamente e NAO devem ser persistidos na memoria de longo prazo —
+    a Athena deve busca-los na fonte ao vivo sempre que precisar.
+    """
+    bruto = (texto or "").strip()
+    if not bruto:
+        return False
+    norm = normalizar_texto_eficiencia(bruto)
+    return any(p.search(norm) or p.search(bruto) for p in _PADROES_DADO_VOLATIL)
+
 
 def _garantir_tabela_temporal(c: sqlite3.Connection) -> None:
     c.execute(
@@ -144,10 +198,13 @@ def registrar_fato_temporal(
     categoria: str = "geral",
     origem: str = "chat",
     db_path: str | Path | None = None,
+    *,
+    validar_volatil: bool = False,
 ) -> dict[str, Any]:
     """Registra um fato temporal `(sujeito, relacao, objeto)` preservando historico completo de mudancas.
 
     - Aplica `guardrails.mascarar_segredos_e_pii` no `objeto` (e `sujeito`) antes de persistir.
+    - Quando `validar_volatil=True`, ignora Fast Facts volateis (`eh_dado_volatil`).
     - Se ja existir fato vigente identico para `(sujeito, relacao)`, nao duplica e retorna o existente.
     - Se ja existir fato vigente com `objeto` diferente, encerra o anterior (`valido_ate = agora`)
       e insere o novo como vigente (`valido_ate = NULL`).
@@ -157,6 +214,19 @@ def registrar_fato_temporal(
     obj_bruto = " ".join((objeto or "").split())[:500]
     if not suj_bruto or not rel_bruta or not obj_bruto:
         raise ValueError("Informe sujeito, relacao e objeto nao vazios para registrar fato temporal.")
+
+    if validar_volatil and eh_dado_volatil(f"{rel_bruta} {obj_bruto}"):
+        return {
+            "id": "",
+            "sujeito": suj_bruto,
+            "relacao": rel_bruta,
+            "objeto": obj_bruto,
+            "categoria": categoria,
+            "origem": origem,
+            "vigente": False,
+            "acao": "ignorado_volatil",
+            "ignorado": True,
+        }
 
     suj_seg, _ = mascarar_segredos_e_pii(suj_bruto)
     obj_seg, _ = mascarar_segredos_e_pii(obj_bruto)

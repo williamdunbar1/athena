@@ -122,6 +122,12 @@ DOMINIO_PARA_TOOLS: dict[str, frozenset[str]] = {
             "pausar_rotina_tool",
         }
     ),
+    "board": frozenset(
+        {
+            "criar_tarefa_board_tool",
+            "listar_board_tool",
+        }
+    ),
 }
 
 # Padroes compilados por dominio (aplicados sobre texto normalizado sem acento e minusculo).
@@ -209,6 +215,10 @@ _PADROES_DOMINIO: dict[str, tuple[re.Pattern[str], ...]] = {
     "rotinas": (
         re.compile(r"\b(?:rotinas?|agendar|agendad[ao]s?|cron)\b"),
         re.compile(r"\b(?:todo\s+dia|todos\s+os\s+dias|toda\s+semana|lembrete\s+recorrente|pausar\s+rotina)\b"),
+    ),
+    "board": (
+        re.compile(r"\b(?:board|quadro|kanban|checker)\b"),
+        re.compile(r"\b(?:tarefas?\s+em\s+andamento|ready\s+for\s+review|criar\s+card)\b"),
     ),
 }
 

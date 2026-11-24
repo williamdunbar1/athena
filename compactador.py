@@ -25,7 +25,7 @@ from guardrails import mascarar_segredos_e_pii
 from logging_config import obter_logger
 from memoria import _conn as _conn_memoria
 from memoria import guardar_fato, listar_fatos
-from memoria_temporal import registrar_fato_temporal
+from memoria_temporal import eh_dado_volatil, registrar_fato_temporal
 
 MODELO_COMPACTACAO = "google:gemini-3.5-flash-lite"
 TIMEOUT_COMPACTACAO_SEGUNDOS = 12.0
@@ -375,10 +375,12 @@ async def _extrair_fatos_com_llm(
     agente_mem = Agent(
         MODELO_COMPACTACAO,
         instructions=(
-            "Analise o turno da conversa e extraia APENAS fatos duradouros novos sobre o usuario "
-            "(preferencias, metas, prazos importantes, curso, ferramentas preferidas ou rotina). "
+            "Analise o turno da conversa e extraia APENAS fatos lentos e duradouros (Slow Facts) novos sobre o usuario "
+            "(preferencias, regras pessoais, objetivos/metas, stack tecnica, curso, ferramentas preferidas ou decisoes). "
             "REGRAS OBRIGATORIAS:\n"
-            "- Se NAO houver fato duradouro claro, devolva exatamente: []\n"
+            "- Se NAO houver fato lento duradouro claro, devolva exatamente: []\n"
+            "- REGRA SLOW FACTS vs FAST FACTS: NUNCA extraia dados volateis (cotacoes, dolar hoje, precos momentaneos, "
+            "saldo bancario pontual, erros HTTP 503/429, clima/temperatura ou notas parciais transitorias).\n"
             "- NUNCA extraia senhas, PINs, tokens, cookies, chaves de API, CPF ou dados bancarios sigilosos.\n"
             "- Responda EXCLUSIVAMENTE com um array JSON valido no formato "
             '[{"chave": "snake_case_curta", "valor": "descricao objetiva"}].'
@@ -434,6 +436,9 @@ async def extrair_memorias_em_background(
             continue
         if _contem_segredo_sensivel(chave_limpa) or _contem_segredo_sensivel(valor_limpo):
             continue
+        if eh_dado_volatil(f"{chave_limpa.replace('_', ' ')} {valor_limpo}"):
+            _log.info("auto_memory_ignorada_volatil", chave=chave_limpa)
+            continue
         valor_seguro, tipos_mascarados = mascarar_segredos_e_pii(valor_limpo)
         if tipos_mascarados and "[MASCARADO:" in valor_seguro:
             restante = re.sub(r"\[MASCARADO:[a-z_]+\]", "", valor_seguro).strip()
@@ -451,6 +456,7 @@ async def extrair_memorias_em_background(
                 categoria="preferencia",
                 origem="auto_memory",
                 db_path=db_path,
+                validar_volatil=True,
             )
         existentes.append({"chave": chave_limpa, "valor": valor_seguro})
         salvos.append((chave_limpa, valor_seguro))
